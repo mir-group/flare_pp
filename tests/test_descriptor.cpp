@@ -1,4 +1,5 @@
 #include "b3.h"
+#include "b1.h"
 #include "descriptor.h"
 #include "test_structure.h"
 #include "gtest/gtest.h"
@@ -24,8 +25,8 @@ TEST_F(StructureTest, RotationTest) {
   Eigen::MatrixXd rotated_cell = cell * R.transpose();
 
   // Define descriptors.
-  descriptor_settings[2] = 2;
-  B3 descriptor = B3(radial_string, cutoff_string, radial_hyps, cutoff_hyps,
+  descriptor_settings[2] = 0; // 2
+  B1 descriptor = B1(radial_string, cutoff_string, radial_hyps, cutoff_hyps,
                      descriptor_settings);
 
   std::vector<Descriptor *> descriptors;

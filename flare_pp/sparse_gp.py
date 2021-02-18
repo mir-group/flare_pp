@@ -117,7 +117,7 @@ class SGP_Wrapper:
 
         # save descriptor_settings
         desc_calc = self.descriptor_calculators
-        assert (len(desc_calc) == 1) and (isinstance(desc_calc[0], _C_flare.B2))
+        assert (len(desc_calc) == 1) and (isinstance(desc_calc[0], (_C_flare.B1, _C_flare.B2, _C_flare.B3)))
         b2_calc = desc_calc[0]
         b2_dict = {
             "type": "B2",
@@ -200,7 +200,10 @@ class SGP_Wrapper:
         )
 
         # change the keys of single_atom_energies and species_map to int
-        sae_dict = {int(k): v for k, v in in_dict["single_atom_energies"].items()}
+        if in_dict["single_atom_energies"] is not None:
+            sae_dict = {int(k): v for k, v in in_dict["single_atom_energies"].items()}
+        else:
+            sae_dict = None
         species_map = {int(k): v for k, v in in_dict["species_map"].items()}
 
         gp = SGP_Wrapper(

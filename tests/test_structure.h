@@ -1,3 +1,4 @@
+#include "b1.h"
 #include "b2.h"
 #include "b2_norm.h"
 #include "b2_simple.h"
@@ -25,7 +26,7 @@ public:
   Eigen::MatrixXd cell, cell_2, cell_3;
   std::vector<int> species, species_2, species_3;
   Eigen::MatrixXd positions, positions_2, positions_3;
-  B2 ps;
+  B1 ps;
   B2_Norm ps_norm;
   std::vector<Descriptor *> dc;
   Structure test_struc, test_struc_2, test_struc_3;
@@ -68,12 +69,13 @@ public:
       species_3.push_back(rand() % n_species);
     }
 
-    ps = B2(radial_string, cutoff_string, radial_hyps, cutoff_hyps,
+    ps = B1(radial_string, cutoff_string, radial_hyps, cutoff_hyps,
             descriptor_settings);
     ps_norm = B2_Norm(radial_string, cutoff_string, radial_hyps,
                       cutoff_hyps, descriptor_settings);
 
-    dc.push_back(&ps_norm);
+    dc.push_back(&ps);
+//    dc.push_back(&ps_norm); // changed
 
     species[0] = 0; // for debug
     species[1] = 1;
