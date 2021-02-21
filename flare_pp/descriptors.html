@@ -411,6 +411,12 @@
 <dd></dd></dl>
 
 <dl class="function">
+<dt id="_CPPv2N2B22B2ERKNSt6stringERKNSt6stringERKNSt6vectorIdEERKNSt6vectorIdEERKNSt6vectorIiEERKN5Eigen8MatrixXdE">
+<span id="B2::B2__ssCR.ssCR.std::vector:double:CR.std::vector:double:CR.std::vector:i:CR.Eigen::MatrixXdCR"></span><span class="target" id="classB2_1a6aeb9437355ae906a03131cc1cfd68a6"></span><code class="descname">B2</code><span class="sig-paren">(</span><em class="property">const</em> std::string &amp;<em>radial_basis</em>, <em class="property">const</em> std::string &amp;<em>cutoff_function</em>, <em class="property">const</em> std::vector&lt;double&gt; &amp;<em>radial_hyps</em>, <em class="property">const</em> std::vector&lt;double&gt; &amp;<em>cutoff_hyps</em>, <em class="property">const</em> std::vector&lt;int&gt; &amp;<em>descriptor_settings</em>, <em class="property">const</em> Eigen::MatrixXd &amp;<em>cutoffs</em><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv2N2B22B2ERKNSt6stringERKNSt6stringERKNSt6vectorIdEERKNSt6vectorIdEERKNSt6vectorIiEERKN5Eigen8MatrixXdE" title="Permalink to this definition">¶</a><br /></dt>
+<dd><p>Construct the <a class="reference internal" href="#classB2"><span class="std std-ref">B2</span></a> descriptor with distinct cutoffs for each pair of species. </p>
+</dd></dl>
+
+<dl class="function">
 <dt id="_CPPv2N2B213compute_strucER9Structure">
 <span id="B2::compute_struc__StructureR"></span><span class="target" id="classB2_1a5827308d3f7d1ecb186912621dfda37c"></span><a class="reference internal" href="#_CPPv216DescriptorValues" title="DescriptorValues">DescriptorValues</a> <code class="descname">compute_struc</code><span class="sig-paren">(</span><a class="reference internal" href="structure.html#_CPPv29Structure" title="Structure">Structure</a> &amp;<em>structure</em><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv2N2B213compute_strucER9Structure" title="Permalink to this definition">¶</a><br /></dt>
 <dd></dd></dl>
@@ -457,6 +463,12 @@
 <dt id="_CPPv2N2B219descriptor_settingsE">
 <span id="B2::descriptor_settings__std::vector:i:"></span><span class="target" id="classB2_1a90f9320bbecad6a05016956b3e676524"></span>std::vector&lt;int&gt; <code class="descname">descriptor_settings</code><a class="headerlink" href="#_CPPv2N2B219descriptor_settingsE" title="Permalink to this definition">¶</a><br /></dt>
 <dd></dd></dl>
+
+<dl class="member">
+<dt id="_CPPv2N2B27cutoffsE">
+<span id="B2::cutoffs__Eigen::MatrixXd"></span><span class="target" id="classB2_1a7d3392fbdd31010c69eb728f3eb255a1"></span>Eigen::MatrixXd <code class="descname">cutoffs</code><a class="headerlink" href="#_CPPv2N2B27cutoffsE" title="Permalink to this definition">¶</a><br /></dt>
+<dd><p>Matrix of cutoff values, with element (i, j) corresponding to the cutoff assigned to the species pair (i, j), where i is the central species and j is the environment species. </p>
+</dd></dl>
 
 </div>
 </dd></dl>
