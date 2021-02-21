@@ -6,21 +6,64 @@
 
 class Structure {
 public:
-  Eigen::VectorXi neighbor_count, cumulative_neighbor_count, structure_indices,
-      neighbor_species;
+  /** @name Neighbor attributes
+   */
+  ///@{
+  /** Neighbor count for each atom.
+   */
+  Eigen::VectorXi neighbor_count;
+  
+  /** Cumulative neighbor count. The vector has length N+1, where N is the
+   *  number of atoms in the structure, with first entry 0.
+   */
+  Eigen::VectorXi cumulative_neighbor_count;
+  
+  /** Species of each neighbor. The vector has length equal to the total
+   * number of neighbors in the structure.
+   */
+  Eigen::VectorXi neighbor_species;
+  ///@}
+
+  Eigen::VectorXi structure_indices;
+
+  /** @name The periodic box
+   */
+  ///@{
   Eigen::MatrixXd cell, cell_transpose, cell_transpose_inverse, cell_dot,
-      cell_dot_inverse, positions, wrapped_positions, relative_positions;
+      cell_dot_inverse;
+  ///@}
+
+  /** @name Atom coordinates */
+  ///@{
+  Eigen::MatrixXd positions, wrapped_positions, relative_positions;
+  ///@}
+
   double cutoff, single_sweep_cutoff, volume;
   int sweep, n_neighbors;
+
+  /**
+   * Species of each atom.
+   */
   std::vector<int> species;
+
+  /**
+   * Number of atoms in the structure.
+   */
   int noa;
 
   std::vector<Descriptor *> descriptor_calculators;
   std::vector<DescriptorValues> descriptors;
 
-  // Make structure labels empty by default.
-  Eigen::VectorXd energy, forces, stresses, mean_efs, variance_efs;
+  /** @name Structure labels */
+  ///@{
+  Eigen::VectorXd energy, forces, stresses;
+  ///@}
+  
+  /** @name Mean and variance predictions */
+  ///@{
+  Eigen::VectorXd mean_efs, variance_efs;
   std::vector<Eigen::VectorXd> mean_contributions, local_uncertainties;
+  ///@}
 
   /**
    Default structure constructor.
