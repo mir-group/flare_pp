@@ -26,6 +26,8 @@ B1 ::B1(const std::string &radial_basis, const std::string &cutoff_function,
 }
 
 void B1 ::write_to_file(std::ofstream &coeff_file, int coeff_size) {
+  coeff_file << "B1" << "\n";
+
   // Report radial basis set.
   coeff_file << radial_basis << "\n";
 
