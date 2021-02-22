@@ -28,21 +28,24 @@ public:
   double init_one(int, int);
 
 protected:
-  int n_species, n_max, l_max, n_descriptors, beta_size;
+  int num_kern, n_species, n_descriptors;
+  std::vector<int> n_max, l_max, beta_size;
 
-  std::function<void(std::vector<double> &, std::vector<double> &, double, int,
-                     std::vector<double>)>
+  std::vector<std::function<void(std::vector<double> &, std::vector<double> &, double, int,
+                     std::vector<double>)>>
       basis_function;
-  std::function<void(std::vector<double> &, double, double,
-                     std::vector<double>)>
+  std::vector<std::function<void(std::vector<double> &, double, double,
+                     std::vector<double>)>>
       cutoff_function;
 
-  std::vector<double> radial_hyps, cutoff_hyps;
+  std::vector<std::vector<double>> radial_hyps, cutoff_hyps;
+
+  std::vector<double> cutoffs;
 
   double cutoff;
   double *beta;
   Eigen::MatrixXd beta_matrix;
-  std::vector<Eigen::MatrixXd> beta_matrices;
+  std::vector<std::vector<Eigen::MatrixXd>> beta_matrices;
 
   virtual void allocate();
   virtual void read_file(char *);
