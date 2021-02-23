@@ -29,20 +29,20 @@ public:
 
 protected:
   int num_kern, n_species, n_descriptors;
-  std::vector<int> n_max, l_max, beta_size;
+  int *n_max, *l_max, *beta_size;
 
+  int *radial_code, *cutoff_code;
   std::vector<std::function<void(std::vector<double> &, std::vector<double> &, double, int,
                      std::vector<double>)>>
       basis_function;
   std::vector<std::function<void(std::vector<double> &, double, double,
                      std::vector<double>)>>
       cutoff_function;
-  std::vector<int> descriptor_code;
+  int *descriptor_code;
 
-  std::vector<std::vector<double>> radial_hyps, cutoff_hyps;
+  double **radial_hyps, cutoff_hyps;
 
-  std::vector<double> cutoffs;
-
+  double *cutoffs;
   double cutoff;
   double *beta;
   Eigen::MatrixXd beta_matrix;

@@ -99,7 +99,7 @@ void PairFLARE::compute(int eflag, int vflag) {
     for (int kern = 0; kern < num_kern; kern++) {
       double norm_squared, val_1, val_2;
       Eigen::VectorXd single_bond_vals, vals, env_dot, beta_p, partial_forces;
-      Eigen::MatrixXd single_bond_env_dervs, env_dervs
+      Eigen::MatrixXd single_bond_env_dervs, env_dervs;
 
       // Compute covariant descriptors.
       single_bond(x, type, jnum, n_inner, i, xtmp, ytmp, ztmp, jlist,
@@ -244,7 +244,7 @@ double PairFLARE::init_one(int i, int j) {
 
 void PairFLARE::read_file(char *filename) {
   int me = comm->me;
-  char line[MAXLINE]
+  char line[MAXLINE];
   FILE *fptr;
 
   // Check that the potential file can be opened.
@@ -258,16 +258,18 @@ void PairFLARE::read_file(char *filename) {
   }
 
   int tmp, nwords;
-  int radial_str_total = 0;
-  int cutoff_str_total = 0;
   if (me == 0) {
     fgets(line, MAXLINE, fptr);
     fgets(line, MAXLINE, fptr);
     sscanf(line, "%i", &num_kern); // number of descriptors/kernels
 
-    std::vector<char> radial_string[num_kern][MAXLINE], cutoff_string[num_kern][MAXLINE]; // need to check here
-    //char radial_string[MAXLINE], cutoff_string[MAXLINE];
-    std::vector<int> radial_string_length[num_kern], cutoff_string_length[num_kern];
+    memory->create(descriptor_code, num_kern, "pair:descriptor_code");
+    memory->create(radial_code, num_kern, "pair:radial_code");
+    memory->create(cutoff_code, num_kern, "pair:cutoff_code");
+    memory->create(n_max, num_kern, "pair:n_max");
+    memory->create(l_max, num_kern, "pair:l_max");
+    memory->create(beta_size, num_kern, "pair:beta_size");
+    memory->create(cutoffs, num_kern, "pair:cutoffs");
 
     for (int k = 0; k < num_kern; k++) {
       char desc_str[MAXLINE];
@@ -281,18 +283,31 @@ void PairFLARE::read_file(char *filename) {
         error->all(FLERR, "Unknown descriptor");       
       }
 
+      char radial_str[MAXLINE], cutoff_str[MAXLINE];
       fgets(line, MAXLINE, fptr);
-      sscanf(line, "%s", radial_string[k]); // Radial basis set
-      radial_string_length[k] = strlen(radial_string[k]);
-      radial_str_total += radial_string_length[k] + 1;
+      sscanf(line, "%s", radial_str); // Radial basis set
+      if (!strcmp(radial_str, "chebyshev")) {
+        radial_code[k] = 1;
+      } else {
+        char str[128]; 
+        snprintf(str, 128, "Radial function %s is not supported\n.", radial_str);
+        error->all(FLERR, str);
+      }
       
       fgets(line, MAXLINE, fptr);
       sscanf(line, "%i %i %i %i", &n_species, &n_max[k], &l_max[k], &beta_size[k]);
       
       fgets(line, MAXLINE, fptr);
-      sscanf(line, "%s", cutoff_string[k]); // Cutoff function
-      cutoff_string_length[k] = strlen(cutoff_string[k]);
-      cutoff_str_total += cutoff_string_length[k] + 1;
+      sscanf(line, "%s", cutoff_str); // Cutoff function
+      if (!strcmp(cutoff_str, "cosine")) {
+        cutoff_code[k] = 1;
+      } else if (!strcmp(cutoff_str, "quadratic")) {
+        cutoff_code[k] = 2;
+      } else {
+        char str[128]; 
+        snprintf(str, 128, "Cutoff function %s is not supported\n.", cutoff_str);
+        error->all(FLERR, str);
+      }
       
       fgets(line, MAXLINE, fptr);
       sscanf(line, "%lg", &cutoffs[k]); // Cutoffs
@@ -300,19 +315,17 @@ void PairFLARE::read_file(char *filename) {
     }
   }
 
-  MPI_Bcasn(&num_kern, 1, MPI_INT, 0, world);
+  MPI_Bcast(&num_kern, 1, MPI_INT, 0, world);
   MPI_Bcast(&n_species, 1, MPI_INT, 0, world);
-  MPI_Bcast(&n_max, num_kern, MPI_INT, 0, world);
-  MPI_Bcast(&l_max, num_kern, MPI_INT, 0, world);
-  MPI_Bcast(&beta_size, num_kern, MPI_INT, 0, world);
   MPI_Bcast(&cutoff, 1, MPI_DOUBLE, 0, world);
-  MPI_Bcast(&cutoffs, num_kern, MPI_DOUBLE, 0, world);
-  MPI_Bcast(&radial_string_length, num_kern, MPI_INT, 0, world);
-  MPI_Bcast(&cutoff_string_length, num_kern, MPI_INT, 0, world);
-  MPI_Bcast(radial_string, radial_str_total, MPI_CHAR, 0, world);
-  MPI_Bcast(cutoff_string, cutoff_str_total, MPI_CHAR, 0, world);
+  MPI_Bcast(n_max, num_kern, MPI_INT, 0, world);
+  MPI_Bcast(l_max, num_kern, MPI_INT, 0, world);
+  MPI_Bcast(beta_size, num_kern, MPI_INT, 0, world);
+  MPI_Bcast(cutoffs, num_kern, MPI_DOUBLE, 0, world);
+  MPI_Bcast(radial_code, num_kern, MPI_INT, 0, world);
+  MPI_Bcast(cutoff_code, num_kern, MPI_INT, 0, world);
 
-  for (k = 0; k < num_kern; k++) {
+  for (int k = 0; k < num_kern; k++) {
     // Set number of descriptors.
     int n_radial = n_max[k] * n_species;
     n_descriptors = (n_radial * (n_radial + 1) / 2) * (l_max[k] + 1);
@@ -323,32 +336,22 @@ void PairFLARE::read_file(char *filename) {
       error->all(FLERR, "Beta size doesn't match the number of descriptors.");
   
     // Set the radial basis.
-    if (!strcmp(radial_string[k], "chebyshev")) {
+    if (radial_code[k] == 1) 
       basis_function[k] = chebyshev;
       radial_hyps[k] = std::vector<double>{0, cutoffs[k]};
-    } else {
-      char str[128]; 
-      snprintf(str, 128, "Radial function %s is not supported\n.", radial_string[k]);
-      error->all(FLERR, str);
-    }
   
     // Set the cutoff function.
-    if (!strcmp(cutoff_string[k], "quadratic")) {
-      cutoff_function[k] = quadratic_cutoff;
-    } else if (!strcmp(cutoff_string[k], "cosine")) {
+    if (cutoff_code[k] == 1) 
       cutoff_function[k] = cos_cutoff;
-    } else {
-      char str[128]; 
-      snprintf(str, 128, "Cutoff function %s is not supported\n.", cutoff_string[k]);
-      error->all(FLERR, str);
-    }
+    else if (cutoff_code[k] == 2) 
+      cutoff_function[k] = quadratic_cutoff;
  
     // Parse the beta vectors.
     // TODO: check this memory creation
     //memory->create(beta, beta_size * n_species, "pair:beta");
     if (me == 0)
-      grab(fptr, beta_size * n_species, beta);
-    MPI_Bcast(beta, beta_size * n_species, MPI_DOUBLE, 0, world);
+      grab(fptr, beta_size[k] * n_species, beta);
+    MPI_Bcast(beta, beta_size[k] * n_species, MPI_DOUBLE, 0, world);
   
     // Fill in the beta matrix.
     // TODO: Remove factor of 2 from beta.
