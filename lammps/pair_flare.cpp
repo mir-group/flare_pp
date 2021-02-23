@@ -42,7 +42,7 @@ PairFLARE::~PairFLARE() {
   if (copymode)
     return;
 
-  memory->destroy(beta);
+//  memory->destroy(beta);
 
   if (allocated) {
     memory->destroy(setflag);
@@ -108,10 +108,15 @@ void PairFLARE::compute(int eflag, int vflag) {
                   single_bond_env_dervs);
   
       // Compute invariant descriptors.
-      B2_descriptor(vals, env_dervs, norm_squared, env_dot,
-                    single_bond_vals, single_bond_env_dervs, n_species, n_max[kern],
-                    l_max[kern]);
-  
+      if (descriptor_code[kern] == 1)
+        B1_descriptor(vals, env_dervs, norm_squared, env_dot,
+                      single_bond_vals, single_bond_env_dervs, n_species, n_max[kern],
+                      l_max[kern]);
+      else if (descriptor_code[kern] == 2)
+        B2_descriptor(vals, env_dervs, norm_squared, env_dot,
+                      single_bond_vals, single_bond_env_dervs, n_species, n_max[kern],
+                      l_max[kern]);
+
       // Continue if the environment is empty.
       if (norm_squared < empty_thresh)
         continue;
@@ -264,7 +269,18 @@ void PairFLARE::read_file(char *filename) {
     //char radial_string[MAXLINE], cutoff_string[MAXLINE];
     std::vector<int> radial_string_length[num_kern], cutoff_string_length[num_kern];
 
-    for (k = 0; k < num_kern; k++) {
+    for (int k = 0; k < num_kern; k++) {
+      char desc_str[MAXLINE];
+      fgets(line, MAXLINE, fptr);
+      sscanf(line, "%s", desc_str); // Descriptor name
+      if (!strcmp(desc_str, "B1")) {
+        descriptor_code[k] = 1;
+      } else if (!strcmp(desc_str, "B2")) {
+        descriptor_code[k] = 2;
+      } else {
+        error->all(FLERR, "Unknown descriptor");       
+      }
+
       fgets(line, MAXLINE, fptr);
       sscanf(line, "%s", radial_string[k]); // Radial basis set
       radial_string_length[k] = strlen(radial_string[k]);
@@ -295,7 +311,6 @@ void PairFLARE::read_file(char *filename) {
   MPI_Bcast(&cutoff_string_length, num_kern, MPI_INT, 0, world);
   MPI_Bcast(radial_string, radial_str_total, MPI_CHAR, 0, world);
   MPI_Bcast(cutoff_string, cutoff_str_total, MPI_CHAR, 0, world);
-
 
   for (k = 0; k < num_kern; k++) {
     // Set number of descriptors.
@@ -329,7 +344,8 @@ void PairFLARE::read_file(char *filename) {
     }
  
     // Parse the beta vectors.
-    memory->create(beta, beta_size * n_species, "pair:beta");
+    // TODO: check this memory creation
+    //memory->create(beta, beta_size * n_species, "pair:beta");
     if (me == 0)
       grab(fptr, beta_size * n_species, beta);
     MPI_Bcast(beta, beta_size * n_species, MPI_DOUBLE, 0, world);
@@ -337,6 +353,7 @@ void PairFLARE::read_file(char *filename) {
     // Fill in the beta matrix.
     // TODO: Remove factor of 2 from beta.
     Eigen::MatrixXd beta_matrix;
+    std::vector<Eigen::MatrixXd> beta_matrix_kern;
     int beta_count = 0;
     double beta_val;
     for (int s = 0; s < n_species; s++) {
@@ -353,8 +370,9 @@ void PairFLARE::read_file(char *filename) {
           beta_count++;
         }
       }
-      beta_matrices.push_back(beta_matrix);
+      beta_matrix_kern.push_back(beta_matrix);
     }
+    beta_matrices.push_back(beta_matrix_kern);
   }
 }
 
