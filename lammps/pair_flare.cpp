@@ -311,7 +311,10 @@ void PairFLARE::read_file(char *filename) {
       
       fgets(line, MAXLINE, fptr);
       sscanf(line, "%lg", &cutoffs[k]); // Cutoffs
-      cutoff = max_element(std::begin(cutoffs), std::end(cutoffs)); // Use max cut as cutoff
+      cutoff = 0;
+      for (int i = 0; i < sizeof(cutoffs); i++) { // Use max cut as cutoff
+        if (cutoffs[i] > cutoff) cutoff = cutoffs[i];
+      }
     }
   }
 
@@ -338,7 +341,10 @@ void PairFLARE::read_file(char *filename) {
     // Set the radial basis.
     if (radial_code[k] == 1) 
       basis_function[k] = chebyshev;
-      radial_hyps[k] = std::vector<double>{0, cutoffs[k]};
+      std::vector<double> rh = {0, cutoffs[k]};
+      radial_hyps.push_back(rh);
+      std::vector<double> ch;
+      cutoff_hyps.push_back(ch);
   
     // Set the cutoff function.
     if (cutoff_code[k] == 1) 
