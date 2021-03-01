@@ -77,7 +77,7 @@ public:
 
   void write_mapping_coefficients(std::string file_name,
                                   std::string contributor,
-                                  int kernel_index);
+                                  std::vector<int> kernel_indices);
 
   Eigen::MatrixXd varmap_coeffs; // for debugging. TODO: remove this line 
   void write_varmap_coefficients(std::string file_name,

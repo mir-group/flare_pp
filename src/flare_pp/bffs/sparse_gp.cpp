@@ -923,7 +923,7 @@ void SparseGP::write_mapping_coefficients(std::string file_name,
   coeff_file << kernel_indices.size() << "\n";
 
   for (int k = 0; k < kernel_indices.size(); k++) {
-    kernel_index = kernel_indices[k];
+    int kernel_index = kernel_indices[k];
 
     // Compute mapping coefficients.
     Eigen::MatrixXd mapping_coeffs =
