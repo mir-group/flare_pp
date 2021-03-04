@@ -280,7 +280,9 @@ void PairFLARE::read_file(char *filename) {
       } else if (!strcmp(desc_str, "B2")) {
         descriptor_code[k] = 2;
       } else {
-        error->all(FLERR, "Unknown descriptor");       
+        char str[128]; 
+        snprintf(str, 128, "Descriptor %s is not supported\n.", desc_str);
+        error->all(FLERR, str);
       }
 
       char radial_str[MAXLINE], cutoff_str[MAXLINE];
@@ -331,7 +333,11 @@ void PairFLARE::read_file(char *filename) {
   for (int k = 0; k < num_kern; k++) {
     // Set number of descriptors.
     int n_radial = n_max[k] * n_species;
-    n_descriptors = (n_radial * (n_radial + 1) / 2) * (l_max[k] + 1);
+
+    if (descriptor_code[k] == 1)
+      n_descriptors = n_radial;
+    else if (descriptor_code[k] == 2)
+      n_descriptors = (n_radial * (n_radial + 1) / 2) * (l_max[k] + 1);
   
     // Check the relationship between the power spectrum and beta.
     int beta_check = n_descriptors * (n_descriptors + 1) / 2;
