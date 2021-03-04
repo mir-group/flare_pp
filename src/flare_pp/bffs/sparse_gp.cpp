@@ -920,7 +920,7 @@ void SparseGP::write_mapping_coefficients(std::string file_name,
   coeff_file << contributor << "\n";
 
   // Write the number of kernels/descriptors to map
-  coeff_file << kernel_indices.size() << "\n";
+  coeff_file << kernel_indices.size();
 
   for (int k = 0; k < kernel_indices.size(); k++) {
     int kernel_index = kernel_indices[k];
@@ -943,6 +943,7 @@ void SparseGP::write_mapping_coefficients(std::string file_name,
     
       // Start a new line for each beta.
       if (count != 0) {
+        count = 0;
         coeff_file << "\n";
       }
     
