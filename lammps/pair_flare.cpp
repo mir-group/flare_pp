@@ -270,8 +270,15 @@ void PairFLARE::read_file(char *filename) {
     memory->create(l_max, num_kern, "pair:l_max");
     memory->create(beta_size, num_kern, "pair:beta_size");
     memory->create(cutoffs, num_kern, "pair:cutoffs");
+  }
 
-    for (int k = 0; k < num_kern; k++) {
+  MPI_Bcast(&num_kern, 1, MPI_INT, 0, world);
+
+  if (me == 0 && screen)
+    fprintf(screen, "read number of kern %d\n", num_kern);
+
+  for (int k = 0; k < num_kern; k++) {
+    if (me == 0) {
       char desc_str[MAXLINE];
       fgets(line, MAXLINE, fptr);
       sscanf(line, "%s", desc_str); // Descriptor name
@@ -285,6 +292,9 @@ void PairFLARE::read_file(char *filename) {
         error->all(FLERR, str);
       }
 
+      if (me == 0 && screen)
+        fprintf(screen, "read descriptor %s\n", desc_str);
+
       char radial_str[MAXLINE], cutoff_str[MAXLINE];
       fgets(line, MAXLINE, fptr);
       sscanf(line, "%s", radial_str); // Radial basis set
@@ -296,6 +306,9 @@ void PairFLARE::read_file(char *filename) {
         error->all(FLERR, str);
       }
       
+      if (me == 0 && screen)
+        fprintf(screen, "read radial %s\n", radial_str);
+
       fgets(line, MAXLINE, fptr);
       sscanf(line, "%i %i %i %i", &n_species, &n_max[k], &l_max[k], &beta_size[k]);
       
@@ -310,7 +323,10 @@ void PairFLARE::read_file(char *filename) {
         snprintf(str, 128, "Cutoff function %s is not supported\n.", cutoff_str);
         error->all(FLERR, str);
       }
-      
+
+      if (me == 0 && screen)
+        fprintf(screen, "read cutoff %s\n", cutoff_str);
+     
       fgets(line, MAXLINE, fptr);
       sscanf(line, "%lg", &cutoffs[k]); // Cutoffs
       cutoff = 0;
@@ -318,53 +334,95 @@ void PairFLARE::read_file(char *filename) {
         if (cutoffs[i] > cutoff) cutoff = cutoffs[i];
       }
     }
-  }
 
-  MPI_Bcast(&num_kern, 1, MPI_INT, 0, world);
-  MPI_Bcast(&n_species, 1, MPI_INT, 0, world);
-  MPI_Bcast(&cutoff, 1, MPI_DOUBLE, 0, world);
-  MPI_Bcast(n_max, num_kern, MPI_INT, 0, world);
-  MPI_Bcast(l_max, num_kern, MPI_INT, 0, world);
-  MPI_Bcast(beta_size, num_kern, MPI_INT, 0, world);
-  MPI_Bcast(cutoffs, num_kern, MPI_DOUBLE, 0, world);
-  MPI_Bcast(radial_code, num_kern, MPI_INT, 0, world);
-  MPI_Bcast(cutoff_code, num_kern, MPI_INT, 0, world);
+    MPI_Bcast(&n_species, 1, MPI_INT, 0, world);
+    MPI_Bcast(&cutoff, 1, MPI_DOUBLE, 0, world);
+    MPI_Bcast(n_max, num_kern, MPI_INT, 0, world);
+    MPI_Bcast(l_max, num_kern, MPI_INT, 0, world);
+    MPI_Bcast(beta_size, num_kern, MPI_INT, 0, world);
+    MPI_Bcast(cutoffs, num_kern, MPI_DOUBLE, 0, world);
+    MPI_Bcast(radial_code, num_kern, MPI_INT, 0, world);
+    MPI_Bcast(cutoff_code, num_kern, MPI_INT, 0, world);
 
-  for (int k = 0; k < num_kern; k++) {
+    if (me == 0 && screen)
+      fprintf(screen, "MPI_Bcast done\n");
+
     // Set number of descriptors.
     int n_radial = n_max[k] * n_species;
+
+    if (me == 0 && screen)
+      fprintf(screen, "n_radial\n");
 
     if (descriptor_code[k] == 1)
       n_descriptors = n_radial;
     else if (descriptor_code[k] == 2)
       n_descriptors = (n_radial * (n_radial + 1) / 2) * (l_max[k] + 1);
   
+    if (me == 0 && screen)
+      fprintf(screen, "n_descriptors\n");
+
+
     // Check the relationship between the power spectrum and beta.
     int beta_check = n_descriptors * (n_descriptors + 1) / 2;
     if (beta_check != beta_size[k])
       error->all(FLERR, "Beta size doesn't match the number of descriptors.");
-  
+    if (me == 0 && screen)
+      fprintf(screen, "beta_check\n");
+
+
     // Set the radial basis.
-    if (radial_code[k] == 1) 
-      basis_function[k] = chebyshev;
+    if (radial_code[k] == 1){ 
+      if (me == 0 && screen)
+        fprintf(screen, "basis\n");
+
+      basis_function.push_back(chebyshev);
+      if (me == 0 && screen)
+        fprintf(screen, "basis\n");
+
       std::vector<double> rh = {0, cutoffs[k]};
+      if (me == 0 && screen)
+        fprintf(screen, "rh\n");
+
       radial_hyps.push_back(rh);
+      if (me == 0 && screen)
+        fprintf(screen, "radial_hyps\n");
+
       std::vector<double> ch;
+      if (me == 0 && screen)
+        fprintf(screen, "ch\n");
+
       cutoff_hyps.push_back(ch);
+      if (me == 0 && screen)
+        fprintf(screen, "cutoff_hyps\n");
+
+
+    }
   
+    if (me == 0 && screen)
+      fprintf(screen, "radial_hyps, basis, cutoff\n");
+
+
+ 
     // Set the cutoff function.
     if (cutoff_code[k] == 1) 
-      cutoff_function[k] = cos_cutoff;
+      cutoff_function.push_back(cos_cutoff);
     else if (cutoff_code[k] == 2) 
-      cutoff_function[k] = quadratic_cutoff;
- 
+      cutoff_function.push_back(quadratic_cutoff);
+    if (me == 0 && screen)
+      fprintf(screen, "cutoff function\n");
+
+
     // Parse the beta vectors.
     // TODO: check this memory creation
     //memory->create(beta, beta_size * n_species, "pair:beta");
     if (me == 0)
       grab(fptr, beta_size[k] * n_species, beta);
     MPI_Bcast(beta, beta_size[k] * n_species, MPI_DOUBLE, 0, world);
-  
+   
+    if (me == 0 && screen)
+      fprintf(screen, "MPI_Bcast beta\n");
+
+
     // Fill in the beta matrix.
     // TODO: Remove factor of 2 from beta.
     Eigen::MatrixXd beta_matrix;
@@ -388,6 +446,10 @@ void PairFLARE::read_file(char *filename) {
       beta_matrix_kern.push_back(beta_matrix);
     }
     beta_matrices.push_back(beta_matrix_kern);
+
+    if (me == 0 && screen)
+      fprintf(screen, "Finish reading beta matrices\n");
+
   }
 }
 
