@@ -31,7 +31,9 @@ PairFLARE::PairFLARE(LAMMPS *lmp) : Pair(lmp) {
   restartinfo = 0;
   manybody_flag = 1;
 
-  beta = NULL;
+  //beta = NULL;
+  beta1 = NULL;
+  beta2 = NULL;
 }
 
 /* ----------------------------------------------------------------------
@@ -42,7 +44,8 @@ PairFLARE::~PairFLARE() {
   if (copymode)
     return;
 
-//  memory->destroy(beta);
+  memory->destroy(beta1);
+  memory->destroy(beta2);
 
   if (allocated) {
     memory->destroy(setflag);
@@ -101,34 +104,56 @@ void PairFLARE::compute(int eflag, int vflag) {
       Eigen::VectorXd single_bond_vals, vals, env_dot, beta_p, partial_forces;
       Eigen::MatrixXd single_bond_env_dervs, env_dervs;
 
+  int me = comm->me;
+  if (me == 0 && screen)
+    fprintf(screen, "begin single_bond \n");
+
+
       // Compute covariant descriptors.
       single_bond(x, type, jnum, n_inner, i, xtmp, ytmp, ztmp, jlist,
                   basis_function[kern], cutoff_function[kern], cutoffs[kern], n_species, n_max[kern],
                   l_max[kern], radial_hyps[kern], cutoff_hyps[kern], single_bond_vals,
                   single_bond_env_dervs);
-  
+
+   if (me == 0 && screen)
+    fprintf(screen, "begin descriptor\n");
+ 
       // Compute invariant descriptors.
-      if (descriptor_code[kern] == 1)
+      if (descriptor_code[kern] == 1){
+       if (me == 0 && screen) fprintf(screen, "begin b1 descriptor \n");
+ 
         B1_descriptor(vals, env_dervs, norm_squared, env_dot,
                       single_bond_vals, single_bond_env_dervs, n_species, n_max[kern],
                       l_max[kern]);
-      else if (descriptor_code[kern] == 2)
+      } else if (descriptor_code[kern] == 2){
+       if (me == 0 && screen) fprintf(screen, "begin b2 descriptor \n");
+ 
         B2_descriptor(vals, env_dervs, norm_squared, env_dot,
                       single_bond_vals, single_bond_env_dervs, n_species, n_max[kern],
                       l_max[kern]);
+      }
 
       // Continue if the environment is empty.
       if (norm_squared < empty_thresh)
         continue;
   
       // Compute local energy and partial forces.
+  if (me == 0 && screen)
+    fprintf(screen, "begin evdwl, beta_matrix=(%d, %d), vals=(%d)\n", beta_matrices[kern][itype-1].rows(), beta_matrices[kern][itype-1].cols(), vals.size());
+ 
       beta_p = beta_matrices[kern][itype - 1] * vals;
       evdwl = vals.dot(beta_p) / norm_squared;
+  if (me == 0 && screen)
+    fprintf(screen, "begin partial_forces\n");
+ 
       partial_forces =
           2 * (- env_dervs * beta_p + evdwl * env_dot) / norm_squared;
 
       // Update energy, force and stress arrays.
       n_count = 0;
+  if (me == 0 && screen)
+    fprintf(screen, "begin loop over neighbors\n");
+ 
       for (int jj = 0; jj < jnum; jj++) {
         j = jlist[jj];
         delx = xtmp - x[j][0];
@@ -410,45 +435,88 @@ void PairFLARE::read_file(char *filename) {
       cutoff_function.push_back(quadratic_cutoff);
     if (me == 0 && screen)
       fprintf(screen, "cutoff function\n");
+    std::cout << "cutoff function\n" << std::endl;
 
 
     // Parse the beta vectors.
     // TODO: check this memory creation
-    //memory->create(beta, beta_size * n_species, "pair:beta");
-    if (me == 0)
-      grab(fptr, beta_size[k] * n_species, beta);
-    MPI_Bcast(beta, beta_size[k] * n_species, MPI_DOUBLE, 0, world);
-   
-    if (me == 0 && screen)
-      fprintf(screen, "MPI_Bcast beta\n");
-
-
-    // Fill in the beta matrix.
-    // TODO: Remove factor of 2 from beta.
-    Eigen::MatrixXd beta_matrix;
-    std::vector<Eigen::MatrixXd> beta_matrix_kern;
-    int beta_count = 0;
-    double beta_val;
-    for (int s = 0; s < n_species; s++) {
-      beta_matrix = Eigen::MatrixXd::Zero(n_descriptors, n_descriptors);
-      for (int i = 0; i < n_descriptors; i++) {
-        for (int j = i; j < n_descriptors; j++) {
-          if (i == j)
-            beta_matrix(i, j) = beta[beta_count];
-          else if (i != j) {
-            beta_val = beta[beta_count] / 2;
-            beta_matrix(i, j) = beta_val;
-            beta_matrix(j, i) = beta_val;
+    if (descriptor_code[k] == 1) {
+      memory->create(beta1, beta_size[k] * n_species, "pair:beta1");
+      if (me == 0)
+        grab(fptr, beta_size[k] * n_species, beta1);
+      MPI_Bcast(beta1, beta_size[k] * n_species, MPI_DOUBLE, 0, world);
+     
+      std::cout << "MPI_Bcast beta1\n" << std::endl;
+      if (me == 0 && screen)
+        fprintf(screen, "MPI_Bcast beta1\n");
+  
+  
+      // Fill in the beta matrix.
+      // TODO: Remove factor of 2 from beta.
+      Eigen::MatrixXd beta_matrix;
+      std::vector<Eigen::MatrixXd> beta_matrix_kern;
+      int beta_count = 0;
+      double beta_val;
+      for (int s = 0; s < n_species; s++) {
+        beta_matrix = Eigen::MatrixXd::Zero(n_descriptors, n_descriptors);
+        for (int i = 0; i < n_descriptors; i++) {
+          for (int j = i; j < n_descriptors; j++) {
+            if (i == j)
+              beta_matrix(i, j) = beta1[beta_count];
+            else if (i != j) {
+              beta_val = beta1[beta_count] / 2;
+              beta_matrix(i, j) = beta_val;
+              beta_matrix(j, i) = beta_val;
+            }
+            beta_count++;
           }
-          beta_count++;
         }
+        beta_matrix_kern.push_back(beta_matrix);
       }
-      beta_matrix_kern.push_back(beta_matrix);
+      beta_matrices.push_back(beta_matrix_kern);
+
+    } else if (descriptor_code[k] == 2) {
+      memory->create(beta2, beta_size[k] * n_species, "pair:beta2");
+      if (me == 0)
+        grab(fptr, beta_size[k] * n_species, beta2);
+      MPI_Bcast(beta2, beta_size[k] * n_species, MPI_DOUBLE, 0, world);
+     
+      std::cout << "MPI_Bcast beta2\n" << std::endl;
+      if (me == 0 && screen)
+        fprintf(screen, "MPI_Bcast beta2\n");
+  
+  
+      // Fill in the beta matrix.
+      // TODO: Remove factor of 2 from beta.
+      Eigen::MatrixXd beta_matrix;
+      std::vector<Eigen::MatrixXd> beta_matrix_kern;
+      int beta_count = 0;
+      double beta_val;
+      for (int s = 0; s < n_species; s++) {
+        beta_matrix = Eigen::MatrixXd::Zero(n_descriptors, n_descriptors);
+        for (int i = 0; i < n_descriptors; i++) {
+          for (int j = i; j < n_descriptors; j++) {
+            if (i == j)
+              beta_matrix(i, j) = beta2[beta_count];
+            else if (i != j) {
+              beta_val = beta2[beta_count] / 2;
+              beta_matrix(i, j) = beta_val;
+              beta_matrix(j, i) = beta_val;
+            }
+            beta_count++;
+          }
+        }
+        beta_matrix_kern.push_back(beta_matrix);
+      }
+      beta_matrices.push_back(beta_matrix_kern);
     }
-    beta_matrices.push_back(beta_matrix_kern);
+
 
     if (me == 0 && screen)
       fprintf(screen, "Finish reading beta matrices\n");
+    std::cout << "n_desc=" << n_descriptors << std::endl; 
+    std::cout << "beta_matrix size " << beta_matrices[k][0].rows() << " " << beta_matrices[k][0].cols() << std::endl;
+    std::cout << "Finish reading beta matrices\n" << std::endl;
 
   }
 }

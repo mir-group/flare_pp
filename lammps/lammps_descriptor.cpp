@@ -106,32 +106,29 @@ void B1_descriptor(Eigen::VectorXd &B1_vals, Eigen::MatrixXd &B1_env_dervs,
   int env_derv_size = single_bond_env_dervs.rows();
   int neigh_size = env_derv_size / 3;
   int n_radial = n_species * N;
-  int n_harmonics = (lmax + 1) * (lmax + 1);
-  int n_descriptors = (n_radial * (n_radial + 1) / 2) * (lmax + 1);
-
-  int n1_l, n2_l, counter, n1_count, n2_count;
+  int n_descriptors = n_radial; //(n_radial * (n_radial + 1) / 2) * (lmax + 1);
 
   // Zero the B1 vectors and matrices.
   B1_vals = Eigen::VectorXd::Zero(n_descriptors);
   B1_env_dervs = Eigen::MatrixXd::Zero(env_derv_size, n_descriptors);
   B1_env_dot = Eigen::VectorXd::Zero(env_derv_size);
-
+ 
+  std::cout << "b1 begin loop\n" << std::endl;
   // Compute the descriptor.
-  for (int n1 = n_radial - 1; n1 >= 0; n1--) {
-    n1_count = (n1 * (2 * n_radial - n1 + 1)) / 2;
+  for (int n1 = 0; n1 < n_radial; n1++) {
     // Store B1 value.
-    n1_l = n1 * n_harmonics;
-    B1_vals(n1_count) += single_bond_vals(n1_l);
+    B1_vals(n1) += single_bond_vals(n1);
 
     // Store environment force derivatives.
     for (int atom_index = 0; atom_index < neigh_size; atom_index++) {
       for (int comp = 0; comp < 3; comp++) {
-        B1_env_dervs(atom_index * 3 + comp, n1_count) +=
-            single_bond_env_dervs(atom_index * 3 + comp, n1_l);
+        B1_env_dervs(atom_index * 3 + comp, n1) +=
+            single_bond_env_dervs(atom_index * 3 + comp, n1);
       }
     }
   }
   // Compute descriptor norm and dot products.
+  std::cout << "b1 begin matrix\n" << std::endl;
   norm_squared = B1_vals.dot(B1_vals);
   B1_env_dot = B1_env_dervs * B1_vals;
 }
@@ -154,7 +151,8 @@ void B2_descriptor(Eigen::VectorXd &B2_vals, Eigen::MatrixXd &B2_env_dervs,
   B2_vals = Eigen::VectorXd::Zero(n_descriptors);
   B2_env_dervs = Eigen::MatrixXd::Zero(env_derv_size, n_descriptors);
   B2_env_dot = Eigen::VectorXd::Zero(env_derv_size);
-
+ 
+  std::cout << "b2 begin loop\n" << std::endl;
   // Compute the descriptor.
   for (int n1 = n_radial - 1; n1 >= 0; n1--) {
     n1_count = (n1 * (2 * n_radial - n1 + 1)) / 2;
@@ -186,6 +184,7 @@ void B2_descriptor(Eigen::VectorXd &B2_vals, Eigen::MatrixXd &B2_env_dervs,
       }
     }
   }
+  std::cout << "b2 begin matrix prod\n" << std::endl;
 
   // Compute descriptor norm and dot products.
   norm_squared = B2_vals.dot(B2_vals);
