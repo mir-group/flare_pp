@@ -1,7 +1,7 @@
 import json
 import numpy as np
-import _C_flare
-from _C_flare import SparseGP, Structure, NormalizedDotProduct
+from flare_pp import _C_flare
+from flare_pp._C_flare import SparseGP, Structure, NormalizedDotProduct
 from scipy.optimize import minimize
 from typing import List
 import warnings
@@ -116,18 +116,25 @@ class SGP_Wrapper:
                 out_dict[key] = getattr(self, key, None)
 
         # save descriptor_settings
-        desc_calc = self.descriptor_calculators
-        assert (len(desc_calc) == 1) and (isinstance(desc_calc[0], (_C_flare.B1, _C_flare.B2, _C_flare.B3)))
-        b2_calc = desc_calc[0]
-        b2_dict = {
-            "type": "B2",
-            "radial_basis": b2_calc.radial_basis,
-            "cutoff_function": b2_calc.cutoff_function,
-            "radial_hyps": b2_calc.radial_hyps,
-            "cutoff_hyps": b2_calc.cutoff_hyps,
-            "descriptor_settings": b2_calc.descriptor_settings,
-        }
-        out_dict["descriptor_calculators"] = [b2_dict]
+        out_dict["descriptor_calculators"] = []
+        for dc in self.descriptor_calculators:
+            if isinstance(dc, _C_flare.B1):
+                dc_type = "B1"
+            elif isinstance(dc, _C_flare.B2):
+                dc_type = "B2"
+            else:
+                raise NotImplementedError
+
+            dc_dict = {
+                "type": dc_type,
+                "radial_basis": dc.radial_basis,
+                "cutoff_function": dc.cutoff_function,
+                "radial_hyps": dc.radial_hyps,
+                "cutoff_hyps": dc.cutoff_hyps,
+                "descriptor_settings": dc.descriptor_settings,
+            }
+
+            out_dict["descriptor_calculators"].append(dc_dict)
 
         # save hyps
         out_dict["hyps"], out_dict["hyp_labels"] = self.hyps_and_labels
@@ -188,16 +195,28 @@ class SGP_Wrapper:
         
         # recover descriptors from checkpoint
         desc_calc = in_dict["descriptor_calculators"]
-        assert len(desc_calc) == 1
-        b2_dict = desc_calc[0]
-        assert b2_dict["type"] == "B2"
-        calc = _C_flare.B2(
-            b2_dict["radial_basis"],
-            b2_dict["cutoff_function"],
-            b2_dict["radial_hyps"],
-            b2_dict["cutoff_hyps"],
-            b2_dict["descriptor_settings"],
-        )
+        desc_calc_list = []
+
+        for dc_dict in desc_calc:
+            if dc_dict["type"] == "B1":
+                calc = _C_flare.B1(
+                    dc_dict["radial_basis"],
+                    dc_dict["cutoff_function"],
+                    dc_dict["radial_hyps"],
+                    dc_dict["cutoff_hyps"],
+                    dc_dict["descriptor_settings"],
+                )
+            elif dc_dict["type"] == "B2":
+                calc = _C_flare.B2(
+                    dc_dict["radial_basis"],
+                    dc_dict["cutoff_function"],
+                    dc_dict["radial_hyps"],
+                    dc_dict["cutoff_hyps"],
+                    dc_dict["descriptor_settings"],
+                )
+            else:
+                raise NotImplementedError
+            desc_calc_list.append(calc)
 
         # change the keys of single_atom_energies and species_map to int
         if in_dict["single_atom_energies"] is not None:
@@ -208,7 +227,7 @@ class SGP_Wrapper:
 
         gp = SGP_Wrapper(
             kernels=kernels,
-            descriptor_calculators=[calc],
+            descriptor_calculators=desc_calc_list,
             cutoff=in_dict["cutoff"],
             sigma_e=in_dict["hyps"][-3],
             sigma_f=in_dict["hyps"][-2],

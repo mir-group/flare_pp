@@ -3,6 +3,7 @@ __pycache__
 _C_flare*
 *NiTi_AIMD.npz
 **log.lammps
+flare_pp/tests/log.lammps
 *tmp.*
 **/_build
 **/html

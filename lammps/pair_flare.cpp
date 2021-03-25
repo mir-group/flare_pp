@@ -355,7 +355,7 @@ void PairFLARE::read_file(char *filename) {
       fgets(line, MAXLINE, fptr);
       sscanf(line, "%lg", &cutoffs[k]); // Cutoffs
       cutoff = 0;
-      for (int i = 0; i < sizeof(cutoffs); i++) { // Use max cut as cutoff
+      for (int i = 0; i < sizeof(cutoffs) / sizeof(cutoffs[0]); i++) { // Use max cut as cutoff
         if (cutoffs[i] > cutoff) cutoff = cutoffs[i];
       }
     }
@@ -435,53 +435,61 @@ void PairFLARE::read_file(char *filename) {
       cutoff_function.push_back(quadratic_cutoff);
     if (me == 0 && screen)
       fprintf(screen, "cutoff function\n");
-    std::cout << "cutoff function\n" << std::endl;
 
 
     // Parse the beta vectors.
     // TODO: check this memory creation
-    if (descriptor_code[k] == 1) {
-      memory->create(beta1, beta_size[k] * n_species, "pair:beta1");
-      if (me == 0)
-        grab(fptr, beta_size[k] * n_species, beta1);
-      MPI_Bcast(beta1, beta_size[k] * n_species, MPI_DOUBLE, 0, world);
-     
-      std::cout << "MPI_Bcast beta1\n" << std::endl;
-      if (me == 0 && screen)
-        fprintf(screen, "MPI_Bcast beta1\n");
-  
-  
-      // Fill in the beta matrix.
-      // TODO: Remove factor of 2 from beta.
-      Eigen::MatrixXd beta_matrix;
-      std::vector<Eigen::MatrixXd> beta_matrix_kern;
-      int beta_count = 0;
-      double beta_val;
-      for (int s = 0; s < n_species; s++) {
-        beta_matrix = Eigen::MatrixXd::Zero(n_descriptors, n_descriptors);
-        for (int i = 0; i < n_descriptors; i++) {
-          for (int j = i; j < n_descriptors; j++) {
-            if (i == j)
-              beta_matrix(i, j) = beta1[beta_count];
-            else if (i != j) {
-              beta_val = beta1[beta_count] / 2;
-              beta_matrix(i, j) = beta_val;
-              beta_matrix(j, i) = beta_val;
-            }
-            beta_count++;
-          }
-        }
-        beta_matrix_kern.push_back(beta_matrix);
-      }
-      beta_matrices.push_back(beta_matrix_kern);
+//    if (descriptor_code[k] == 1) {
+//      memory->create(beta1, beta_size[k] * n_species, "pair:beta1");
+//      std::cout << "memory created\n" << std::endl;
+//      if (me == 0)
+//        std::cout << "beta1 size" << beta_size[k] << " " << n_species << "\n" << std::endl;
+//        grab(fptr, beta_size[k] * n_species, beta1);
+//        std::cout << "grabbed\n" << std::endl;
+//      MPI_Bcast(beta1, beta_size[k] * n_species, MPI_DOUBLE, 0, world);
+//     
+//      std::cout << "MPI_Bcast beta1\n" << std::endl;
+//      if (me == 0 && screen)
+//        fprintf(screen, "MPI_Bcast beta1\n");
+//  
+//  
+//      // Fill in the beta matrix.
+//      // TODO: Remove factor of 2 from beta.
+//      Eigen::MatrixXd beta_matrix;
+//      std::vector<Eigen::MatrixXd> beta_matrix_kern;
+//      int beta_count = 0;
+//      double beta_val;
+//      for (int s = 0; s < n_species; s++) {
+//        beta_matrix = Eigen::MatrixXd::Zero(n_descriptors, n_descriptors);
+//        for (int i = 0; i < n_descriptors; i++) {
+//          for (int j = i; j < n_descriptors; j++) {
+//            if (i == j)
+//              beta_matrix(i, j) = beta1[beta_count];
+//            else if (i != j) {
+//              beta_val = beta1[beta_count] / 2;
+//              beta_matrix(i, j) = beta_val;
+//              beta_matrix(j, i) = beta_val;
+//            }
+//            beta_count++;
+//          }
+//        }
+//        beta_matrix_kern.push_back(beta_matrix);
+//      }
+//      beta_matrices.push_back(beta_matrix_kern);
 
-    } else if (descriptor_code[k] == 2) {
+//    } else if (descriptor_code[k] == 2) {
       memory->create(beta2, beta_size[k] * n_species, "pair:beta2");
-      if (me == 0)
+      if (me == 0 && screen)
+        fprintf(screen, "created %d\n", beta_size[k] * n_species);
+  
+      if (me == 0){
         grab(fptr, beta_size[k] * n_species, beta2);
+        if (screen){
+          fprintf(screen, "grabbed %d\n", sizeof(beta2)/sizeof(beta2[0]));
+        }
+      }
       MPI_Bcast(beta2, beta_size[k] * n_species, MPI_DOUBLE, 0, world);
      
-      std::cout << "MPI_Bcast beta2\n" << std::endl;
       if (me == 0 && screen)
         fprintf(screen, "MPI_Bcast beta2\n");
   
@@ -509,7 +517,7 @@ void PairFLARE::read_file(char *filename) {
         beta_matrix_kern.push_back(beta_matrix);
       }
       beta_matrices.push_back(beta_matrix_kern);
-    }
+//    }
 
 
     if (me == 0 && screen)
