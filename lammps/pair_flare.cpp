@@ -104,30 +104,18 @@ void PairFLARE::compute(int eflag, int vflag) {
       Eigen::VectorXd single_bond_vals, vals, env_dot, beta_p, partial_forces;
       Eigen::MatrixXd single_bond_env_dervs, env_dervs;
 
-  int me = comm->me;
-  if (me == 0 && screen)
-    fprintf(screen, "begin single_bond \n");
-
-
       // Compute covariant descriptors.
       single_bond(x, type, jnum, n_inner, i, xtmp, ytmp, ztmp, jlist,
                   basis_function[kern], cutoff_function[kern], cutoffs[kern], n_species, n_max[kern],
                   l_max[kern], radial_hyps[kern], cutoff_hyps[kern], single_bond_vals,
                   single_bond_env_dervs);
 
-   if (me == 0 && screen)
-    fprintf(screen, "begin descriptor\n");
- 
       // Compute invariant descriptors.
       if (descriptor_code[kern] == 1){
-       if (me == 0 && screen) fprintf(screen, "begin b1 descriptor \n");
- 
         B1_descriptor(vals, env_dervs, norm_squared, env_dot,
                       single_bond_vals, single_bond_env_dervs, n_species, n_max[kern],
                       l_max[kern]);
       } else if (descriptor_code[kern] == 2){
-       if (me == 0 && screen) fprintf(screen, "begin b2 descriptor \n");
- 
         B2_descriptor(vals, env_dervs, norm_squared, env_dot,
                       single_bond_vals, single_bond_env_dervs, n_species, n_max[kern],
                       l_max[kern]);
@@ -138,22 +126,14 @@ void PairFLARE::compute(int eflag, int vflag) {
         continue;
   
       // Compute local energy and partial forces.
-  if (me == 0 && screen)
-    fprintf(screen, "begin evdwl, beta_matrix=(%d, %d), vals=(%d)\n", beta_matrices[kern][itype-1].rows(), beta_matrices[kern][itype-1].cols(), vals.size());
- 
       beta_p = beta_matrices[kern][itype - 1] * vals;
       evdwl = vals.dot(beta_p) / norm_squared;
-  if (me == 0 && screen)
-    fprintf(screen, "begin partial_forces\n");
  
       partial_forces =
           2 * (- env_dervs * beta_p + evdwl * env_dot) / norm_squared;
 
       // Update energy, force and stress arrays.
       n_count = 0;
-  if (me == 0 && screen)
-    fprintf(screen, "begin loop over neighbors\n");
- 
       for (int jj = 0; jj < jnum; jj++) {
         j = jlist[jj];
         delx = xtmp - x[j][0];
@@ -273,227 +253,147 @@ void PairFLARE::read_file(char *filename) {
   FILE *fptr;
 
   // Check that the potential file can be opened.
-  if (me == 0) {
-    fptr = utils::open_potential(filename,lmp,nullptr);
-    if (fptr == NULL) {
-      char str[128];
-      snprintf(str, 128, "Cannot open potential file %s", filename);
-      error->one(FLERR, str);
-    }
+  fptr = utils::open_potential(filename,lmp,nullptr);
+  if (fptr == NULL) {
+    char str[128];
+    snprintf(str, 128, "Cannot open potential file %s", filename);
+    error->one(FLERR, str);
   }
 
   int tmp, nwords;
-  if (me == 0) {
-    fgets(line, MAXLINE, fptr);
-    fgets(line, MAXLINE, fptr);
-    sscanf(line, "%i", &num_kern); // number of descriptors/kernels
+  fgets(line, MAXLINE, fptr);
+  fgets(line, MAXLINE, fptr);
+  sscanf(line, "%i", &num_kern); // number of descriptors/kernels
 
-    memory->create(descriptor_code, num_kern, "pair:descriptor_code");
-    memory->create(radial_code, num_kern, "pair:radial_code");
-    memory->create(cutoff_code, num_kern, "pair:cutoff_code");
-    memory->create(n_max, num_kern, "pair:n_max");
-    memory->create(l_max, num_kern, "pair:l_max");
-    memory->create(beta_size, num_kern, "pair:beta_size");
-    memory->create(cutoffs, num_kern, "pair:cutoffs");
-  }
+  memory->create(descriptor_code, num_kern, "pair:descriptor_code");
+  memory->create(radial_code, num_kern, "pair:radial_code");
+  memory->create(cutoff_code, num_kern, "pair:cutoff_code");
+  memory->create(n_max, num_kern, "pair:n_max");
+  memory->create(l_max, num_kern, "pair:l_max");
+  memory->create(beta_size, num_kern, "pair:beta_size");
+  memory->create(cutoffs, num_kern, "pair:cutoffs");
 
-  MPI_Bcast(&num_kern, 1, MPI_INT, 0, world);
-
-  if (me == 0 && screen)
-    fprintf(screen, "read number of kern %d\n", num_kern);
-
+  //MPI_Bcast(&num_kern, 1, MPI_INT, 0, world);
   for (int k = 0; k < num_kern; k++) {
-    if (me == 0) {
-      char desc_str[MAXLINE];
-      fgets(line, MAXLINE, fptr);
-      sscanf(line, "%s", desc_str); // Descriptor name
-      if (!strcmp(desc_str, "B1")) {
-        descriptor_code[k] = 1;
-      } else if (!strcmp(desc_str, "B2")) {
-        descriptor_code[k] = 2;
-      } else {
-        char str[128]; 
-        snprintf(str, 128, "Descriptor %s is not supported\n.", desc_str);
-        error->all(FLERR, str);
-      }
-
-      if (me == 0 && screen)
-        fprintf(screen, "read descriptor %s\n", desc_str);
-
-      char radial_str[MAXLINE], cutoff_str[MAXLINE];
-      fgets(line, MAXLINE, fptr);
-      sscanf(line, "%s", radial_str); // Radial basis set
-      if (!strcmp(radial_str, "chebyshev")) {
-        radial_code[k] = 1;
-      } else {
-        char str[128]; 
-        snprintf(str, 128, "Radial function %s is not supported\n.", radial_str);
-        error->all(FLERR, str);
-      }
-      
-      if (me == 0 && screen)
-        fprintf(screen, "read radial %s\n", radial_str);
-
-      fgets(line, MAXLINE, fptr);
-      sscanf(line, "%i %i %i %i", &n_species, &n_max[k], &l_max[k], &beta_size[k]);
-      
-      fgets(line, MAXLINE, fptr);
-      sscanf(line, "%s", cutoff_str); // Cutoff function
-      if (!strcmp(cutoff_str, "cosine")) {
-        cutoff_code[k] = 1;
-      } else if (!strcmp(cutoff_str, "quadratic")) {
-        cutoff_code[k] = 2;
-      } else {
-        char str[128]; 
-        snprintf(str, 128, "Cutoff function %s is not supported\n.", cutoff_str);
-        error->all(FLERR, str);
-      }
-
-      if (me == 0 && screen)
-        fprintf(screen, "read cutoff %s\n", cutoff_str);
-     
-      fgets(line, MAXLINE, fptr);
-      sscanf(line, "%lg", &cutoffs[k]); // Cutoffs
-      cutoff = 0;
-      for (int i = 0; i < sizeof(cutoffs) / sizeof(cutoffs[0]); i++) { // Use max cut as cutoff
-        if (cutoffs[i] > cutoff) cutoff = cutoffs[i];
-      }
+    char desc_str[MAXLINE];
+    fgets(line, MAXLINE, fptr);
+    sscanf(line, "%s", desc_str); // Descriptor name
+    if (!strcmp(desc_str, "B1")) {
+      descriptor_code[k] = 1;
+    } else if (!strcmp(desc_str, "B2")) {
+      descriptor_code[k] = 2;
+    } else {
+      char str[128]; 
+      snprintf(str, 128, "Descriptor %s is not supported\n.", desc_str);
+      error->all(FLERR, str);
     }
 
-    MPI_Bcast(&n_species, 1, MPI_INT, 0, world);
-    MPI_Bcast(&cutoff, 1, MPI_DOUBLE, 0, world);
-    MPI_Bcast(n_max, num_kern, MPI_INT, 0, world);
-    MPI_Bcast(l_max, num_kern, MPI_INT, 0, world);
-    MPI_Bcast(beta_size, num_kern, MPI_INT, 0, world);
-    MPI_Bcast(cutoffs, num_kern, MPI_DOUBLE, 0, world);
-    MPI_Bcast(radial_code, num_kern, MPI_INT, 0, world);
-    MPI_Bcast(cutoff_code, num_kern, MPI_INT, 0, world);
+    char radial_str[MAXLINE], cutoff_str[MAXLINE];
+    fgets(line, MAXLINE, fptr);
+    sscanf(line, "%s", radial_str); // Radial basis set
+    if (!strcmp(radial_str, "chebyshev")) {
+      radial_code[k] = 1;
+    } else {
+      char str[128]; 
+      snprintf(str, 128, "Radial function %s is not supported\n.", radial_str);
+      error->all(FLERR, str);
+    }
+    
+    fgets(line, MAXLINE, fptr);
+    sscanf(line, "%i %i %i %i", &n_species, &n_max[k], &l_max[k], &beta_size[k]);
+    
+    fgets(line, MAXLINE, fptr);
+    sscanf(line, "%s", cutoff_str); // Cutoff function
+    if (!strcmp(cutoff_str, "cosine")) {
+      cutoff_code[k] = 1;
+    } else if (!strcmp(cutoff_str, "quadratic")) {
+      cutoff_code[k] = 2;
+    } else {
+      char str[128]; 
+      snprintf(str, 128, "Cutoff function %s is not supported\n.", cutoff_str);
+      error->all(FLERR, str);
+    }
 
-    if (me == 0 && screen)
-      fprintf(screen, "MPI_Bcast done\n");
+    fgets(line, MAXLINE, fptr);
+    sscanf(line, "%lg", &cutoffs[k]); // Cutoffs
+    cutoff = 0;
+    for (int i = 0; i < sizeof(cutoffs) / sizeof(cutoffs[0]); i++) { // Use max cut as cutoff
+      if (cutoffs[i] > cutoff) cutoff = cutoffs[i];
+    }
+
+    //MPI_Bcast(&n_species, 1, MPI_INT, 0, world);
+    //MPI_Bcast(&cutoff, 1, MPI_DOUBLE, 0, world);
+    //MPI_Bcast(n_max, num_kern, MPI_INT, 0, world);
+    //MPI_Bcast(l_max, num_kern, MPI_INT, 0, world);
+    //MPI_Bcast(beta_size, num_kern, MPI_INT, 0, world);
+    //MPI_Bcast(cutoffs, num_kern, MPI_DOUBLE, 0, world);
+    //MPI_Bcast(radial_code, num_kern, MPI_INT, 0, world);
+    //MPI_Bcast(cutoff_code, num_kern, MPI_INT, 0, world);
 
     // Set number of descriptors.
     int n_radial = n_max[k] * n_species;
-
-    if (me == 0 && screen)
-      fprintf(screen, "n_radial\n");
 
     if (descriptor_code[k] == 1)
       n_descriptors = n_radial;
     else if (descriptor_code[k] == 2)
       n_descriptors = (n_radial * (n_radial + 1) / 2) * (l_max[k] + 1);
   
-    if (me == 0 && screen)
-      fprintf(screen, "n_descriptors\n");
-
-
     // Check the relationship between the power spectrum and beta.
     int beta_check = n_descriptors * (n_descriptors + 1) / 2;
     if (beta_check != beta_size[k])
       error->all(FLERR, "Beta size doesn't match the number of descriptors.");
-    if (me == 0 && screen)
-      fprintf(screen, "beta_check\n");
-
 
     // Set the radial basis.
     if (radial_code[k] == 1){ 
-      if (me == 0 && screen)
-        fprintf(screen, "basis\n");
-
       basis_function.push_back(chebyshev);
-      if (me == 0 && screen)
-        fprintf(screen, "basis\n");
-
       std::vector<double> rh = {0, cutoffs[k]};
-      if (me == 0 && screen)
-        fprintf(screen, "rh\n");
-
       radial_hyps.push_back(rh);
-      if (me == 0 && screen)
-        fprintf(screen, "radial_hyps\n");
-
       std::vector<double> ch;
-      if (me == 0 && screen)
-        fprintf(screen, "ch\n");
-
       cutoff_hyps.push_back(ch);
-      if (me == 0 && screen)
-        fprintf(screen, "cutoff_hyps\n");
-
-
     }
   
-    if (me == 0 && screen)
-      fprintf(screen, "radial_hyps, basis, cutoff\n");
-
-
- 
     // Set the cutoff function.
     if (cutoff_code[k] == 1) 
       cutoff_function.push_back(cos_cutoff);
     else if (cutoff_code[k] == 2) 
       cutoff_function.push_back(quadratic_cutoff);
-    if (me == 0 && screen)
-      fprintf(screen, "cutoff function\n");
-
 
     // Parse the beta vectors.
     // TODO: check this memory creation
-//    if (descriptor_code[k] == 1) {
-//      memory->create(beta1, beta_size[k] * n_species, "pair:beta1");
-//      std::cout << "memory created\n" << std::endl;
-//      if (me == 0)
-//        std::cout << "beta1 size" << beta_size[k] << " " << n_species << "\n" << std::endl;
-//        grab(fptr, beta_size[k] * n_species, beta1);
-//        std::cout << "grabbed\n" << std::endl;
-//      MPI_Bcast(beta1, beta_size[k] * n_species, MPI_DOUBLE, 0, world);
-//     
-//      std::cout << "MPI_Bcast beta1\n" << std::endl;
-//      if (me == 0 && screen)
-//        fprintf(screen, "MPI_Bcast beta1\n");
-//  
-//  
-//      // Fill in the beta matrix.
-//      // TODO: Remove factor of 2 from beta.
-//      Eigen::MatrixXd beta_matrix;
-//      std::vector<Eigen::MatrixXd> beta_matrix_kern;
-//      int beta_count = 0;
-//      double beta_val;
-//      for (int s = 0; s < n_species; s++) {
-//        beta_matrix = Eigen::MatrixXd::Zero(n_descriptors, n_descriptors);
-//        for (int i = 0; i < n_descriptors; i++) {
-//          for (int j = i; j < n_descriptors; j++) {
-//            if (i == j)
-//              beta_matrix(i, j) = beta1[beta_count];
-//            else if (i != j) {
-//              beta_val = beta1[beta_count] / 2;
-//              beta_matrix(i, j) = beta_val;
-//              beta_matrix(j, i) = beta_val;
-//            }
-//            beta_count++;
-//          }
-//        }
-//        beta_matrix_kern.push_back(beta_matrix);
-//      }
-//      beta_matrices.push_back(beta_matrix_kern);
-
-//    } else if (descriptor_code[k] == 2) {
-      memory->create(beta2, beta_size[k] * n_species, "pair:beta2");
-      if (me == 0 && screen)
-        fprintf(screen, "created %d\n", beta_size[k] * n_species);
-  
-      if (me == 0){
-        grab(fptr, beta_size[k] * n_species, beta2);
-        if (screen){
-          fprintf(screen, "grabbed %d\n", sizeof(beta2)/sizeof(beta2[0]));
-        }
-      }
-      MPI_Bcast(beta2, beta_size[k] * n_species, MPI_DOUBLE, 0, world);
+    if (descriptor_code[k] == 1) {
+      memory->create(beta1, beta_size[k] * n_species, "pair:beta1");
+      grab(fptr, beta_size[k] * n_species, beta1);
+      //MPI_Bcast(beta1, beta_size[k] * n_species, MPI_DOUBLE, 0, world);
      
-      if (me == 0 && screen)
-        fprintf(screen, "MPI_Bcast beta2\n");
-  
-  
+      // Fill in the beta matrix.
+      // TODO: Remove factor of 2 from beta.
+      Eigen::MatrixXd beta_matrix;
+      std::vector<Eigen::MatrixXd> beta_matrix_kern;
+      int beta_count = 0;
+      double beta_val;
+      for (int s = 0; s < n_species; s++) {
+        beta_matrix = Eigen::MatrixXd::Zero(n_descriptors, n_descriptors);
+        for (int i = 0; i < n_descriptors; i++) {
+          for (int j = i; j < n_descriptors; j++) {
+            if (i == j)
+              beta_matrix(i, j) = beta1[beta_count];
+            else if (i != j) {
+              beta_val = beta1[beta_count] / 2;
+              beta_matrix(i, j) = beta_val;
+              beta_matrix(j, i) = beta_val;
+            }
+            beta_count++;
+          }
+        }
+        beta_matrix_kern.push_back(beta_matrix);
+      }
+      beta_matrices.push_back(beta_matrix_kern);
+
+    } else if (descriptor_code[k] == 2) {
+      memory->create(beta2, beta_size[k] * n_species, "pair:beta2");
+      grab(fptr, beta_size[k] * n_species, beta2);
+      //MPI_Bcast(beta2, beta_size[k] * n_species, MPI_DOUBLE, 0, world);
+     
       // Fill in the beta matrix.
       // TODO: Remove factor of 2 from beta.
       Eigen::MatrixXd beta_matrix;
@@ -517,15 +417,7 @@ void PairFLARE::read_file(char *filename) {
         beta_matrix_kern.push_back(beta_matrix);
       }
       beta_matrices.push_back(beta_matrix_kern);
-//    }
-
-
-    if (me == 0 && screen)
-      fprintf(screen, "Finish reading beta matrices\n");
-    std::cout << "n_desc=" << n_descriptors << std::endl; 
-    std::cout << "beta_matrix size " << beta_matrices[k][0].rows() << " " << beta_matrices[k][0].cols() << std::endl;
-    std::cout << "Finish reading beta matrices\n" << std::endl;
-
+    }
   }
 }
 
