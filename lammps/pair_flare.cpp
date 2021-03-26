@@ -159,11 +159,12 @@ void PairFLARE::compute(int eflag, int vflag) {
           n_count++;
         }
       }
+      // Compute local energy.
+      if (eflag)
+        ev_tally_full(i, 2.0 * evdwl, 0.0, 0.0, 0.0, 0.0, 0.0);
+
     }
 
-    // Compute local energy.
-    if (eflag)
-      ev_tally_full(i, 2.0 * evdwl, 0.0, 0.0, 0.0, 0.0, 0.0);
   }
 
   if (vflag_fdotr)
