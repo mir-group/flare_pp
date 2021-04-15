@@ -111,6 +111,25 @@ endif()
 
 # Greatly reduces the code bloat
 target_compile_options(pybind11 INTERFACE "-fvisibility=hidden")
+
+# dist matrix
+ExternalProject_Add(distmatrix_dep
+    BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/distmatrix_build
+    SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/distmatrix_src
+    GIT_REPOSITORY https://github.com/mir-group/distmatrix.git
+    INSTALL_COMMAND ""
+    UPDATE_COMMAND ""
+    CMAKE_ARGS
+        -DCMAKE_BUILD_TYPE=Release
+        -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+)
+link_directories(
+    ${CMAKE_CURRENT_BINARY_DIR}/distmatrix_build
+)
+include_directories(
+    ${CMAKE_CURRENT_BINARY_DIR}/distmatrix_src/include
+)
+
 ###############################################################################
 
 # Specify source files.
@@ -152,6 +171,9 @@ include_directories(
 add_library(flare STATIC ${FLARE_SOURCES})
 set_target_properties(flare PROPERTIES POSITION_INDEPENDENT_CODE ON)
 add_dependencies(flare eigen_project)
+add_dependencies(flare distmatrix_dep)
+target_link_libraries(flare PUBLIC distmatrix)
+
 
 # Link to json.
 target_link_libraries(flare PUBLIC nlohmann_json::nlohmann_json)
