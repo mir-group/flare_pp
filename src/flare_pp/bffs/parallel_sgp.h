@@ -8,8 +8,8 @@
 #include <nlohmann/json.hpp>
 #include "json.h"
 
-//#include <blacs.h>
-//#include <distmatrix.h>
+#include <blacs.h>
+#include <distmatrix.h>
 
 class ParallelSGP {
 public:

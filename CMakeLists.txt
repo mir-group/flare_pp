@@ -173,8 +173,11 @@ add_library(flare STATIC ${FLARE_SOURCES})
 set_target_properties(flare PROPERTIES POSITION_INDEPENDENT_CODE ON)
 add_dependencies(flare eigen_project)
 add_dependencies(flare distmatrix_dep)
-target_link_libraries(flare PUBLIC distmatrix)
 
+find_package(MPI REQUIRED)
+target_link_libraries(flare PUBLIC MPI::MPI_CXX)
+
+target_link_libraries(flare PUBLIC distmatrix)
 
 # Link to json.
 target_link_libraries(flare PUBLIC nlohmann_json::nlohmann_json)
