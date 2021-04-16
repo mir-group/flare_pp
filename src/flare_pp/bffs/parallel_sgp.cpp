@@ -91,6 +91,8 @@ void ParallelSGP::build(const std::vector<Eigen::MatrixXd> &training_cells,
 
   // Create distributed matrices
   DistMatrix<int> A(f_size + u_size, u_size);
+  DistMatrix<int> y(f_size + u_size, 1);
+  DistMatrix<int> Kuu(u_size, u_size);
 
 //  int A_numBlockRows = std::min((int)mpi->getSize(), f_size + u_size);
 //  A = Matrix<double>(f_size + u_size, u_size, A_numBlockRows, 1, isDistributed);
