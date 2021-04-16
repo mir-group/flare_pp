@@ -9,8 +9,7 @@
 ParallelSGP ::ParallelSGP() {}
 
 ParallelSGP ::ParallelSGP(std::vector<Kernel *> kernels, double energy_noise,
-                    double force_noise, double stress_noise, bool isDistributed_) 
-            : isDistributed(isDistributed_) {
+                    double force_noise, double stress_noise) {
 
   this->kernels = kernels;
   n_kernels = kernels.size();
@@ -73,33 +72,100 @@ void ParallelSGP::build(const std::vector<Eigen::MatrixXd> &training_cells,
         const std::vector<Eigen::MatrixXd> &training_positions,
         const std::vector<Eigen::VectorXd> &training_labels,
         double cutoff, std::vector<Descriptor *> descriptor_calculators,
-        const std::vector<Eigen::VectorXd> &sparse_indices) {
+        const std::vector<std::vector<std::vector<int>>> &sparse_indices) {
 
-  // initialize BLACS
-  blacs::initialize();
+//  // initialize BLACS
+//  blacs::initialize();
+//
+//  // Compute the dimensions of the matrices
+//  int f_size = 0;
+//  for (int i = 0; i < training_labels.size(); i++) {
+//     f_size += training_labels[i].size();
+//  }
+//  f_size *= n_kernels;
+//
+//  int u_size = 0;
+//  for (int i = 0; i < sparse_indices.size(); i++) {
+//     u_size += sparse_indices[i].size();
+//  }
+//  u_size *= n_kernels;
+//
+//  // Create distributed matrices
+//  DistMatrix<int> A(f_size + u_size, u_size, -1, u_size);
+//  DistMatrix<int> y(f_size + u_size, 1,      -1, 1);
+//  DistMatrix<int> Kuu(u_size,        u_size, -1, u_size);
+//
+//  Structure struc;
+//  int cum_f = 0;
+//  int cum_u = 0;
+//  int cum_y = 0;
+//  std::vector<Structure> local_training_structures;
+//  std::vector<Eigen::VectorXd> local_training_labels;
+//  std::vector<ClusterDescriptor> local_sparse_descriptors;
+//  // The kernel matrix is built differently from the serial version 
+//  // The outer loop is the training set, the inner loop is kernels
+//  for (int t = 0; t < training_cells.size(); t++) {
+//    struc = Structure(training_cells[t], training_species[t], 
+//            training_positions[t], cutoff, descriptor_calculators);
+//    int label_size = 1 + struc.noa * 3 + 6;
+//
+//    initialize_sparse_descriptors(struc);
+//    for (int i = 0; i < n_kernels; i++) { 
+//      // Collect all sparse envs u
+//      sparse_descriptors[i].add_clusters(
+//              struc.descriptors[i], sparse_indices[i][t]);
+//
+//      // Distribute the training structures and training labels
+//      for (int l = 0; l < label_size; l++) {
+//        // Collect local training structures for A
+//        if (A.islocal(cum_f + l, 0)) {
+//          local_training_structures.push_back(struc);
+//          cum_f += label_size;
+//          break;
+//        }
+//      }
+//
+//      // Collect local sparse descriptors for Kuu
+//      for (int s = 0; s < sparse_indices[i][t].size(); s++) {
+//        if (Kuu.islocal(cum_u + s, 0)) {
+//          local_sparse_descriptors[i].add_clusters(
+//                  struc.descriptors[i], sparse_indices[i][t]);
+//          cum_u += sparse_indices[i][t].size();
+//          break;
+//        }
+//      }
+//    }
+//
+//  }
 
-  // Compute the dimensions of the matrices
-  int f_size = 0;
-  for (int i = 0; i < training_labels.size(); i++) {
-     f_size += training_labels[i].size();
-  }
-
-  int u_size = 0;
-  for (int i = 0; i < sparse_indices.size(); i++) {
-     u_size += sparse_indices[i].size();
-  }
-
-  // Create distributed matrices
-  DistMatrix<int> A(f_size + u_size, u_size);
-  DistMatrix<int> y(f_size + u_size, 1);
-  DistMatrix<int> Kuu(u_size, u_size);
-
-//  int A_numBlockRows = std::min((int)mpi->getSize(), f_size + u_size);
-//  A = Matrix<double>(f_size + u_size, u_size, A_numBlockRows, 1, isDistributed);
-//  y = Matrix<double>(f_size + u_size, 1, A_numBlockRows, 1, isDistributed);
-//  int Kuu_numBlockRows = std::min((int)mpi->getSize(), f_size + u_size);
-//  Kuu = Matrix<double>(u_size, u_size, Kuu_numBlockRows, 1, isDistributed);
-  
+//  // Build block of A using distributed training structures
+//  // TODO: need to loop over kernels!
+//  Eigen::MatrixXd kuf = kernels[0]->envs_strucs(
+//          sparse_descriptors, local_training_structures);
+//  
+//  cum_f = 0;
+//  cum_y = 0;
+//  int local_f = 0;
+//  for (int i = 0; i < training_cell.size(); i++) {
+//    int n_atoms = training_positions[i].size();
+//    int label_size = 1 + n_atoms * 3 + 6;
+//    for (int l = 0; l < label_size; l++) {
+//      // Assign a column of kuf to a row of A
+//      if (A.islocal(cum_f, 0)) {
+//        for (int c = 0; c < u_size; c++) {
+//          A.set(cum_f, c, kuf(c, local_f)); // should set locally?!
+//        }
+//        local_f += 1;
+//      }
+//      cum_f += 1;
+//
+//      // Assign training label to y 
+//      if (y.islocal(cum_y, 0)) {
+//        y.set(cum_y, 0, training_labels[i](l)); //  should set locally
+//      }
+//      cum_y += 1;
+//    }
+//  }
 
 //  // Store square root of noise vector.
 //  Eigen::VectorXd noise_vector_sqrt = sqrt(noise_vector.array());

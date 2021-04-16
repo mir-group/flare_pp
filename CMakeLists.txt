@@ -9,7 +9,7 @@ list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/CMakeModules/)
 
 include(ExternalProject)
 
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -139,6 +139,7 @@ set(FLARE_SOURCES
     src/flare_pp/cutoffs.cpp
     src/flare_pp/structure.cpp
     src/flare_pp/bffs/sparse_gp.cpp
+    src/flare_pp/bffs/parallel_sgp.cpp
     src/flare_pp/bffs/gp.cpp
     src/flare_pp/descriptors/descriptor.cpp
     src/flare_pp/descriptors/b2.cpp

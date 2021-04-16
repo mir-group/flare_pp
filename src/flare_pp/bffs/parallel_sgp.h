@@ -8,8 +8,8 @@
 #include <nlohmann/json.hpp>
 #include "json.h"
 
-#include <blacs.h>
-#include <distmatrix.h>
+//#include <blacs.h>
+//#include <distmatrix.h>
 
 class ParallelSGP {
 public:
@@ -21,10 +21,10 @@ public:
   Eigen::MatrixXd Kuf;
   int n_kernels = 0;
   double Kuu_jitter;
-  // build parallel/serial matrix Kuu, A
-  DistMatrix<double> Kuu; 
-  DistMatrix<double> A;
-  DistMatrix<double> y;
+//  // build parallel/serial matrix Kuu, A
+//  DistMatrix<double> Kuu; 
+//  DistMatrix<double> A;
+//  DistMatrix<double> y;
 
   // Solution attributes.
   Eigen::MatrixXd Sigma, Kuu_inverse, R_inv, L_inv;
@@ -49,7 +49,7 @@ public:
   // Constructors.
   ParallelSGP();
   ParallelSGP(std::vector<Kernel *> kernels, double energy_noise,
-           double force_noise, double stress_noise, bool isDistributed_ = false);
+           double force_noise, double stress_noise);
 
   void initialize_sparse_descriptors(const Structure &structure);
   void add_all_environments(const Structure &structure);
@@ -88,7 +88,7 @@ public:
         const std::vector<Eigen::MatrixXd> &training_positions,
         const std::vector<Eigen::VectorXd> &training_labels,
         double cutoff, std::vector<Descriptor *> descriptor_calculators,
-        const std::vector<Eigen::VectorXd> &sparse_indices);
+        const std::vector<std::vector<std::vector<int>>> &sparse_indices);
 
   void write_mapping_coefficients(std::string file_name,
                                   std::string contributor,
@@ -113,9 +113,6 @@ public:
 
   static void to_json(std::string file_name, const ParallelSGP & sgp);
   static ParallelSGP from_json(std::string file_name);
-
-protected:
-  bool isDistributed = false;
 };
 
 #endif
