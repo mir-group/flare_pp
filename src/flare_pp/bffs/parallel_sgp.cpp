@@ -74,27 +74,27 @@ void ParallelSGP::build(const std::vector<Eigen::MatrixXd> &training_cells,
         double cutoff, std::vector<Descriptor *> descriptor_calculators,
         const std::vector<std::vector<std::vector<int>>> &sparse_indices) {
 
-//  // initialize BLACS
-//  blacs::initialize();
-//
-//  // Compute the dimensions of the matrices
-//  int f_size = 0;
-//  for (int i = 0; i < training_labels.size(); i++) {
-//     f_size += training_labels[i].size();
-//  }
-//  f_size *= n_kernels;
-//
-//  int u_size = 0;
-//  for (int i = 0; i < sparse_indices.size(); i++) {
-//     u_size += sparse_indices[i].size();
-//  }
-//  u_size *= n_kernels;
-//
-//  // Create distributed matrices
+  // initialize BLACS
+  blacs::initialize();
+
+  // Compute the dimensions of the matrices
+  int f_size = 0;
+  for (int i = 0; i < training_labels.size(); i++) {
+     f_size += training_labels[i].size();
+  }
+  f_size *= n_kernels;
+
+  int u_size = 0;
+  for (int i = 0; i < sparse_indices.size(); i++) {
+     u_size += sparse_indices[i].size();
+  }
+  u_size *= n_kernels;
+
+  // Create distributed matrices
 //  DistMatrix<int> A(f_size + u_size, u_size, -1, u_size);
 //  DistMatrix<int> y(f_size + u_size, 1,      -1, 1);
 //  DistMatrix<int> Kuu(u_size,        u_size, -1, u_size);
-//
+
 //  Structure struc;
 //  int cum_f = 0;
 //  int cum_u = 0;
@@ -200,6 +200,11 @@ void ParallelSGP::build(const std::vector<Eigen::MatrixXd> &training_cells,
 //  R_inv_diag = R_inv.diagonal();
 //  alpha = R_inv * Q_b;
 //  Sigma = R_inv * R_inv.transpose();
+
+  // finalize BLACS
+  blacs::finalize();
+
+
 }
 
 

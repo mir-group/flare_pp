@@ -113,16 +113,12 @@ endif()
 target_compile_options(pybind11 INTERFACE "-fvisibility=hidden")
 
 # dist matrix
-ExternalProject_Add(distmatrix_dep
-    BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/distmatrix_build
-    SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/distmatrix_src
+FetchContent_Declare(
+    distmatrix
     GIT_REPOSITORY https://github.com/mir-group/distmatrix.git
-    INSTALL_COMMAND ""
-    UPDATE_COMMAND ""
-    CMAKE_ARGS
-        -DCMAKE_BUILD_TYPE=Release
-        -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
 )
+FetchContent_MakeAvailable(distmatrix)
+
 link_directories(
     ${CMAKE_CURRENT_BINARY_DIR}/distmatrix_build
 )
@@ -130,6 +126,8 @@ include_directories(
     ${CMAKE_CURRENT_BINARY_DIR}/distmatrix_src/include
 )
 
+
+#target_link_libraries(flare PUBLIC distmatrix)
 ###############################################################################
 
 # Specify source files.
@@ -174,9 +172,11 @@ set_target_properties(flare PROPERTIES POSITION_INDEPENDENT_CODE ON)
 add_dependencies(flare eigen_project)
 add_dependencies(flare distmatrix_dep)
 
+# Link to MPI
 find_package(MPI REQUIRED)
 target_link_libraries(flare PUBLIC MPI::MPI_CXX)
 
+# Link to distmatrix
 target_link_libraries(flare PUBLIC distmatrix)
 
 # Link to json.
