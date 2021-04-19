@@ -170,7 +170,7 @@ include_directories(
 add_library(flare STATIC ${FLARE_SOURCES})
 set_target_properties(flare PROPERTIES POSITION_INDEPENDENT_CODE ON)
 add_dependencies(flare eigen_project)
-add_dependencies(flare distmatrix_dep)
+add_dependencies(flare distmatrix)
 
 # Link to MPI
 find_package(MPI REQUIRED)

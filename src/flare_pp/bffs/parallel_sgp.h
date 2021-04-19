@@ -21,19 +21,19 @@ public:
   Eigen::MatrixXd Kuf;
   int n_kernels = 0;
   double Kuu_jitter;
-//  // build parallel/serial matrix Kuu, A
-//  DistMatrix<double> Kuu; 
-//  DistMatrix<double> A;
-//  DistMatrix<double> y;
+  // // build parallel/serial matrix Kuu, A
+  // DistMatrix<double> Kuu; 
+  // DistMatrix<double> A;
+  // DistMatrix<double> y;
 
   // Solution attributes.
   Eigen::MatrixXd Sigma, Kuu_inverse, R_inv, L_inv;
   Eigen::VectorXd alpha, R_inv_diag, L_diag;
 
   // Training and sparse points.
-  std::vector<ClusterDescriptor> sparse_descriptors;
+  std::vector<ClusterDescriptor> sparse_descriptors, local_sparse_descriptors;
   std::vector<Structure> training_structures;
-  std::vector<std::vector<std::vector<int>>> sparse_indices;
+  std::vector<std::vector<std::vector<int>>> sparse_indices, local_sparse_indices;
 
   // Label attributes.
   Eigen::VectorXd noise_vector, label_count;
@@ -52,6 +52,7 @@ public:
            double force_noise, double stress_noise);
 
   void initialize_sparse_descriptors(const Structure &structure);
+  void initialize_local_sparse_descriptors(const Structure &structure);
   void add_all_environments(const Structure &structure);
 
   void add_specific_environments(const Structure &structure,
