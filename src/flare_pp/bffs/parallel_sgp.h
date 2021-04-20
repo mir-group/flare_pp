@@ -18,25 +18,21 @@ public:
   // Kernel attributes.
   std::vector<Kernel *> kernels;
   std::vector<Eigen::MatrixXd> Kuu_kernels, Kuf_kernels;
-  Eigen::MatrixXd Kuf;
+  Eigen::MatrixXd Kuu, Kuf;
   int n_kernels = 0;
   double Kuu_jitter;
-  // // build parallel/serial matrix Kuu, A
-  // DistMatrix<double> Kuu; 
-  // DistMatrix<double> A;
-  // DistMatrix<double> y;
 
   // Solution attributes.
   Eigen::MatrixXd Sigma, Kuu_inverse, R_inv, L_inv;
   Eigen::VectorXd alpha, R_inv_diag, L_diag;
 
   // Training and sparse points.
-  std::vector<ClusterDescriptor> sparse_descriptors, local_sparse_descriptors;
+  std::vector<ClusterDescriptor> sparse_descriptors, global_sparse_descriptors;
   std::vector<Structure> training_structures;
-  std::vector<std::vector<std::vector<int>>> sparse_indices, local_sparse_indices;
+  std::vector<std::vector<std::vector<int>>> sparse_indices, global_sparse_indices;
 
   // Label attributes.
-  Eigen::VectorXd noise_vector, label_count;
+  Eigen::VectorXd noise_vector, y, label_count;
   int n_energy_labels = 0, n_force_labels = 0, n_stress_labels = 0,
       n_sparse = 0, n_labels = 0, n_strucs = 0;
   double energy_noise, force_noise, stress_noise;
@@ -52,7 +48,7 @@ public:
            double force_noise, double stress_noise);
 
   void initialize_sparse_descriptors(const Structure &structure);
-  void initialize_local_sparse_descriptors(const Structure &structure);
+  void initialize_global_sparse_descriptors(const Structure &structure);
   void add_all_environments(const Structure &structure);
 
   void add_specific_environments(const Structure &structure,
@@ -102,11 +98,9 @@ public:
 
   // TODO: Make kernels jsonable.
   NLOHMANN_DEFINE_TYPE_INTRUSIVE(ParallelSGP, hyperparameters, kernels,    
-    Kuu_kernels, Kuf_kernels, //Kuu, 
-    Kuf, n_kernels, Kuu_jitter, Sigma,
+    Kuu_kernels, Kuf_kernels, Kuu, Kuf, n_kernels, Kuu_jitter, Sigma,
     Kuu_inverse, R_inv, L_inv, alpha, R_inv_diag, L_diag, sparse_descriptors,
-    training_structures, sparse_indices, noise_vector, //y, 
-    label_count,
+    training_structures, sparse_indices, noise_vector, y, label_count,
     n_energy_labels, n_force_labels, n_stress_labels, n_sparse, n_labels,
     n_strucs, energy_noise, force_noise, stress_noise, log_marginal_likelihood,
     data_fit, complexity_penalty, trace_term, constant_term,
