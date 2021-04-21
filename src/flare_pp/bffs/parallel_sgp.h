@@ -62,6 +62,9 @@ public:
   std::vector<std::vector<int>>
   sort_clusters_by_uncertainty(const Structure &structure);
 
+  void add_global_noise(const Structure &structure); 
+  Eigen::VectorXd global_noise_vector;
+
   void add_training_structure(const Structure &structure);
   void update_Kuu(const std::vector<ClusterDescriptor> &cluster_descriptors);
   void update_Kuf(const std::vector<ClusterDescriptor> &cluster_descriptors);

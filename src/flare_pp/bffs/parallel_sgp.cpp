@@ -68,7 +68,7 @@ void ParallelSGP ::initialize_sparse_descriptors(const Structure &structure) {
 
 
 void ParallelSGP ::initialize_global_sparse_descriptors(const Structure &structure) {
-  if (sparse_descriptors.size() != 0)
+  if (global_sparse_descriptors.size() != 0)
     return;
 
   for (int i = 0; i < structure.descriptors.size(); i++) {
@@ -151,21 +151,22 @@ void ParallelSGP::build(const std::vector<Eigen::MatrixXd> &training_cells,
   blacs::initialize();
 
   // Compute the dimensions of the matrices
-  int f_size = 0;
+  int f_size_single_kernel = 0;
   for (int i = 0; i < training_labels.size(); i++) {
-     f_size += training_labels[i].size();
+     f_size_single_kernel += training_labels[i].size();
   }
-  f_size *= n_kernels;
-  //f_size = 1;
+  int f_size = f_size_single_kernel * n_kernels;
 
-  int u_size = 0;
-  for (int i = 0; i < sparse_indices.size(); i++) {
-     u_size += sparse_indices[i].size();
+  int u_size_single_kernel = 0;
+  for (int k = 0; k < n_kernels; k++) {
+    for (int i = 0; i < sparse_indices.size(); i++) {
+      u_size_single_kernel += sparse_indices[k][i].size();
+    }
   }
-  u_size *= n_kernels;
-  //u_size = 1;
+  int u_size = u_size_single_kernel * n_kernels;
 
   // Create distributed matrices
+  { // specify the scope of the DistMatrix
   DistMatrix<double> A(f_size + u_size, u_size, -1, u_size);
   DistMatrix<double> b(f_size + u_size, 1,      -1, 1);
   DistMatrix<double> Kuu_dist(  u_size, u_size, -1, u_size);
@@ -173,30 +174,38 @@ void ParallelSGP::build(const std::vector<Eigen::MatrixXd> &training_cells,
   Structure struc;
   int cum_f = 0;
   int cum_u = 0;
-  int cum_y = 0;
-  std::vector<Structure> training_structures;
-  Eigen::VectorXd global_noise_vector;
+  int cum_b = 0;
   // The kernel matrix is built differently from the serial version 
   // The outer loop is the training set, the inner loop is kernels
+  
+  std::cout << "Start looping training set" << std::endl; 
   for (int t = 0; t < training_cells.size(); t++) {
     struc = Structure(training_cells[t], training_species[t], 
             training_positions[t], cutoff, descriptor_calculators);
     int label_size = 1 + struc.noa * 3 + 6;
+    std::cout << "Training data created" << std::endl; 
     
-    add_global_noise(struc); // for b 
+    add_global_noise(struc); // for b
+    std::cout << "added global noise" << std::endl; 
 
     initialize_sparse_descriptors(struc);
+    std::cout << "initialized sparse descriptors" << std::endl; 
     initialize_global_sparse_descriptors(struc);
+    std::cout << "initialized global sparse descriptors" << std::endl; 
     for (int i = 0; i < n_kernels; i++) { 
       // Collect all sparse envs u
+      std::vector<std::vector<int>> sparse_ind_i = sparse_indices[i];
+      std::cout << sparse_ind_i[0][1] << std::endl; 
       global_sparse_descriptors[i].add_clusters(
-              struc.descriptors[i], sparse_indices[i][t]);
+              struc.descriptors[i], sparse_ind_i[t]);
+      std::cout << "added clusters to global sparse desc" << std::endl; 
 
       // Distribute the training structures and training labels
       for (int l = 0; l < label_size; l++) {
         // Collect local training structures for A
         if (A.islocal(cum_f + l, 0)) {
-          add_training_structures(struc);
+          add_training_structure(struc);
+          std::cout << "added local training structures" << std::endl; 
           cum_f += label_size;
           break;
         }
@@ -207,6 +216,7 @@ void ParallelSGP::build(const std::vector<Eigen::MatrixXd> &training_cells,
         if (Kuu_dist.islocal(cum_u + s, 0)) {
           sparse_descriptors[i].add_clusters(
                   struc.descriptors[i], sparse_indices[i][t]);
+          std::cout << "added local sparse descriptors" << std::endl; 
           cum_u += sparse_indices[i][t].size();
           break;
         }
@@ -218,8 +228,18 @@ void ParallelSGP::build(const std::vector<Eigen::MatrixXd> &training_cells,
   // Build block of A, y, Kuu using distributed training structures
   std::vector<Eigen::MatrixXd> kuf, kuu;
   for (int i = 0; i < n_kernels; i++) {
-    kuf.push_back(kernels[i]->envs_strucs(global_sparse_descriptors, training_structures));
-    kuu.push_back(kernels[i]->envs_envs(global_sparse_descriptors, sparse_descriptors));
+    Eigen::MatrixXd kuf_i = Eigen::MatrixXd::Zero(u_size_single_kernel, f_size_single_kernel);
+    for (int t = 0; t < training_structures.size(); t++) {
+      kuf_i.block(0, t, u_size_single_kernel, 1) = kernels[i]->envs_struc(
+                  global_sparse_descriptors[i], 
+                  training_structures[t].descriptors[i], 
+                  kernels[i]->kernel_hyperparameters);
+    }
+    kuf.push_back(kuf_i);
+    kuu.push_back(kernels[i]->envs_envs(
+                global_sparse_descriptors[i], 
+                sparse_descriptors[i],
+                kernels[i]->kernel_hyperparameters));
   }
 
   // Store square root of noise vector.
@@ -232,100 +252,75 @@ void ParallelSGP::build(const std::vector<Eigen::MatrixXd> &training_cells,
   int local_f = 0;
   int local_b = 0;
   int local_u = 0;
-  for (int t = 0; t < training_cell.size(); t++) {
-    int n_atoms = training_positions[t].size();
-    int label_size = 1 + n_atoms * 3 + 6;
-    for (int i = 0; i < n_kernels; i++) { 
-      for (int l = 0; l < training_labels[t].size(); l++) {
-        // Assign a column of kuf to a row of A
-        if (A.islocal(cum_f, 0)) { // cum_f is the global index
-          for (int c = 0; c < u_size; c++) { 
-            A.set(cum_f, c, kuf[i](c, local_f) * noise_vector_sqrt(local_f));
-          }
-          local_f += 1;
-        }
-        cum_f += 1;
+  //for (int t = 0; t < training_cell.size(); t++) {
+  //  int n_atoms = training_positions[t].size();
+  //  int label_size = 1 + n_atoms * 3 + 6;
+  //  for (int i = 0; i < n_kernels; i++) { 
+  //    for (int l = 0; l < training_labels[t].size(); l++) {
+  //      // Assign a column of kuf to a row of A
+  //      if (A.islocal(cum_f, 0)) { // cum_f is the global index
+  //        for (int c = 0; c < u_size; c++) { 
+  //          A.set(cum_f, c, kuf[i](c, local_f) * noise_vector_sqrt(local_f));
+  //        }
+  //        local_f += 1;
+  //      }
+  //      cum_f += 1;
 
-        // Assign training label to y 
-        if (b.islocal(cum_b, 0)) { // cum_b is the global index
-          b.set(cum_b, 0, training_labels[t](l) * global_noise_vector[l]); // Do A and b have the same division? probably not
-        }
-        cum_b += 1;
-      }
+  //      // Assign training label to y 
+  //      if (b.islocal(cum_b, 0)) { // cum_b is the global index
+  //        b.set(cum_b, 0, training_labels[t](l) * global_noise_vector[l]); // Do A and b have the same division? probably not
+  //      }
+  //      cum_b += 1;
+  //    }
 
-      for (int s = 0; s < sparse_indices[i][t].size(); s++) {
-        // Assign sparse set kernel matrix Kuu
-        if (Kuu_dist.islocal(cum_u, 0)) { // cum_u is the global index
-          for (int c = 0; c < u_size; c++) {
-            if (cum_u == c) {
-              Kuu_dist.set(cum_u, c, kuu[i](c, local_u) + Kuu_jitter);
-            } else {
-              Kuu_dist.set(cum_u, c, kuu[i](c, local_u)); 
-            }
-          }
-          local_u += 1;
-        }
-        cum_u += 1;
-      }
-    }
+  //    for (int s = 0; s < sparse_indices[i][t].size(); s++) {
+  //      // Assign sparse set kernel matrix Kuu
+  //      if (Kuu_dist.islocal(cum_u, 0)) { // cum_u is the global index
+  //        for (int c = 0; c < u_size; c++) {
+  //          if (cum_u == c) {
+  //            Kuu_dist.set(cum_u, c, kuu[i](c, local_u) + Kuu_jitter);
+  //          } else {
+  //            Kuu_dist.set(cum_u, c, kuu[i](c, local_u)); 
+  //          }
+  //        }
+  //        local_u += 1;
+  //      }
+  //      cum_u += 1;
+  //    }
+  //  }
+  //}
+
+  //// Synchronize
+  //blacs::barrier();
+  //// Call fence() ??
+
+  //// Cholesky decomposition of Kuu and its inverse.
+  //DistMatrix<double> L = Kuu_dist.cholesky();
+  //DistMatrix<double> L_inv_dist = L.inv();
+  ////L_diag = L_inv.diagonal();
+  //L.fence(); // Is this correct? I want other processors able to access elements of L
+  //Kuu_inverse = L_inv_dist.matmul(L_inv_dist, 1.0, "T", "N"); // Kuu_inverse = L_inv.transpose() * L_inv; 
+  //
+  //// Assign L.T to A matrix
+  //cum_f = f_size;
+  //for (int r = 0; r < u_size; r++) {
+  //  if (A.islocal(cum_f, 0)) {
+  //    for (int c = 0; c < u_size; c++) {
+  //      A.set(cum_f, c, L(c, r)); // the local_f is actually a global index of L.T
+  //    }
+  //  }
+
+  //  if (b.islocal(cum_f, 0)) {
+  //    b.set(cum_f, 0, 0.0); // set chunk f_size ~ f_size + u_size to 0 
+  //  }
+  //  cum_f += 1;
+
+  //}
+
+  //DistMatrix<double> R_inv_QT = A.qr_invert();
+  //DistMatrix<double> alpha_dist = R_inv_QT.matmul(b);
+
   }
-
-  // Synchronize
-  blacs::barrier();
-  // Call fence() ??
-
-  // Cholesky decomposition of Kuu and its inverse.
-  DistMatrix<double> L = Kuu_dist.cholesky();
-  DistMatrix<double> L_inv_dist = L.inv();
-  //L_diag = L_inv.diagonal();
-  L.fence(); // Is this correct? I want other processors able to access elements of L
-  Kuu_inverse = L_inv_dist.matmul(L_inv_dist, 1.0, "T", "N"); // Kuu_inverse = L_inv.transpose() * L_inv; 
-  
-  // Assign L.T to A matrix
-  cum_f = f_size;
-  for (int r = 0; r < u_size; r++) {
-    if (A.islocal(cum_f, 0)) {
-      for (int c = 0; c < u_size; c++) {
-        A.set(cum_f, c, L(c, r)); // the local_f is actually a global index of L.T
-      }
-    }
-
-    if (b.islocal(cum_f, 0)) {
-      b.set(cum_f, 0, 0.0); // set chunk f_size ~ f_size + u_size to 0 
-    }
-    cum_f += 1;
-
-  }
-
-  DistMatrix<double> R_inv_QT = A.qr_invert();
-  DistMatrix<double> alpha_dist = R_inv_QT.matmul(b);
-
-//  // Get the inverse of Kuu from Cholesky decomposition.
-//  Eigen::MatrixXd Kuu_eye = Eigen::MatrixXd::Identity(Kuu.rows(), Kuu.cols());
-//  L_inv = chol.matrixL().solve(Kuu_eye);
-//  L_diag = L_inv.diagonal();
-//  Kuu_inverse = L_inv.transpose() * L_inv;
-//
-//  // Form A matrix.
-//  Eigen::MatrixXd A =
-//      Eigen::MatrixXd::Zero(Kuf.cols() + Kuu.cols(), Kuu.cols());
-//  A.block(0, 0, Kuf.cols(), Kuu.cols()) =
-//      noise_vector_sqrt.asDiagonal() * Kuf.transpose();
-//  A.block(Kuf.cols(), 0, Kuu.cols(), Kuu.cols()) = chol.matrixL().transpose();
-//
-//  // Form b vector.
-//  Eigen::VectorXd b = Eigen::VectorXd::Zero(Kuf.cols() + Kuu.cols());
-//  b.segment(0, Kuf.cols()) = noise_vector_sqrt.asDiagonal() * y;
-//
-//  // QR decompose A.
-//  Eigen::HouseholderQR<Eigen::MatrixXd> qr(A);
-//  Eigen::VectorXd Q_b = qr.householderQ().transpose() * b;
-//  R_inv = qr.matrixQR().block(0, 0, Kuu.cols(), Kuu.cols())
-//                       .triangularView<Eigen::Upper>()
-//                       .solve(Kuu_eye);
-//  R_inv_diag = R_inv.diagonal();
-//  alpha = R_inv * Q_b;
-//  Sigma = R_inv * R_inv.transpose();
 
   // finalize BLACS
   blacs::finalize();
