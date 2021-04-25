@@ -53,34 +53,20 @@ ParallelSGP ::ParallelSGP(std::vector<Kernel *> kernels, double energy_noise,
   }
 }
 
-void ParallelSGP ::initialize_sparse_descriptors(const Structure &structure) {
-  if (sparse_descriptors.size() != 0)
+void ParallelSGP ::initialize_sparse_descriptors(const Structure &structure, std::vector<ClusterDescriptor> sparse_desc) {
+  if (sparse_desc.size() != 0)
     return;
 
   for (int i = 0; i < structure.descriptors.size(); i++) {
     ClusterDescriptor empty_descriptor;
     empty_descriptor.initialize_cluster(structure.descriptors[i].n_types,
                                         structure.descriptors[i].n_descriptors);
-    sparse_descriptors.push_back(empty_descriptor);
+    sparse_desc.push_back(empty_descriptor);
     std::vector<std::vector<int>> empty_indices;
     sparse_indices.push_back(empty_indices); // NOTE: the sparse_indices should be of size n_kernels
   }
 };
 
-
-void ParallelSGP ::initialize_global_sparse_descriptors(const Structure &structure) {
-  if (global_sparse_descriptors.size() != 0)
-    return;
-
-  for (int i = 0; i < structure.descriptors.size(); i++) {
-    ClusterDescriptor empty_descriptor;
-    empty_descriptor.initialize_cluster(structure.descriptors[i].n_types,
-                                        structure.descriptors[i].n_descriptors);
-    global_sparse_descriptors.push_back(empty_descriptor);
-    std::vector<std::vector<int>> empty_indices;
-    global_sparse_indices.push_back(empty_indices); // NOTE: the sparse_indices should be of size n_kernels
-  }
-};
 
 void ParallelSGP ::add_training_structure(const Structure &structure) {
 
@@ -216,7 +202,7 @@ void ParallelSGP::load_local_training_data(const std::vector<Eigen::MatrixXd> &t
     add_global_noise(struc); // for b
     std::cout << "added global noise" << std::endl; 
 
-    initialize_global_sparse_descriptors(struc);
+    initialize_sparse_descriptors(struc, global_sparse_descriptors);
     std::cout << "initialized global sparse descriptors" << std::endl; 
 
     if (nmin_struc < cum_f + label_size || cum_f < nmax_struc) {
@@ -237,8 +223,8 @@ void ParallelSGP::load_local_training_data(const std::vector<Eigen::MatrixXd> &t
       if (nmin_struc < cum_f + label_size || cum_f < nmax_struc) {
         // Collect local sparse descriptors for Kuu, 
         // use the local training structure's sparse descriptors
-        initialize_sparse_descriptors(struc);
-        sparse_descriptors[i].add_clusters(
+        initialize_sparse_descriptors(struc, local_sparse_descriptors);
+        local_sparse_descriptors[i].add_clusters(
                 struc.descriptors[i], training_sparse_indices[i][t]);
         std::cout << "added local sparse descriptors" << std::endl; 
       }
@@ -267,7 +253,7 @@ void ParallelSGP::compute_matrices(
     kuf.push_back(kuf_i);
     kuu.push_back(kernels[i]->envs_envs(
                 global_sparse_descriptors[i], 
-                sparse_descriptors[i],
+                local_sparse_descriptors[i],
                 kernels[i]->kernel_hyperparameters));
   }
   std::cout << "computed kuf, kuu" << std::endl; 
@@ -296,13 +282,6 @@ void ParallelSGP::compute_matrices(
     int label_size = 1 + n_atoms * 3 + 6;
     std::cout << "Start structure " << t << std::endl; 
 
-//    if (cum_f >= nmin_struc && cum_f < nmax_struc) {
-//      int c = 0;
-//      int i = 0;
-//      Kuu_dist.set(cum_u, c, kuu[i](c, local_u(i)) + Kuu_jitter);
-//      break;
-//    }
-    
     // Assign sparse set kernel matrix Kuu
     for (int i = 0; i < n_kernels; i++) { 
       if (cum_f >= nmin_struc && cum_f < nmax_struc) {
@@ -333,11 +312,6 @@ void ParallelSGP::compute_matrices(
           int u_size_single_kernel = global_sparse_descriptors[i].n_clusters;
           std::cout << "begin setting A" << std::endl; 
           for (int c = 0; c < u_size_single_kernel; c++) { 
-            std::cout << "cum_f " << cum_f << std::endl; 
-            std::cout << "ind_u " << c + i * u_size_single_kernel << std::endl; 
-            std::cout << "kuf value " << kuf[i](c, local_f) << std::endl;
-            std::cout << "noise vector size" << noise_vector_sqrt.size() << std::endl;
-            std::cout << "local_f " << local_f << std::endl; 
             A.set(cum_f, c + i * u_size_single_kernel, kuf[i](c, local_f) * noise_vector_sqrt(local_f));
           }
         }
@@ -362,31 +336,50 @@ void ParallelSGP::compute_matrices(
   Kuu_dist.fence();
   std::cout << "Done Kuu fence" << std::endl; 
 
-  //// Cholesky decomposition of Kuu and its inverse.
-  //DistMatrix<double> L = Kuu_dist.cholesky();
-  //DistMatrix<double> L_inv_dist = L.inv();
-  ////L_diag = L_inv.diagonal();
-  //L.fence(); // Is this correct? I want other processors able to access elements of L
-  //Kuu_inverse = L_inv_dist.matmul(L_inv_dist, 1.0, "T", "N"); // Kuu_inverse = L_inv.transpose() * L_inv; 
-  //
-  //// Assign L.T to A matrix
-  //cum_f = f_size;
-  //for (int r = 0; r < u_size; r++) {
-  //  if (A.islocal(cum_f, 0)) {
-  //    for (int c = 0; c < u_size; c++) {
-  //      A.set(cum_f, c, L(c, r)); // the local_f is actually a global index of L.T
-  //    }
-  //  }
+  // Cholesky decomposition of Kuu and its inverse.
+  DistMatrix<double> L = Kuu_dist.cholesky();
+  DistMatrix<double> L_inv_dist = L.triangular_invert('L');
+  //L_diag = L_inv.diagonal();
+  L.fence(); // Is this correct? I want other processors able to access elements of L
+  DistMatrix<double> Kuu_inv_dist = L_inv_dist.matmul(L_inv_dist, 1.0, 'T', 'N'); 
+  
+  // Assign L.T to A matrix
+  cum_f = f_size;
+  for (int r = 0; r < u_size; r++) {
+    if (A.islocal(cum_f, 0)) {
+      for (int c = 0; c < u_size; c++) {
+        A.set(cum_f, c, L(c, r)); // the local_f is actually a global index of L.T
+      }
+    }
 
-  //  if (b.islocal(cum_f, 0)) {
-  //    b.set(cum_f, 0, 0.0); // set chunk f_size ~ f_size + u_size to 0 
-  //  }
-  //  cum_f += 1;
+    if (b.islocal(cum_f, 0)) {
+      b.set(cum_f, 0, 0.0); // set chunk f_size ~ f_size + u_size to 0 
+    }
+    cum_f += 1;
 
-  //}
+  }
+  A.fence();
+  b.fence();
 
-  //DistMatrix<double> R_inv_QT = A.qr_invert();
-  //DistMatrix<double> alpha_dist = R_inv_QT.matmul(b);
+  DistMatrix<double> R_inv_QT = A.qr_invert();
+  DistMatrix<double> alpha_dist = R_inv_QT.matmul(b);
+
+  // Assign value to alpha for mapping
+  alpha = Eigen::VectorXd::Zero(u_size);
+  for (int u = 0; u < u_size; u++) {
+    alpha(u) = alpha_dist(u);
+  }
+
+  // Assign global sparse descritors
+  sparse_descriptors = global_sparse_descriptors;
+
+  // Assign value to Kuu_inverse for varmap
+  Kuu_inverse = Eigen::VectorXd::Zero(u_size, u_size);
+  for (int u = 0; u < u_size; u++) {
+    for (int v = 0; v < u_size; v++) {
+      Kuu_inverse(u, v) = Kuu_inv_dist(u, v);
+    }
+  }
 
   }
 
@@ -397,4 +390,167 @@ void ParallelSGP::compute_matrices(
 
 }
 
+// Not parallelized with mpi yet
+void ParallelSGP ::predict_local_uncertainties(Structure &test_structure) {
+  int n_atoms = test_structure.noa;
+  int n_out = 1 + 3 * n_atoms + 6;
 
+  Eigen::MatrixXd kernel_mat = Eigen::MatrixXd::Zero(n_sparse, n_out);
+  int count = 0;
+  for (int i = 0; i < Kuu_kernels.size(); i++) {
+    int size = Kuu_kernels[i].rows();
+    kernel_mat.block(count, 0, size, n_out) = kernels[i]->envs_struc(
+        sparse_descriptors[i], test_structure.descriptors[i],
+        kernels[i]->kernel_hyperparameters);
+    count += size;
+  }
+
+  test_structure.mean_efs = kernel_mat.transpose() * alpha;
+
+  std::vector<Eigen::VectorXd> local_uncertainties =
+    compute_cluster_uncertainties(test_structure);
+  test_structure.local_uncertainties = local_uncertainties;
+
+}
+
+void ParallelSGP::write_mapping_coefficients(std::string file_name,
+                                          std::string contributor,
+                                          int kernel_index) {
+
+  // Compute mapping coefficients.
+  Eigen::MatrixXd mapping_coeffs =
+      kernels[kernel_index]->compute_mapping_coefficients(*this, kernel_index);
+
+  // Make beta file.
+  std::ofstream coeff_file;
+  coeff_file.open(file_name);
+
+  // Record the date.
+  time_t now = std::time(0);
+  std::string t(ctime(&now));
+  coeff_file << "DATE: ";
+  coeff_file << t.substr(0, t.length() - 1) << " ";
+
+  // Record the contributor.
+  coeff_file << "CONTRIBUTOR: ";
+  coeff_file << contributor << "\n";
+
+  // Write descriptor information to file.
+  int coeff_size = mapping_coeffs.row(0).size();
+  training_structures[0].descriptor_calculators[kernel_index]->write_to_file(
+      coeff_file, coeff_size);
+
+  // Write beta vectors to file.
+  coeff_file << std::scientific << std::setprecision(16);
+
+  int count = 0;
+  for (int i = 0; i < mapping_coeffs.rows(); i++) {
+    Eigen::VectorXd coeff_vals = mapping_coeffs.row(i);
+
+    // Start a new line for each beta.
+    if (count != 0) {
+      coeff_file << "\n";
+    }
+
+    for (int j = 0; j < coeff_vals.size(); j++) {
+      double coeff_val = coeff_vals[j];
+
+      // Pad with 2 spaces if positive, 1 if negative.
+      if (coeff_val > 0) {
+        coeff_file << "  ";
+      } else {
+        coeff_file << " ";
+      }
+
+      coeff_file << coeff_vals[j];
+      count++;
+
+      // New line if 5 numbers have been added.
+      if (count == 5) {
+        count = 0;
+        coeff_file << "\n";
+      }
+    }
+  }
+
+  coeff_file.close();
+}
+
+void ParallelSGP::write_varmap_coefficients(
+  std::string file_name, std::string contributor, int kernel_index) {
+
+  // TODO: merge this function with write_mapping_coeff, 
+  // add an option in the function above for mapping "mean" or "var"
+
+  // Compute mapping coefficients.
+  //Eigen::MatrixXd varmap_coeffs =
+  varmap_coeffs =
+    kernels[kernel_index]->compute_varmap_coefficients(*this, kernel_index);
+
+  // Make beta file.
+  std::ofstream coeff_file;
+  coeff_file.open(file_name);
+
+  // Record the date.
+  time_t now = std::time(0);
+  std::string t(ctime(&now));
+  coeff_file << "DATE: ";
+  coeff_file << t.substr(0, t.length() - 1) << " ";
+
+  // Record the contributor.
+  coeff_file << "CONTRIBUTOR: ";
+  coeff_file << contributor << "\n";
+
+  // Write descriptor information to file.
+  int coeff_size = varmap_coeffs.row(0).size();
+  training_structures[0].descriptor_calculators[kernel_index]->
+    write_to_file(coeff_file, coeff_size);
+
+  // Write beta vectors to file.
+  coeff_file << std::scientific << std::setprecision(16);
+
+  int count = 0;
+  for (int i = 0; i < varmap_coeffs.rows(); i++) {
+    Eigen::VectorXd coeff_vals = varmap_coeffs.row(i);
+
+    // Start a new line for each beta.
+    if (count != 0) {
+      coeff_file << "\n";
+    }
+
+    for (int j = 0; j < coeff_vals.size(); j++) {
+      double coeff_val = coeff_vals[j];
+
+      // Pad with 2 spaces if positive, 1 if negative.
+      if (coeff_val > 0) {
+        coeff_file << "  ";
+      } else {
+        coeff_file << " ";
+      }
+
+      coeff_file << coeff_vals[j];
+      count++;
+
+      // New line if 5 numbers have been added.
+      if (count == 5) {
+        count = 0;
+        coeff_file << "\n";
+      }
+    }
+  }
+
+  coeff_file.close();
+}
+
+void ParallelSGP ::to_json(std::string file_name, const SparseGP & sgp){
+  std::ofstream sgp_file(file_name);
+  nlohmann::json j = sgp;
+  sgp_file << j;
+}
+
+ParallelSGP ParallelSGP ::from_json(std::string file_name){
+  std::ifstream sgp_file(file_name);
+  nlohmann::json j;
+  sgp_file >> j;
+  return j;
+}

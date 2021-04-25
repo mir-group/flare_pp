@@ -27,7 +27,7 @@ public:
   Eigen::VectorXd alpha, R_inv_diag, L_diag;
 
   // Training and sparse points.
-  std::vector<ClusterDescriptor> sparse_descriptors, global_sparse_descriptors;
+  std::vector<ClusterDescriptor> local_sparse_descriptors, global_sparse_descriptors, sparse_descriptors;
   std::vector<Structure> training_structures;
   std::vector<std::vector<std::vector<int>>> sparse_indices, global_sparse_indices;
 
@@ -52,7 +52,6 @@ public:
            double force_noise, double stress_noise);
 
   void initialize_sparse_descriptors(const Structure &structure);
-  void initialize_global_sparse_descriptors(const Structure &structure);
   void add_all_environments(const Structure &structure);
 
   void add_specific_environments(const Structure &structure,
