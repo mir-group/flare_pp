@@ -674,6 +674,7 @@ NormalizedDotProduct ::compute_mapping_coefficients(const SparseGP &gp_model,
       int beta_count = 0;
 
       // First loop over descriptor values.
+#pragma omp parallel for
       for (int k = 0; k < p_size; k++) {
         double p_ik = p_current(k) / p_norm;
 
@@ -756,6 +757,7 @@ Eigen::MatrixXd NormalizedDotProduct ::compute_varmap_coefficients(
           int beta_count = 0;
 
           // First loop over descriptor values.
+#pragma omp parallel for
           for (int k = 0; k < p_size; k++) {
             double p_ik = pi_current(k);
     
