@@ -185,7 +185,7 @@ void ParallelSGP::load_local_training_data(const std::vector<Eigen::MatrixXd> &t
 
   u_size = 0;
   for (int k = 0; k < n_kernels; k++) {
-    for (int i = 0; i < training_sparse_indices.size(); i++) {
+    for (int i = 0; i < training_sparse_indices[k].size(); i++) {
       u_size += training_sparse_indices[k][i].size();
     }
   }
@@ -288,61 +288,69 @@ void ParallelSGP::compute_matrices(
   std::cout << "Created distmatrix" << std::endl; 
 
   int cum_f = 0;
-  int cum_u = 0;
   int local_f = 0;
+  Eigen::VectorXd cum_u = Eigen::VectorXd::Zero(n_kernels);
   Eigen::VectorXd local_u = Eigen::VectorXd::Zero(n_kernels);
   for (int t = 0; t < training_structures.size(); t++) {
     int n_atoms = training_structures[t].noa;
     int label_size = 1 + n_atoms * 3 + 6;
     std::cout << "Start structure " << t << std::endl; 
 
+//    if (cum_f >= nmin_struc && cum_f < nmax_struc) {
+//      int c = 0;
+//      int i = 0;
+//      Kuu_dist.set(cum_u, c, kuu[i](c, local_u(i)) + Kuu_jitter);
+//      break;
+//    }
+    
     // Assign sparse set kernel matrix Kuu
     for (int i = 0; i < n_kernels; i++) { 
       if (cum_f >= nmin_struc && cum_f < nmax_struc) {
       // if the 1st atom is local, then the structure and sparse envs are also local
         int u_size_single_kernel = global_sparse_descriptors[i].n_clusters;
+        int head = i * u_size_single_kernel;
         for (int r = 0; r < training_sparse_indices[i][t].size(); r++) {
           for (int c = 0; c < u_size_single_kernel; c++) {
-            if (cum_u == c) {
-              Kuu_dist.set(cum_u, c, kuu[i](c, local_u(i)) + Kuu_jitter);
+            if (cum_u(i) + r == c) {
+              Kuu_dist.set(cum_u(i) + r + head, c + head, kuu[i](c, local_u(i) + r) + Kuu_jitter);
             } else {
-              Kuu_dist.set(cum_u, c, kuu[i](c, local_u(i))); 
+              Kuu_dist.set(cum_u(i) + r + head, c + head, kuu[i](c, local_u(i) + r)); 
             }
           }
         }
         local_u(i) += training_sparse_indices[i][t].size();
       }
-      cum_u += training_sparse_indices[i][t].size();
+      cum_u(i) += training_sparse_indices[i][t].size();
     }
     std::cout << "Assigned kuu" << std::endl; 
-//
-//    for (int l = 0; l < training_labels[t].size(); l++) {
-//      std::cout << "start label " << l << std::endl; 
-//      if (cum_f >= nmin_struc && cum_f < nmax_struc) {
-//        std::cout << "on current proc" << std::endl; 
-//        for (int i = 0; i < n_kernels; i++) { 
-//          // Assign a column of kuf to a row of A
-//          int u_size_single_kernel = global_sparse_descriptors[i].n_clusters;
-//          std::cout << "begin setting A" << std::endl; 
-//          for (int c = 0; c < u_size_single_kernel; c++) { 
-//            std::cout << "cum_f " << cum_f << std::endl; 
-//            std::cout << "ind_u " << c + i * u_size_single_kernel << std::endl; 
-//            std::cout << "kuf value " << kuf[i](c, local_f) << std::endl;
-//            std::cout << "noise vector size" << noise_vector_sqrt.size() << std::endl;
-//            std::cout << "local_f " << local_f << std::endl; 
-//            A.set(cum_f, c + i * u_size_single_kernel, kuf[i](c, local_f) * noise_vector_sqrt(local_f));
-//          }
-//        }
-//        local_f += 1;
-//  
-//        // Assign training label to y 
-//        std::cout << "begin setting b" << std::endl; 
-//        b.set(cum_f, 0, training_labels[t](l) * global_noise_vector[l]); 
-//      }
-//      cum_f += 1;
-//    }
-//    std::cout << "Assigned A, b" << std::endl; 
-//
+
+    for (int l = 0; l < training_labels[t].size(); l++) {
+      std::cout << "start label " << l << std::endl; 
+      if (cum_f >= nmin_struc && cum_f < nmax_struc) {
+        std::cout << "on current proc" << std::endl; 
+        for (int i = 0; i < n_kernels; i++) { 
+          // Assign a column of kuf to a row of A
+          int u_size_single_kernel = global_sparse_descriptors[i].n_clusters;
+          std::cout << "begin setting A" << std::endl; 
+          for (int c = 0; c < u_size_single_kernel; c++) { 
+            std::cout << "cum_f " << cum_f << std::endl; 
+            std::cout << "ind_u " << c + i * u_size_single_kernel << std::endl; 
+            std::cout << "kuf value " << kuf[i](c, local_f) << std::endl;
+            std::cout << "noise vector size" << noise_vector_sqrt.size() << std::endl;
+            std::cout << "local_f " << local_f << std::endl; 
+            A.set(cum_f, c + i * u_size_single_kernel, kuf[i](c, local_f) * noise_vector_sqrt(local_f));
+          }
+        }
+        local_f += 1;
+  
+        // Assign training label to y 
+        std::cout << "begin setting b" << std::endl; 
+        b.set(cum_f, 0, training_labels[t](l) * global_noise_vector[l]); 
+      }
+      cum_f += 1;
+    }
+    std::cout << "Assigned A, b" << std::endl; 
+
   }
 
   // Wait until the communication is done
