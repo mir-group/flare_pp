@@ -52,8 +52,10 @@ public:
   ParallelSGP(std::vector<Kernel *> kernels, double energy_noise,
            double force_noise, double stress_noise);
 
-  std::vector<ClusterDescriptor>
-  initialize_sparse_descriptors(const Structure &structure, std::vector<ClusterDescriptor> sparse_desc);
+//  std::vector<ClusterDescriptor>
+//  initialize_sparse_descriptors(const Structure &structure, std::vector<ClusterDescriptor> sparse_desc);
+  void initialize_local_sparse_descriptors(const Structure &structure);
+  void initialize_global_sparse_descriptors(const Structure &structure);
   void add_all_environments(const Structure &structure);
 
   void add_specific_environments(const Structure &structure,
@@ -69,6 +71,10 @@ public:
   Eigen::VectorXd global_noise_vector;
 
   void add_training_structure(const Structure &structure);
+  std::vector<std::vector<std::vector<int>>>
+  sparse_indices_by_type(const Structure &structure, const std::vector<int> atoms);    
+  void add_local_specific_environments(const Structure &structure, const std::vector<int> atoms);
+  void add_global_specific_environments(const Structure &structure, const std::vector<int> atoms);
   void update_Kuu(const std::vector<ClusterDescriptor> &cluster_descriptors);
   void update_Kuf(const std::vector<ClusterDescriptor> &cluster_descriptors);
   void stack_Kuu();

@@ -56,8 +56,8 @@ TEST_F(StructureTest, BuildPMatrix){
   parallel_sgp.build(training_cells, training_species, training_positions, 
           training_labels, cutoff, dc, sparse_indices);
 
-  parallel_sgp.write_mapping_coefficients("beta.txt", "Me", 0);
-  parallel_sgp.write_varmap_coefficients("beta_var.txt", "Me", 0);
+  //parallel_sgp.write_mapping_coefficients("beta.txt", "Me", 0);
+  //parallel_sgp.write_varmap_coefficients("beta_var.txt", "Me", 0);
 
   // Build sparse_gp (non parallel)
   Structure train_struc_1 = Structure(cell_1, species_1, positions_1, cutoff, dc);
@@ -80,7 +80,27 @@ TEST_F(StructureTest, BuildPMatrix){
   EXPECT_EQ(parallel_sgp.sparse_descriptors[0].n_clusters, sparse_gp.Sigma.rows());
   EXPECT_EQ(sparse_gp.sparse_descriptors[0].n_clusters,
             parallel_sgp.Kuu_inverse.rows());
+  EXPECT_EQ(parallel_sgp.sparse_descriptors[0].n_clusters, sparse_gp.sparse_descriptors[0].n_clusters);
+//  for (int t = 0; t < parallel_sgp.sparse_descriptors[0].n_types; t++) {
+//    for (int r = 0; r < parallel_sgp.sparse_descriptors[0].descriptors[t].rows(); r++) {
+//      for (int c = 0; c < parallel_sgp.sparse_descriptors[0].descriptors[t].cols(); c++) {
+//        double par_desc = parallel_sgp.sparse_descriptors[0].descriptors[t](r, c);
+//        double sgp_desc = sparse_gp.sparse_descriptors[0].descriptors[t](r, c);
+//        std::cout << "descriptor par ser r=" << r << " c=" << c << " " << par_desc << " " << sgp_desc << std::endl;
+//      }
+//    }
+//  }
+
 //  EXPECT_NEAR(parallel_sgp.alpha, sparse_gp.alpha, 1e-6);
+//
+  for (int r = 0; r < parallel_sgp.Kuu.rows(); r++) {
+    for (int c = 0; c < parallel_sgp.Kuu.rows(); c++) {
+      std::cout << "parallel_sgp.Kuu(" << r << "," << c << ")=" << parallel_sgp.Kuu(r, c) << " " << sparse_gp.Kuu(r, c) << std::endl; 
+      //EXPECT_NEAR(parallel_sgp.Kuu(r, c), sparse_gp.Kuu(r, c), 1e-6);
+    }
+  }
+
+
   for (int r = 0; r < parallel_sgp.Kuu_inverse.rows(); r++) {
     for (int c = 0; c < parallel_sgp.Kuu_inverse.rows(); c++) {
       EXPECT_NEAR(parallel_sgp.Kuu_inverse(r, c), sparse_gp.Kuu_inverse(r, c), 1e-6);
