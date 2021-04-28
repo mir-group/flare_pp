@@ -366,14 +366,17 @@ void ParallelSGP::compute_matrices(
   // Build block of A, y, Kuu using distributed training structures
   std::cout << "\nStart compute_matrices" << std::endl; 
   std::vector<Eigen::MatrixXd> kuf, kuu;
+  int cum_f = 0;
   for (int i = 0; i < n_kernels; i++) {
     int u_size_single_kernel = global_sparse_descriptors[i].n_clusters;
     Eigen::MatrixXd kuf_i = Eigen::MatrixXd::Zero(u_size_single_kernel, f_size);
     for (int t = 0; t < training_structures.size(); t++) {
-      kuf_i.block(0, t, u_size_single_kernel, 1) = kernels[i]->envs_struc(
+      int f_size_i = 1 + training_structures[t].noa * 3 + 6;
+      kuf_i.block(0, cum_f, u_size_single_kernel, f_size_i) = kernels[i]->envs_struc(
                   global_sparse_descriptors[i], 
                   training_structures[t].descriptors[i], 
                   kernels[i]->kernel_hyperparameters);
+      cum_f += f_size_i;
     }
     kuf.push_back(kuf_i);
     kuu.push_back(kernels[i]->envs_envs(
@@ -489,28 +492,39 @@ void ParallelSGP::compute_matrices(
       //std::cout << "Kuu_inv_dist(u, v)=" << Kuu_inv_dist(u, v) << std::endl;
       //std::cout << "Kuu_inverse(u, v)=" << Kuu_inverse(u, v) << std::endl;
       Kuu_inverse(u, v) = Kuu_inv_dist(u, v);
+
+      // TODO: remove the Kuu
       Kuu(u, v) = Kuu_dist(u, v);
       std::cout << "Kuu(" << u << "," << v << ")=" << Kuu(u, v) << std::endl;
     }
   }
 
-//  // Assign L.T to A matrix
-//  cum_f = f_size;
-//  for (int r = 0; r < u_size; r++) {
-//    if (A.islocal(cum_f, 0)) {
-//      for (int c = 0; c < u_size; c++) {
-//        A.set(cum_f, c, L(c, r)); // the local_f is actually a global index of L.T
-//      }
-//    }
-//
-//    if (b.islocal(cum_f, 0)) {
-//      b.set(cum_f, 0, 0.0); // set chunk f_size ~ f_size + u_size to 0 
-//    }
-//    cum_f += 1;
-//
-//  }
-//  A.fence();
-//  b.fence();
+  // TODO: remove the Kuf, just for debugging
+  Kuf = Eigen::MatrixXd::Zero(u_size, f_size);
+  for (int u = 0; u < u_size; u++) {
+    for (int f = 0; f < f_size; f++) {
+      // TODO: remove the Kuu
+      Kuf(u, f) = A(f, u);
+    }
+  }
+
+  // Assign L.T to A matrix
+  cum_f = f_size;
+  for (int r = 0; r < u_size; r++) {
+    if (A.islocal(cum_f, 0)) {
+      for (int c = 0; c < u_size; c++) {
+        A.set(cum_f, c, L(c, r)); // the local_f is actually a global index of L.T
+      }
+    }
+
+    if (b.islocal(cum_f, 0)) {
+      b.set(cum_f, 0, 0.0); // set chunk f_size ~ f_size + u_size to 0 
+    }
+    cum_f += 1;
+
+  }
+  A.fence();
+  b.fence();
 
 //  DistMatrix<double> R_inv_QT = A.qr_invert();
 //  DistMatrix<double> alpha_dist = R_inv_QT.matmul(b);
