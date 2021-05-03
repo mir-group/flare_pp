@@ -561,13 +561,19 @@ void SparseGP ::update_matrices_QR() {
   b.segment(0, Kuf.cols()) = noise_vector_sqrt.asDiagonal() * y;
 
   // QR decompose A.
+  std::cout << "A " << A.rows() << " " << A.cols() << std::endl;
   Eigen::HouseholderQR<Eigen::MatrixXd> qr(A);
-  Eigen::VectorXd Q_b = qr.householderQ().transpose() * b;
+  Eigen::VectorXd Q_b = (qr.householderQ().transpose() * b).segment(0, Kuf.cols());
+  std::cout << "Q_b " << Q_b.rows() << " " << Q_b.cols() << std::endl;
+  std::cout << "b " << b.rows() << " " << b.cols() << std::endl;
   R_inv = qr.matrixQR().block(0, 0, Kuu.cols(), Kuu.cols())
                        .triangularView<Eigen::Upper>()
                        .solve(Kuu_eye);
   R_inv_diag = R_inv.diagonal();
+  std::cout << "R_inv " << R_inv.rows() << " " << R_inv.cols() << std::endl;
+  std::cout << "Q_b " << Q_b.rows() << " " << Q_b.cols() << std::endl;
   alpha = R_inv * Q_b;
+  std::cout << "alpha " << alpha.rows() << " " << alpha.cols() << std::endl;
   Sigma = R_inv * R_inv.transpose();
 }
 
@@ -645,6 +651,7 @@ void SparseGP ::predict_local_uncertainties(Structure &test_structure) {
   int n_atoms = test_structure.noa;
   int n_out = 1 + 3 * n_atoms + 6;
 
+  std::cout << "begin kernel_mat" << std::endl;
   Eigen::MatrixXd kernel_mat = Eigen::MatrixXd::Zero(n_sparse, n_out);
   int count = 0;
   for (int i = 0; i < Kuu_kernels.size(); i++) {
@@ -654,12 +661,15 @@ void SparseGP ::predict_local_uncertainties(Structure &test_structure) {
         kernels[i]->kernel_hyperparameters);
     count += size;
   }
+  std::cout << "Done kernel_mat" << std::endl;
 
   test_structure.mean_efs = kernel_mat.transpose() * alpha;
+  std::cout << "Done mean_efs " << kernel_mat.rows() << " " << kernel_mat.cols() << " " << alpha.size() << std::endl;
 
   std::vector<Eigen::VectorXd> local_uncertainties =
     compute_cluster_uncertainties(test_structure);
   test_structure.local_uncertainties = local_uncertainties;
+  std::cout << "Done local uncertainties" << std::endl;
 
 }
 

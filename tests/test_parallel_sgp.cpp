@@ -75,6 +75,7 @@ TEST_F(StructureTest, BuildPMatrix){
   sparse_gp.add_training_structure(train_struc_2);
   sparse_gp.add_specific_environments(train_struc_2, sparse_indices[0][1]);
   sparse_gp.update_matrices_QR();
+  std::cout << "Done QR for sparse_gp" << std::endl;
 
   // Check the kernel matrices are consistent
   EXPECT_EQ(parallel_sgp.sparse_descriptors[0].n_clusters, sparse_gp.Sigma.rows());
@@ -90,8 +91,8 @@ TEST_F(StructureTest, BuildPMatrix){
 //      }
 //    }
 //  }
+  std::cout << "Checked matrix shape" << std::endl;
 
-//  EXPECT_NEAR(parallel_sgp.alpha, sparse_gp.alpha, 1e-6);
 
   // TODO: Kuu is just for debugging, not stored
   for (int r = 0; r < parallel_sgp.Kuu.rows(); r++) {
@@ -114,19 +115,29 @@ TEST_F(StructureTest, BuildPMatrix){
   }
 
 
-
   for (int r = 0; r < parallel_sgp.Kuu_inverse.rows(); r++) {
     for (int c = 0; c < parallel_sgp.Kuu_inverse.rows(); c++) {
       EXPECT_NEAR(parallel_sgp.Kuu_inverse(r, c), sparse_gp.Kuu_inverse(r, c), 1e-6);
     }
   }
 
+  for (int r = 0; r < parallel_sgp.alpha.size(); r++) {
+    EXPECT_NEAR(parallel_sgp.alpha(r), sparse_gp.alpha(r), 1e-6);
+  }
   // Compare predictions on testing structure are consistent
-//  parallel_sgp.predict_local_uncertainties(test_struc);
-//  test_struc_copy = Structure(test_struc.cell, test_struc.species, test_struc.positions, cutoff, dc);
-//  sparse_sgp.predict_local_uncertainties(test_struc_copy);
-//
-//  EXPECT_NEAR(test_struc.mean_efs, test_struc_copy.mean_efs, 1e-6);
-//  EXPECT_NEAR(test_struc.local_uncertainties, test_struc_copy.local_uncertainties, 1e-6);
+  parallel_sgp.predict_local_uncertainties(test_struc);
+  Structure test_struc_copy(test_struc.cell, test_struc.species, test_struc.positions, cutoff, dc);
+  sparse_gp.predict_local_uncertainties(test_struc_copy);
+
+  EXPECT_NEAR(test_struc.mean_efs(0), test_struc_copy.mean_efs(0), 1e-5);
+//  for (int r = 0; r < test_struc.mean_efs.size(); r++) {
+//    EXPECT_NEAR(test_struc.mean_efs(r), test_struc_copy.mean_efs(r), 1e-5);
+//  }
+
+  for (int i = 0; i < test_struc.local_uncertainties.size(); i++) {
+    for (int r = 0; r < test_struc.local_uncertainties[i].size(); r++) {
+      EXPECT_NEAR(test_struc.local_uncertainties[i](r), test_struc_copy.local_uncertainties[i](r), 1e-5);
+    }
+  }
 
 }

@@ -356,6 +356,9 @@ void ParallelSGP::load_local_training_data(const std::vector<Eigen::MatrixXd> &t
     }
 
   }
+  // Assign global sparse descritors
+  sparse_descriptors = global_sparse_descriptors;
+
 }
 
 void ParallelSGP::compute_matrices(
@@ -399,6 +402,8 @@ void ParallelSGP::compute_matrices(
   DistMatrix<double> A(f_size + u_size, u_size); // use the default blocking
   DistMatrix<double> b(f_size + u_size, 1);
   DistMatrix<double> Kuu_dist(  u_size, u_size);
+  A = [](int i, int j){return 0.0;};
+  b = [](int i, int j){return 0.0;};
   Kuu_dist = [](int i, int j){return 0.0;};
   blacs::barrier();
   std::cout << "Created distmatrix" << std::endl; 
@@ -480,9 +485,6 @@ void ParallelSGP::compute_matrices(
   DistMatrix<double> Kuu_inv_dist = L_inv_dist.matmul(L_inv_dist, 1.0, 'T', 'N'); 
   Kuu_inv_dist.fence();
 
-  // Assign global sparse descritors
-  sparse_descriptors = global_sparse_descriptors;
-
   // Assign value to Kuu_inverse for varmap
   Kuu_inverse = Eigen::MatrixXd::Zero(u_size, u_size);
   Kuu = Eigen::MatrixXd::Zero(u_size, u_size);
@@ -511,29 +513,37 @@ void ParallelSGP::compute_matrices(
   // Assign L.T to A matrix
   cum_f = f_size;
   for (int r = 0; r < u_size; r++) {
-    if (A.islocal(cum_f, 0)) {
+    //if (A.islocal(cum_f, 0)) {
+    if (blacs::mpirank == 0) {
       for (int c = 0; c < u_size; c++) {
         A.set(cum_f, c, L(c, r)); // the local_f is actually a global index of L.T
       }
     }
-
-    if (b.islocal(cum_f, 0)) {
-      b.set(cum_f, 0, 0.0); // set chunk f_size ~ f_size + u_size to 0 
-    }
     cum_f += 1;
-
   }
+
   A.fence();
   b.fence();
+  std::cout << "Done A, b fence" << std::endl;
 
-//  DistMatrix<double> R_inv_QT = A.qr_invert();
-//  DistMatrix<double> alpha_dist = R_inv_QT.matmul(b);
-//
-//  // Assign value to alpha for mapping
-//  alpha = Eigen::VectorXd::Zero(u_size);
-//  for (int u = 0; u < u_size; u++) {
-//    alpha(u) = alpha_dist(u, 0);
-//  }
+  // QR factorize A to compute alpha
+  DistMatrix<double> QR(u_size + f_size, u_size);
+  std::vector<double> tau;
+  std::tie(QR, tau) = A.qr();
+  std::cout << "Done QR decompose" << std::endl;
+
+  DistMatrix<double> R(u_size, u_size);                                 // Upper triangular R from QR
+  R = [&QR](int i, int j) {return i > j ? 0 : QR(i, j);};
+  DistMatrix<double> Rinv_dist = R.triangular_invert('U');              // Compute the inverse of R
+  DistMatrix<double> Q_b = QR.QT_matmul(b, tau);                        // Q_b = Q^T * b
+  DistMatrix<double> alpha_dist = Rinv_dist.matmul(Q_b, 1.0, 'N', 'N'); // alpha = R^-1 * Q_b
+  std::cout << "Done alpha" << std::endl;
+
+  // Assign value to alpha for mapping
+  alpha = Eigen::VectorXd::Zero(u_size);
+  for (int u = 0; u < u_size; u++) {
+    alpha(u) = alpha_dist(u, 0);
+  }
 
   }
 
@@ -544,25 +554,30 @@ void ParallelSGP::compute_matrices(
 
 }
 
-//// Not parallelized with mpi yet
-//void ParallelSGP ::predict_local_uncertainties(Structure &test_structure) {
-//  int n_atoms = test_structure.noa;
-//  int n_out = 1 + 3 * n_atoms + 6;
-//
-//  Eigen::MatrixXd kernel_mat = Eigen::MatrixXd::Zero(n_sparse, n_out);
-//  int count = 0;
-//  for (int i = 0; i < Kuu_kernels.size(); i++) {
-//    int size = Kuu_kernels[i].rows();
-//    kernel_mat.block(count, 0, size, n_out) = kernels[i]->envs_struc(
-//        sparse_descriptors[i], test_structure.descriptors[i],
-//        kernels[i]->kernel_hyperparameters);
-//    count += size;
-//  }
-//
-//  test_structure.mean_efs = kernel_mat.transpose() * alpha;
-//
-//  std::vector<Eigen::VectorXd> local_uncertainties =
-//    this->compute_cluster_uncertainties(test_structure);
-//  test_structure.local_uncertainties = local_uncertainties;
-//
-//}
+void ParallelSGP ::predict_local_uncertainties(Structure &test_structure) {
+  int n_atoms = test_structure.noa;
+  int n_out = 1 + 3 * n_atoms + 6;
+
+  std::cout << "begin kernel_mat" << std::endl;
+  int n_sparse = Kuu_inverse.rows();
+  Eigen::MatrixXd kernel_mat = Eigen::MatrixXd::Zero(n_sparse, n_out);
+  int count = 0;
+  for (int i = 0; i < Kuu_kernels.size(); i++) {
+    std::cout << "sparse_desc size " <<  sparse_descriptors[i].n_clusters << " " << global_sparse_descriptors[i].n_clusters << std::endl;
+    int size = sparse_descriptors[i].n_clusters; 
+    kernel_mat.block(count, 0, size, n_out) = kernels[i]->envs_struc(
+        sparse_descriptors[i], test_structure.descriptors[i],
+        kernels[i]->kernel_hyperparameters);
+    count += size;
+  }
+  std::cout << "Done kernel_mat" << std::endl;
+
+  test_structure.mean_efs = kernel_mat.transpose() * alpha;
+  std::cout << "Done mean_efs " << kernel_mat.rows() << " " << kernel_mat.cols() << " " << alpha.size() << std::endl;
+
+  std::vector<Eigen::VectorXd> local_uncertainties =
+    compute_cluster_uncertainties(test_structure);
+  test_structure.local_uncertainties = local_uncertainties;
+  std::cout << "Done local uncertainties" << std::endl;
+
+}
