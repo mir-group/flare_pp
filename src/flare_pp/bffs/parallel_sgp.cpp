@@ -229,13 +229,15 @@ void ParallelSGP ::add_global_noise(const Structure &structure) {
   int n_atoms = structure.noa;
 
   // Update noise.
-  global_noise_vector.conservativeResize(n_labels + n_struc_labels);
-  global_noise_vector.segment(n_labels, n_energy) =
+  global_noise_vector.conservativeResize(global_n_labels + n_struc_labels);
+  global_noise_vector.segment(global_n_labels, n_energy) =
       Eigen::VectorXd::Constant(n_energy, 1 / (energy_noise * energy_noise));
-  global_noise_vector.segment(n_labels + n_energy, n_force) =
+  global_noise_vector.segment(global_n_labels + n_energy, n_force) =
       Eigen::VectorXd::Constant(n_force, 1 / (force_noise * force_noise));
-  global_noise_vector.segment(n_labels + n_energy + n_force, n_stress) =
+  global_noise_vector.segment(global_n_labels + n_energy + n_force, n_stress) =
       Eigen::VectorXd::Constant(n_stress, 1 / (stress_noise * stress_noise));
+
+  global_n_labels += n_struc_labels;
 
 }
 
@@ -302,6 +304,7 @@ void ParallelSGP::load_local_training_data(const std::vector<Eigen::MatrixXd> &t
   }
 
   // Distribute the training structures and sparse envs
+  global_n_labels = 0;
   for (int t = 0; t < training_cells.size(); t++) {
     struc = Structure(training_cells[t], training_species[t], 
             training_positions[t], cutoff, descriptor_calculators);
@@ -462,9 +465,8 @@ void ParallelSGP::compute_matrices(
   
         // Assign training label to y 
         std::cout << "begin setting b global_noise_vector " << l << std::endl; 
-        //b.set(cum_f, 0, training_labels[t](l) * global_noise_vector_sqrt(cum_f)); 
-        b.set(cum_f, 0, training_labels[t](l)); // * global_noise_vector_sqrt(cum_f)); TODO: debug 
-        std::cout << "y=" << training_labels[t](l) << ", cum_f=" << cum_f << ", t=" << t << ", l=" << l << ", rank=" << blacs::mpirank << ", nmin=" << nmin_struc << ", nmax=" << nmax_struc << std::endl;
+        b.set(cum_f, 0, training_labels[t](l) * global_noise_vector_sqrt(cum_f)); 
+        std::cout << "y=" << training_labels[t](l) << ", cum_f=" << cum_f << ", t=" << t << ", l=" << l << ", rank=" << blacs::mpirank << ", nmin=" << nmin_struc << ", nmax=" << nmax_struc << ", noise=" << global_noise_vector_sqrt(cum_f) << std::endl;
       }
       cum_f += 1;
     }

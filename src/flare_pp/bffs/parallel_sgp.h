@@ -35,7 +35,7 @@ public:
   // Label attributes.
   Eigen::VectorXd noise_vector, y, label_count;
   int n_energy_labels = 0, n_force_labels = 0, n_stress_labels = 0,
-      n_sparse = 0, n_labels = 0, n_strucs = 0;
+      n_sparse = 0, n_labels = 0, n_strucs = 0, global_n_labels = 0;
   double energy_noise, force_noise, stress_noise;
 
   // Parallel parameters

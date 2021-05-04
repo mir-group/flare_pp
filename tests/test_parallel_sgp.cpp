@@ -111,8 +111,8 @@ TEST_F(StructureTest, BuildPMatrix){
     std::cout << "Checked matrix shape" << std::endl;
   
     for (int r = 0; r < sparse_gp.y.size(); r++) {
-      std::cout << "y(" << r << ")=" << parallel_sgp.b_vec(r) << " " << sparse_gp.y(r) << std::endl;
-      EXPECT_NEAR(parallel_sgp.b_vec(r), sparse_gp.y(r), 1e-6); // * sqrt(sparse_gp.noise_vector(r)), 1e-6);
+      std::cout << "y(" << r << ")=" << parallel_sgp.b_vec(r) << " " << sparse_gp.y(r) * sqrt(sparse_gp.noise_vector(r))<< std::endl;
+      EXPECT_NEAR(parallel_sgp.b_vec(r), sparse_gp.y(r) * sqrt(sparse_gp.noise_vector(r)), 1e-6);
     }
 
 //    int cum_f = 0;
