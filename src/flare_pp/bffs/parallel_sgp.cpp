@@ -295,7 +295,7 @@ void ParallelSGP::load_local_training_data(const std::vector<Eigen::MatrixXd> &t
  
   std::cout << "Start looping training set" << std::endl; 
   nmin_struc = world_rank * f_size_per_proc;
-  if (world_rank == world_size) {
+  if (world_rank == world_size - 1) {
     nmax_struc = f_size;
   } else {
     nmax_struc = (world_rank + 1) * f_size_per_proc;
@@ -327,8 +327,6 @@ void ParallelSGP::load_local_training_data(const std::vector<Eigen::MatrixXd> &t
       std::cout << "added local training structures" << std::endl; 
       std::cout << "noise vector size" << noise_vector.size() << std::endl;
     }
-    cum_f += label_size;
-
 //    for (int i = 0; i < n_kernels; i++) { 
 //      // Collect all sparse envs u
 //      global_sparse_descriptors[i].add_clusters(
@@ -354,6 +352,8 @@ void ParallelSGP::load_local_training_data(const std::vector<Eigen::MatrixXd> &t
       add_local_specific_environments(struc, training_sparse_indices[0][t]);
       std::cout << "added local sparse descriptors" << std::endl; 
     }
+
+    cum_f += label_size;
 
   }
   // Assign global sparse descritors
@@ -417,33 +417,33 @@ void ParallelSGP::compute_matrices(
     int label_size = 1 + n_atoms * 3 + 6;
     std::cout << "Start structure " << t << std::endl; 
 
-    // Assign sparse set kernel matrix Kuu
-    for (int i = 0; i < n_kernels; i++) { 
-      if (cum_f >= nmin_struc && cum_f < nmax_struc) {
-      // if the 1st atom is local, then the structure and sparse envs are also local
-        int u_size_single_kernel = global_sparse_descriptors[i].n_clusters;
-        int head = i * u_size_single_kernel;
-        std::cout << "u_size_single_kernel=" << u_size_single_kernel << std::endl;
-        for (int r = 0; r < training_sparse_indices[i][t].size(); r++) {
-          for (int c = 0; c < u_size_single_kernel; c++) {
-            if (cum_u(i) + r == c) {
-              std::cout << "cum_u(i)=" << cum_u(i) << " r=" << r << " c=" << c << " local_u(i)=" << local_u(i) << std::endl;
-              std::cout << "Kuu_dist size=" << u_size << std::endl;
-              std::cout << "r c " << cum_u(i) + r + head << " " << c + head << " kuu=" << kuu[i](c, local_u(i) + r) << std::endl;
-              Kuu_dist.set(cum_u(i) + r + head, c + head, kuu[i](c, local_u(i) + r) + Kuu_jitter);
-            } else {
-              std::cout << "cum_u(i)=" << cum_u(i) << " r=" << r << " c=" << c << " local_u(i)=" << local_u(i) << std::endl;
-              std::cout << "Kuu_dist size=" << u_size << std::endl;
-              std::cout << "r c " << cum_u(i) + r + head << " " << c + head << " kuu=" << kuu[i](c, local_u(i) + r) << std::endl;
-              Kuu_dist.set(cum_u(i) + r + head, c + head, kuu[i](c, local_u(i) + r)); 
-            }
-          }
-        }
-        local_u(i) += training_sparse_indices[i][t].size();
-      }
-      cum_u(i) += training_sparse_indices[i][t].size();
-    }
-    std::cout << "Assigned kuu" << std::endl; 
+//    // Assign sparse set kernel matrix Kuu
+//    for (int i = 0; i < n_kernels; i++) { 
+//      if (cum_f >= nmin_struc && cum_f < nmax_struc) {
+//      // if the 1st atom is local, then the structure and sparse envs are also local
+//        int u_size_single_kernel = global_sparse_descriptors[i].n_clusters;
+//        int head = i * u_size_single_kernel;
+//        std::cout << "u_size_single_kernel=" << u_size_single_kernel << std::endl;
+//        for (int r = 0; r < training_sparse_indices[i][t].size(); r++) {
+//          for (int c = 0; c < u_size_single_kernel; c++) {
+//            if (cum_u(i) + r == c) {
+////              std::cout << "cum_u(i)=" << cum_u(i) << " r=" << r << " c=" << c << " local_u(i)=" << local_u(i) << std::endl;
+////              std::cout << "Kuu_dist size=" << u_size << std::endl;
+////              std::cout << "r c " << cum_u(i) + r + head << " " << c + head << " kuu=" << kuu[i](c, local_u(i) + r) << std::endl;
+//              Kuu_dist.set(cum_u(i) + r + head, c + head, kuu[i](c, local_u(i) + r) + Kuu_jitter);
+//            } else {
+////              std::cout << "cum_u(i)=" << cum_u(i) << " r=" << r << " c=" << c << " local_u(i)=" << local_u(i) << std::endl;
+////              std::cout << "Kuu_dist size=" << u_size << std::endl;
+////              std::cout << "r c " << cum_u(i) + r + head << " " << c + head << " kuu=" << kuu[i](c, local_u(i) + r) << std::endl;
+//              Kuu_dist.set(cum_u(i) + r + head, c + head, kuu[i](c, local_u(i) + r)); 
+//            }
+//          }
+//        }
+//        local_u(i) += training_sparse_indices[i][t].size();
+//      }
+//      cum_u(i) += training_sparse_indices[i][t].size();
+//    }
+//    std::cout << "Assigned kuu" << std::endl; 
 
     for (int l = 0; l < training_labels[t].size(); l++) {
       std::cout << "start label " << l << std::endl; 
@@ -461,13 +461,16 @@ void ParallelSGP::compute_matrices(
   
         // Assign training label to y 
         std::cout << "begin setting b global_noise_vector " << l << std::endl; 
-        b.set(cum_f, 0, training_labels[t](l) * global_noise_vector_sqrt(cum_f)); 
+        //b.set(cum_f, 0, training_labels[t](l) * global_noise_vector_sqrt(cum_f)); 
+        b.set(cum_f, 0, training_labels[t](l)); // * global_noise_vector_sqrt(cum_f)); 
+        std::cout << "y=" << training_labels[t](l) << ", cum_f=" << cum_f << ", t=" << t << ", l=" << l << ", rank=" << blacs::mpirank << ", nmin=" << nmin_struc << ", nmax=" << nmax_struc << std::endl;
       }
       cum_f += 1;
     }
     std::cout << "Assigned A, b" << std::endl; 
 
   }
+  std::cout << "rank=" << blacs::mpirank << ", nmin=" << nmin_struc << ", nmax=" << nmax_struc << std::endl;
 
   // Wait until the communication is done
   std::cout << "Start A fence" << std::endl; 
@@ -478,22 +481,38 @@ void ParallelSGP::compute_matrices(
   Kuu_dist.fence();
   std::cout << "Done Kuu fence" << std::endl; 
 
-  // Cholesky decomposition of Kuu and its inverse.
-  DistMatrix<double> L = Kuu_dist.cholesky();
-  DistMatrix<double> L_inv_dist = L.triangular_invert('L');
-  //L_diag = L_inv.diagonal();
-  DistMatrix<double> Kuu_inv_dist = L_inv_dist.matmul(L_inv_dist, 1.0, 'T', 'N'); 
-  Kuu_inv_dist.fence();
+  //  Eigen::MatrixXd Aeig = Eigen::MatrixXd::Random(u_size, u_size);
+  //  MPI_Bcast(Aeig.data(), u_size * u_size, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+  //  // symmetric, positive definite matrix
+  //  Kuu_dist = [&Aeig](int i, int j) {
+  //      return Aeig(i, j) + Aeig(j, i) + (i == j ? 10.0 : 0);
+  //  };
+ 
+//  // Symmetrize Kuu_dist
+//  if (blacs::mpirank == 0) {
+//    for (int r = 0; r < u_size; r++) {
+//      for (int c = 0; c < u_size; c++) {
+//      }
+//    }
+//  }
+    
+ 
+//  // Cholesky decomposition of Kuu and its inverse.
+//  DistMatrix<double> L = Kuu_dist.cholesky();
+//  std::cout << "Done cholesky" << std::endl; 
+//  DistMatrix<double> L_inv_dist = L.triangular_invert('L');
+//  std::cout << "Done triangular_invert" << std::endl; 
+//  //L_diag = L_inv.diagonal();
+//  DistMatrix<double> Kuu_inv_dist = L_inv_dist.matmul(L_inv_dist, 1.0, 'T', 'N'); 
+//  std::cout << "Done matmul" << std::endl; 
+//  Kuu_inv_dist.fence();
 
   // Assign value to Kuu_inverse for varmap
   Kuu_inverse = Eigen::MatrixXd::Zero(u_size, u_size);
   Kuu = Eigen::MatrixXd::Zero(u_size, u_size);
   for (int u = 0; u < u_size; u++) {
     for (int v = 0; v < u_size; v++) {
-      //std::cout << "u=" << u << " v=" << v << std::endl;
-      //std::cout << "Kuu_inv_dist(u, v)=" << Kuu_inv_dist(u, v) << std::endl;
-      //std::cout << "Kuu_inverse(u, v)=" << Kuu_inverse(u, v) << std::endl;
-      Kuu_inverse(u, v) = Kuu_inv_dist(u, v);
+//      Kuu_inverse(u, v) = Kuu_inv_dist(u, v);
 
       // TODO: remove the Kuu
       Kuu(u, v) = Kuu_dist(u, v);
@@ -510,40 +529,47 @@ void ParallelSGP::compute_matrices(
     }
   }
 
-  // Assign L.T to A matrix
-  cum_f = f_size;
-  for (int r = 0; r < u_size; r++) {
-    //if (A.islocal(cum_f, 0)) {
-    if (blacs::mpirank == 0) {
-      for (int c = 0; c < u_size; c++) {
-        A.set(cum_f, c, L(c, r)); // the local_f is actually a global index of L.T
-      }
-    }
-    cum_f += 1;
-  }
+//  // Assign L.T to A matrix
+//  cum_f = f_size;
+//  for (int r = 0; r < u_size; r++) {
+//    //if (A.islocal(cum_f, 0)) {
+//    if (blacs::mpirank == 0) {
+//      for (int c = 0; c < u_size; c++) {
+//        A.set(cum_f, c, L(c, r)); // the local_f is actually a global index of L.T
+//      }
+//    }
+//    cum_f += 1;
+//  }
 
   A.fence();
   b.fence();
   std::cout << "Done A, b fence" << std::endl;
 
-  // QR factorize A to compute alpha
-  DistMatrix<double> QR(u_size + f_size, u_size);
-  std::vector<double> tau;
-  std::tie(QR, tau) = A.qr();
-  std::cout << "Done QR decompose" << std::endl;
+//  // QR factorize A to compute alpha
+//  DistMatrix<double> QR(u_size + f_size, u_size);
+//  std::vector<double> tau;
+//  std::tie(QR, tau) = A.qr();
+//  std::cout << "Done QR decompose" << std::endl;
+//
+//  DistMatrix<double> R(u_size, u_size);                                 // Upper triangular R from QR
+//  R = [&QR](int i, int j) {return i > j ? 0 : QR(i, j);};
+//  DistMatrix<double> Rinv_dist = R.triangular_invert('U');              // Compute the inverse of R
+//  DistMatrix<double> Q_b = QR.QT_matmul(b, tau);                        // Q_b = Q^T * b
+//  DistMatrix<double> alpha_dist = Rinv_dist.matmul(Q_b, 1.0, 'N', 'N'); // alpha = R^-1 * Q_b
+//  std::cout << "Done alpha" << std::endl;
+//
+//  // Assign value to alpha for mapping
+//  alpha = Eigen::VectorXd::Zero(u_size);
+//  for (int u = 0; u < u_size; u++) {
+//    alpha(u) = alpha_dist(u, 0);
+//  }
 
-  DistMatrix<double> R(u_size, u_size);                                 // Upper triangular R from QR
-  R = [&QR](int i, int j) {return i > j ? 0 : QR(i, j);};
-  DistMatrix<double> Rinv_dist = R.triangular_invert('U');              // Compute the inverse of R
-  DistMatrix<double> Q_b = QR.QT_matmul(b, tau);                        // Q_b = Q^T * b
-  DistMatrix<double> alpha_dist = Rinv_dist.matmul(Q_b, 1.0, 'N', 'N'); // alpha = R^-1 * Q_b
-  std::cout << "Done alpha" << std::endl;
-
-  // Assign value to alpha for mapping
-  alpha = Eigen::VectorXd::Zero(u_size);
-  for (int u = 0; u < u_size; u++) {
-    alpha(u) = alpha_dist(u, 0);
+  // TODO: Debug, need to remove
+  b_vec = Eigen::VectorXd::Zero(f_size);
+  for (int u = 0; u < f_size; u++) {
+    b_vec(u) = b(u, 0);
   }
+
 
   }
 

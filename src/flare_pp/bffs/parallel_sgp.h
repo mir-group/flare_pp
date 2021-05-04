@@ -41,6 +41,7 @@ public:
   // Parallel parameters
   int u_size, f_size, f_size_single_kernel, f_size_per_proc;
   int nmin_struc, nmax_struc;
+  Eigen::VectorXd b_vec; // TODO: for debugging, remove
 
   // Likelihood attributes.
   double log_marginal_likelihood, data_fit, complexity_penalty, trace_term,
