@@ -313,14 +313,11 @@ void ParallelSGP::load_local_training_data(const std::vector<Eigen::MatrixXd> &t
     struc.energy = training_labels[t].segment(cum_f, 1);
     struc.forces = training_labels[t].segment(cum_f + 1, 3 * struc.noa);
     struc.stresses = training_labels[t].segment(cum_f + 3 * struc.noa, 6); 
-    std::cout << "Training data created" << std::endl; 
     
     add_global_noise(struc); // for b
-    std::cout << "added global noise" << std::endl; 
 
     //global_sparse_descriptors = initialize_sparse_descriptors(struc, global_sparse_descriptors);
     initialize_global_sparse_descriptors(struc);
-    std::cout << "initialized global sparse descriptors " << global_sparse_descriptors.size() << std::endl; 
 
     if (nmin_struc < cum_f + label_size && cum_f < nmax_struc) {
       // Collect local training structures for A
@@ -390,13 +387,6 @@ void ParallelSGP::compute_matrices(
   }
   std::cout << "computed kuf, kuu" << std::endl; 
   
-  // TODO: debug
-  for (int i = 0; i < n_kernels; i++) {
-    for (int j = 0; j < kuu[i].size(); j++) {
-      std::cout << "Rank=" << blacs::mpirank << ", kuu(" << j << ")=" << kuu[i](j) << std::endl;
-    }
-  }
-
   // Store square root of noise vector.
   Eigen::VectorXd noise_vector_sqrt = sqrt(noise_vector.array());
   Eigen::VectorXd global_noise_vector_sqrt = sqrt(global_noise_vector.array());
@@ -423,7 +413,6 @@ void ParallelSGP::compute_matrices(
   for (int t = 0; t < training_labels.size(); t++) { // training_structures is local subset
     int n_atoms = training_structures[t].noa;
     int label_size = 1 + n_atoms * 3 + 6;
-    std::cout << "Start structure " << t << std::endl; 
 
     // Assign sparse set kernel matrix Kuu
     for (int i = 0; i < n_kernels; i++) { 
@@ -431,7 +420,6 @@ void ParallelSGP::compute_matrices(
         // if the 1st atom is local, then the structure and sparse envs are also local
         int u_size_single_kernel = global_sparse_descriptors[i].n_clusters;
         int head = i * u_size_single_kernel;
-        std::cout << "u_size_single_kernel=" << u_size_single_kernel << std::endl;
         for (int r = 0; r < training_sparse_indices[i][t].size(); r++) {
           for (int c = 0; c < u_size_single_kernel; c++) {
             if (cum_u(i) + r == c) {
@@ -447,42 +435,35 @@ void ParallelSGP::compute_matrices(
       }
       cum_u(i) += training_sparse_indices[i][t].size();
     }
-    std::cout << "Assigned kuu" << std::endl; 
 
-    for (int l = 0; l < training_labels[t].size(); l++) {
-      std::cout << "start label " << l << std::endl; 
-      if (cum_f >= nmin_struc && cum_f < nmax_struc) {
-        std::cout << "on current proc" << std::endl; 
-        for (int i = 0; i < n_kernels; i++) { 
-          // Assign a column of kuf to a row of A
-          int u_size_single_kernel = global_sparse_descriptors[i].n_clusters;
-          std::cout << "begin setting A u_size_single_kernel=" << u_size_single_kernel << std::endl; 
-          for (int c = 0; c < u_size_single_kernel; c++) { 
-            A.set(cum_f, c + i * u_size_single_kernel, kuf[i](c, local_f) * noise_vector_sqrt(local_f));
+    if (nmin_struc < cum_f + label_size && cum_f < nmax_struc) {
+      for (int l = 0; l < training_labels[t].size(); l++) {
+        if (cum_f + l >= nmin_struc && cum_f + l < nmax_struc) {
+          for (int i = 0; i < n_kernels; i++) { 
+            // Assign a column of kuf to a row of A
+            int u_size_single_kernel = global_sparse_descriptors[i].n_clusters;
+            for (int c = 0; c < u_size_single_kernel; c++) { 
+              A.set(cum_f + l, c + i * u_size_single_kernel, kuf[i](c, local_f + l) * noise_vector_sqrt(local_f + l));
+            }
           }
+    
+          // Assign training label to y 
+          b.set(cum_f + l, 0, training_labels[t](l) * global_noise_vector_sqrt(cum_f + l)); 
+          std::cout << "y=" << training_labels[t](l) << ", cum_f=" << cum_f << ", t=" << t << ", l=" << l << ", rank=" << blacs::mpirank << ", nmin=" << nmin_struc << ", nmax=" << nmax_struc << ", noise=" << global_noise_vector_sqrt(cum_f+l) << std::endl;
         }
-        local_f += 1;
-  
-        // Assign training label to y 
-        std::cout << "begin setting b global_noise_vector " << l << std::endl; 
-        b.set(cum_f, 0, training_labels[t](l) * global_noise_vector_sqrt(cum_f)); 
-        std::cout << "y=" << training_labels[t](l) << ", cum_f=" << cum_f << ", t=" << t << ", l=" << l << ", rank=" << blacs::mpirank << ", nmin=" << nmin_struc << ", nmax=" << nmax_struc << ", noise=" << global_noise_vector_sqrt(cum_f) << std::endl;
       }
-      cum_f += 1;
+      local_f += label_size;
     }
-    std::cout << "Assigned A, b" << std::endl; 
 
+    cum_f += label_size;
   }
   std::cout << "rank=" << blacs::mpirank << ", nmin=" << nmin_struc << ", nmax=" << nmax_struc << std::endl;
 
   // Wait until the communication is done
-  std::cout << "Start A fence" << std::endl; 
   A.fence();
-  std::cout << "Start b fence" << std::endl; 
   b.fence();
-  std::cout << "Start Kuu fence" << std::endl; 
   Kuu_dist.fence();
-  std::cout << "Done Kuu fence" << std::endl; 
+  std::cout << "Done A b Kuu fence" << std::endl; 
 
   //  Eigen::MatrixXd Aeig = Eigen::MatrixXd::Random(u_size, u_size);
   //  MPI_Bcast(Aeig.data(), u_size * u_size, MPI_DOUBLE, 0, MPI_COMM_WORLD);
