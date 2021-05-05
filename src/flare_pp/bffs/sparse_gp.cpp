@@ -561,19 +561,13 @@ void SparseGP ::update_matrices_QR() {
   b.segment(0, Kuf.cols()) = noise_vector_sqrt.asDiagonal() * y;
 
   // QR decompose A.
-  std::cout << "A " << A.rows() << " " << A.cols() << std::endl;
   Eigen::HouseholderQR<Eigen::MatrixXd> qr(A);
   Eigen::VectorXd Q_b = (qr.householderQ().transpose() * b).segment(0, Kuf.cols());
-  std::cout << "Q_b " << Q_b.rows() << " " << Q_b.cols() << std::endl;
-  std::cout << "b " << b.rows() << " " << b.cols() << std::endl;
   R_inv = qr.matrixQR().block(0, 0, Kuu.cols(), Kuu.cols())
                        .triangularView<Eigen::Upper>()
                        .solve(Kuu_eye);
   R_inv_diag = R_inv.diagonal();
-  std::cout << "R_inv " << R_inv.rows() << " " << R_inv.cols() << std::endl;
-  std::cout << "Q_b " << Q_b.rows() << " " << Q_b.cols() << std::endl;
   alpha = R_inv * Q_b;
-  std::cout << "alpha " << alpha.rows() << " " << alpha.cols() << std::endl;
   Sigma = R_inv * R_inv.transpose();
 }
 

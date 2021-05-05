@@ -39,8 +39,9 @@ public:
   double energy_noise, force_noise, stress_noise;
 
   // Parallel parameters
-  int u_size, f_size, f_size_single_kernel, f_size_per_proc;
-  int nmin_struc, nmax_struc;
+  int u_size, u_size_single_kernel, u_size_per_proc; 
+  int f_size, f_size_single_kernel, f_size_per_proc;
+  int nmin_struc, nmax_struc, nmin_envs, nmax_envs;
   Eigen::VectorXd b_vec; // TODO: for debugging, remove
 
   // Likelihood attributes.

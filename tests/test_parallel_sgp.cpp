@@ -16,7 +16,7 @@ TEST_F(StructureTest, BuildPMatrix){
   blacs::initialize();
 
   std::vector<Kernel *> kernels;
-  kernels.push_back(&kernel);
+  kernels.push_back(&kernel_norm);
   ParallelSGP parallel_sgp = ParallelSGP(kernels, sigma_e, sigma_f, sigma_s);
   SparseGP sparse_gp = SparseGP(kernels, sigma_e, sigma_f, sigma_s);
 
@@ -66,7 +66,8 @@ TEST_F(StructureTest, BuildPMatrix){
   std::vector<std::vector<int>> training_species = {species_1, species_2};
   std::vector<Eigen::MatrixXd> training_positions = {positions_1, positions_2};
   std::vector<Eigen::VectorXd> training_labels = {labels_1, labels_2};
-  std::vector<std::vector<std::vector<int>>> sparse_indices = {{{0, 1}, {2}}}; //{{{0, 1, 4, 5, 6, 7, 9}, {0, 2, 3, 4, 6, 7, 8}}};
+  //std::vector<std::vector<std::vector<int>>> sparse_indices = {{{0, 1}, {2}}}; 
+  std::vector<std::vector<std::vector<int>>> sparse_indices = {{{0, 1, 4}, {0, 2, 3, 6, 7}}};
 
   std::cout << "Start building" << std::endl;
   parallel_sgp.build(training_cells, training_species, training_positions, 
@@ -99,19 +100,22 @@ TEST_F(StructureTest, BuildPMatrix){
     EXPECT_EQ(sparse_gp.sparse_descriptors[0].n_clusters,
               parallel_sgp.Kuu_inverse.rows());
     EXPECT_EQ(parallel_sgp.sparse_descriptors[0].n_clusters, sparse_gp.sparse_descriptors[0].n_clusters);
-  //  for (int t = 0; t < parallel_sgp.sparse_descriptors[0].n_types; t++) {
-  //    for (int r = 0; r < parallel_sgp.sparse_descriptors[0].descriptors[t].rows(); r++) {
-  //      for (int c = 0; c < parallel_sgp.sparse_descriptors[0].descriptors[t].cols(); c++) {
-  //        double par_desc = parallel_sgp.sparse_descriptors[0].descriptors[t](r, c);
-  //        double sgp_desc = sparse_gp.sparse_descriptors[0].descriptors[t](r, c);
-  //        std::cout << "descriptor par ser r=" << r << " c=" << c << " " << par_desc << " " << sgp_desc << std::endl;
-  //      }
-  //    }
-  //  }
+    for (int t = 0; t < parallel_sgp.local_sparse_descriptors[0].n_types; t++) {
+      for (int r = 0; r < parallel_sgp.local_sparse_descriptors[0].descriptors[t].rows(); r++) {
+        for (int c = 0; c < parallel_sgp.local_sparse_descriptors[0].descriptors[t].cols(); c++) {
+          double par_desc = parallel_sgp.local_sparse_descriptors[0].descriptors[t](r, c);
+          double global_par_desc = parallel_sgp.global_sparse_descriptors[0].descriptors[t](r, c);
+          double sgp_desc = sparse_gp.sparse_descriptors[0].descriptors[t](r, c);
+          //std::cout << "descriptor par ser r=" << r << " c=" << c << " " << par_desc << " " << sgp_desc << std::endl;
+          EXPECT_NEAR(par_desc, sgp_desc, 1e-6);
+          EXPECT_NEAR(global_par_desc, sgp_desc, 1e-6);
+        }
+      }
+    }
     std::cout << "Checked matrix shape" << std::endl;
   
     for (int r = 0; r < sparse_gp.y.size(); r++) {
-      std::cout << "y(" << r << ")=" << parallel_sgp.b_vec(r) << " " << sparse_gp.y(r) * sqrt(sparse_gp.noise_vector(r))<< std::endl;
+      //std::cout << "y(" << r << ")=" << parallel_sgp.b_vec(r) << " " << sparse_gp.y(r) * sqrt(sparse_gp.noise_vector(r)) << std::endl;
       EXPECT_NEAR(parallel_sgp.b_vec(r), sparse_gp.y(r) * sqrt(sparse_gp.noise_vector(r)), 1e-6);
     }
 
@@ -138,8 +142,8 @@ TEST_F(StructureTest, BuildPMatrix){
     Eigen::MatrixXd sgp_Kuf_noise = sparse_gp.Kuf * noise_vector_sqrt.asDiagonal();
     for (int r = 0; r < parallel_sgp.Kuf.rows(); r++) {
       for (int c = 0; c < parallel_sgp.Kuf.cols(); c++) {
-        std::cout << "parallel_sgp.Kuf(" << r << "," << c << ")=" << parallel_sgp.Kuf(r, c);
-        std::cout << " " << sgp_Kuf_noise(r, c) << std::endl; 
+        //std::cout << "parallel_sgp.Kuf(" << r << "," << c << ")=" << parallel_sgp.Kuf(r, c);
+        //std::cout << " " << sgp_Kuf_noise(r, c) << std::endl; 
         EXPECT_NEAR(parallel_sgp.Kuf(r, c), sgp_Kuf_noise(r, c), 1e-6);
       }
     }
