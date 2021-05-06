@@ -119,36 +119,11 @@ TEST_F(StructureTest, BuildPMatrix){
     }
     std::cout << "Checked matrix shape" << std::endl;
   
-    for (int r = 0; r < sparse_gp.y.size(); r++) {
-      //std::cout << "y(" << r << ")=" << parallel_sgp.b_vec(r) << " " << sparse_gp.y(r) * sqrt(sparse_gp.noise_vector(r)) << std::endl;
-      EXPECT_NEAR(parallel_sgp.b_vec(r), sparse_gp.y(r) * sqrt(sparse_gp.noise_vector(r)), 1e-6);
-    }
-
-  
-    // TODO: Kuu is just for debugging, not stored
-    for (int r = 0; r < parallel_sgp.Kuu.rows(); r++) {
-      for (int c = 0; c < parallel_sgp.Kuu.rows(); c++) {
-//        std::cout << "parallel_sgp.Kuu(" << r << "," << c << ")=" << parallel_sgp.Kuu(r, c);
-//        std::cout << " " << sparse_gp.Kuu(r, c) << std::endl;
-        EXPECT_NEAR(parallel_sgp.Kuu(r, c), sparse_gp.Kuu(r, c), 1e-6);
-      }
-    }
-  
-    // TODO: Kuf is just for debugging, not stored
-    Eigen::VectorXd noise_vector_sqrt = sqrt(sparse_gp.noise_vector.array());
-    Eigen::MatrixXd sgp_Kuf_noise = sparse_gp.Kuf * noise_vector_sqrt.asDiagonal();
-    for (int r = 0; r < parallel_sgp.Kuf.rows(); r++) {
-      for (int c = 0; c < parallel_sgp.Kuf.cols(); c++) {
-//        std::cout << "parallel_sgp.Kuf(" << r << "," << c << ")=" << parallel_sgp.Kuf(r, c);
-//        std::cout << " " << sgp_Kuf_noise(r, c) << std::endl; 
-        EXPECT_NEAR(parallel_sgp.Kuf(r, c), sgp_Kuf_noise(r, c), 1e-6);
-      }
-    }
-  
     for (int r = 0; r < parallel_sgp.Kuu_inverse.rows(); r++) {
       for (int c = 0; c < parallel_sgp.Kuu_inverse.rows(); c++) {
 //        std::cout << "parallel_sgp.Kuu_inv(" << r << "," << c << ")=" << parallel_sgp.Kuu_inverse(r, c);
 //        std::cout << " " << sparse_gp.Kuu_inverse(r, c) << std::endl;
+        // Sometimes the accuracy is between 1e-6 ~ 1e-5        
         EXPECT_NEAR(parallel_sgp.Kuu_inverse(r, c), sparse_gp.Kuu_inverse(r, c), 1e-5);
       }
     }

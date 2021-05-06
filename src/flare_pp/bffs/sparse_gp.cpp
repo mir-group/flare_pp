@@ -645,7 +645,6 @@ void SparseGP ::predict_local_uncertainties(Structure &test_structure) {
   int n_atoms = test_structure.noa;
   int n_out = 1 + 3 * n_atoms + 6;
 
-  std::cout << "begin kernel_mat" << std::endl;
   Eigen::MatrixXd kernel_mat = Eigen::MatrixXd::Zero(n_sparse, n_out);
   int count = 0;
   for (int i = 0; i < Kuu_kernels.size(); i++) {
@@ -655,15 +654,12 @@ void SparseGP ::predict_local_uncertainties(Structure &test_structure) {
         kernels[i]->kernel_hyperparameters);
     count += size;
   }
-  std::cout << "Done kernel_mat" << std::endl;
 
   test_structure.mean_efs = kernel_mat.transpose() * alpha;
-  std::cout << "Done mean_efs " << kernel_mat.rows() << " " << kernel_mat.cols() << " " << alpha.size() << std::endl;
 
   std::vector<Eigen::VectorXd> local_uncertainties =
     compute_cluster_uncertainties(test_structure);
   test_structure.local_uncertainties = local_uncertainties;
-  std::cout << "Done local uncertainties" << std::endl;
 
 }
 

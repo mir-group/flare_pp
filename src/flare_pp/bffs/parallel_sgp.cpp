@@ -104,9 +104,6 @@ void ParallelSGP ::add_training_structure(const Structure &structure) {
   int n_energy = structure.energy.size();
   int n_force = structure.forces.size();
   int n_stress = structure.stresses.size();
-  std::cout << n_energy << std::endl;
-  std::cout << n_force << std::endl;
-  std::cout << n_stress << std::endl;
   int n_struc_labels = n_energy + n_force + n_stress;
   int n_atoms = structure.noa;
 
@@ -122,14 +119,12 @@ void ParallelSGP ::add_training_structure(const Structure &structure) {
 
   // Update noise.
   noise_vector.conservativeResize(n_labels + n_struc_labels);
-  std::cout << "noise vector n_labels, n_struc_labels " << n_labels << " " << n_struc_labels << std::endl;
   noise_vector.segment(n_labels, n_energy) =
       Eigen::VectorXd::Constant(n_energy, 1 / (energy_noise * energy_noise));
   noise_vector.segment(n_labels + n_energy, n_force) =
       Eigen::VectorXd::Constant(n_force, 1 / (force_noise * force_noise));
   noise_vector.segment(n_labels + n_energy + n_force, n_stress) =
       Eigen::VectorXd::Constant(n_stress, 1 / (stress_noise * stress_noise));
-  std::cout << "noise vector size" << noise_vector.size() << std::endl;
 
   // Update label count.
   n_energy_labels += n_energy;
@@ -192,11 +187,6 @@ void ParallelSGP ::add_local_specific_environments(const Structure &structure,
   for (int i = 0; i < n_kernels; i++) {
     local_sparse_descriptors[i].add_clusters_by_type(structure.descriptors[i],
                                                indices_1[i]);
-    std::cout << "add_local rank=" << blacs::mpirank << ", indices_1=";
-    for (int j = 0; j < atoms.size(); j++) {
-      std::cout << atoms[j] << " ";
-    }
-    std::cout << std::endl;
   }
 }
 
@@ -254,7 +244,6 @@ void ParallelSGP::build(const std::vector<Eigen::MatrixXd> &training_cells,
   load_local_training_data(training_cells, training_species, training_positions,
         training_labels, cutoff, descriptor_calculators, training_sparse_indices);
 
-  std::cout << "Done loading data" << std::endl; 
   compute_matrices(training_labels, descriptor_calculators, training_sparse_indices);
 
 }
@@ -299,7 +288,6 @@ void ParallelSGP::load_local_training_data(const std::vector<Eigen::MatrixXd> &t
   int cum_u = 0;
   int cum_b = 0;
  
-  std::cout << "Start looping training set" << std::endl; 
   nmin_struc = world_rank * f_size_per_proc;
   nmin_envs = world_rank * u_size_per_proc;
   if (world_rank == world_size - 1) {
@@ -329,15 +317,12 @@ void ParallelSGP::load_local_training_data(const std::vector<Eigen::MatrixXd> &t
     if (nmin_struc < cum_f + label_size && cum_f < nmax_struc) {
       // Collect local training structures for A
       add_training_structure(struc);
-      std::cout << "Rank " << blacs::mpirank << " added local training struc " << t << std::endl; 
-      std::cout << "cum_f=" << cum_f << ", nmin_struc=" << nmin_struc << ", nmax_struc=" << nmax_struc << std::endl;
     }
 
     // TODO: now all the kernels share the same sparse envs
     add_global_specific_environments(struc, training_sparse_indices[0][t]);
     if (nmin_struc < cum_f + label_size && cum_f < nmax_struc) {
       initialize_local_sparse_descriptors(struc); 
-      std::cout << "Rank " << blacs::mpirank << " added local sparse descriptors from struc " << t << std::endl; 
       add_local_specific_environments(struc, training_sparse_indices[0][t]);
     }
 
@@ -356,7 +341,6 @@ void ParallelSGP::compute_matrices(
         const std::vector<std::vector<std::vector<int>>> &training_sparse_indices) {
 
   // Build block of A, y, Kuu using distributed training structures
-  std::cout << "\nStart compute_matrices" << std::endl; 
   std::vector<Eigen::MatrixXd> kuf, kuu;
   int cum_f = 0;
   int cum_u = 0;
@@ -373,21 +357,6 @@ void ParallelSGP::compute_matrices(
     }
     kuf.push_back(kuf_i);
 
-//    // TODO: debug
-//    if (blacs::mpirank == 0) {
-//      for (int m = 0; m < local_sparse_descriptors[i].n_types; m++) {
-//        for (int r = 0; r < local_sparse_descriptors[i].descriptors[m].rows(); r++) {
-//          for (int c = 0; c < local_sparse_descriptors[i].descriptors[m].cols(); c++) {
-//            double par_desc = local_sparse_descriptors[i].descriptors[m](r, c);
-//            double global_par_desc = global_sparse_descriptors[i].descriptors[m](r, c);
-//            //std::cout << "descriptor par ser r=" << r << " c=" << c << " " << par_desc << " " << sgp_desc << std::endl;
-//            assert(std::abs(global_par_desc - par_desc) <= 1e-6);
-//          }
-//        }
-//      }
-//      std::cout << "local desc matches global desc" << std::endl;
-//    }
- 
     if (blacs::mpirank == 0) {
       kuu.push_back(kernels[i]->envs_envs(
                 global_sparse_descriptors[i], 
@@ -396,22 +365,12 @@ void ParallelSGP::compute_matrices(
     }
   }
 
-  for (int i = 0; i < n_kernels; i++) {
-    std::cout << "Rank=" << blacs::mpirank << ", kuf.rows=" << kuf[i].rows() << ", kuf.cols=" << kuf[i].cols() << std::endl;
-    for (int r = 0; r < kuf[i].rows(); r++) {
-      for (int c = 0; c < kuf[i].cols(); c++) {
-//        std::cout << "kuf(" << c << "," << r << ")=" << kuf[i](r, c) << std::endl;
-      }
-    }
-  }
- 
   // Store square root of noise vector.
   Eigen::VectorXd noise_vector_sqrt = sqrt(noise_vector.array());
   Eigen::VectorXd global_noise_vector_sqrt = sqrt(global_noise_vector.array());
 
   // Synchronize, wait until all training structures are ready on all processors
   blacs::barrier();
-  std::cout << "done barrier" << std::endl; 
 
   // Create distributed matrices
   { // specify the scope of the DistMatrix
@@ -422,7 +381,6 @@ void ParallelSGP::compute_matrices(
   b = [](int i, int j){return 0.0;};
   Kuu_dist = [](int i, int j){return 0.0;};
   blacs::barrier();
-  std::cout << "Created distmatrix" << std::endl; 
 
   int cum_u = 0;
   // Assign sparse set kernel matrix Kuu
@@ -443,9 +401,6 @@ void ParallelSGP::compute_matrices(
   for (int t = 0; t < training_labels.size(); t++) { // training_structures is local subset
     int label_size = training_labels[t].size();
 
-    std::cout << "Rank " << blacs::mpirank << " struc " << t << " label_size " << label_size << std::endl; 
-    std::cout << "cum_f=" << cum_f << ", nmin_struc=" << nmin_struc << ", nmax_struc=" << nmax_struc << std::endl;
-
     if (nmin_struc < cum_f + label_size && cum_f < nmax_struc) {
       for (int l = 0; l < label_size; l++) {
         if (cum_f + l >= nmin_struc && cum_f + l < nmax_struc) {
@@ -459,7 +414,6 @@ void ParallelSGP::compute_matrices(
     
           // Assign training label to y 
           b.set(cum_f + l, 0, training_labels[t](l) * global_noise_vector_sqrt(cum_f + l)); 
-//          std::cout << "y=" << training_labels[t](l) << ", cum_f=" << cum_f << ", t=" << t << ", l=" << l << ", rank=" << blacs::mpirank << ", nmin=" << nmin_struc << ", nmax=" << nmax_struc << ", noise=" << global_noise_vector_sqrt(cum_f+l) << std::endl;
         }
       }
       local_f += label_size;
@@ -467,66 +421,30 @@ void ParallelSGP::compute_matrices(
 
     cum_f += label_size;
   }
-  std::cout << "rank=" << blacs::mpirank << ", nmin=" << nmin_struc << ", nmax=" << nmax_struc << std::endl;
 
   // Wait until the communication is done
   A.fence();
   b.fence();
-//  Kuu_dist.fence();
-  std::cout << "Done A b Kuu fence" << std::endl; 
 
-  //  Eigen::MatrixXd Aeig = Eigen::MatrixXd::Random(u_size, u_size);
-  //  MPI_Bcast(Aeig.data(), u_size * u_size, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-  //  // symmetric, positive definite matrix
-  //  Kuu_dist = [&Aeig](int i, int j) {
-  //      return Aeig(i, j) + Aeig(j, i) + (i == j ? 10.0 : 0);
-  //  };
- 
-//  // Symmetrize Kuu_dist
-//  if (blacs::mpirank == 0) {
-//    for (int r = 0; r < u_size; r++) {
-//      for (int c = 0; c < u_size; c++) {
-//      }
-//    }
-//  }
-    
- 
   // Cholesky decomposition of Kuu and its inverse.
   DistMatrix<double> L = Kuu_dist.cholesky();
-  std::cout << "Done cholesky" << std::endl; 
+  L.fence();
   DistMatrix<double> L_inv_dist = L.triangular_invert('L');
-  std::cout << "Done triangular_invert" << std::endl; 
-  //L_diag = L_inv.diagonal();
+  L_inv_dist.fence();
   DistMatrix<double> Kuu_inv_dist = L_inv_dist.matmul(L_inv_dist, 1.0, 'T', 'N'); 
-  std::cout << "Done matmul" << std::endl; 
   Kuu_inv_dist.fence();
 
   // Assign value to Kuu_inverse for varmap
   Kuu_inverse = Eigen::MatrixXd::Zero(u_size, u_size);
-  Kuu = Eigen::MatrixXd::Zero(u_size, u_size);
   for (int u = 0; u < u_size; u++) {
     for (int v = 0; v < u_size; v++) {
       Kuu_inverse(u, v) = Kuu_inv_dist(u, v);
-
-      // TODO: remove the Kuu
-      Kuu(u, v) = Kuu_dist(u, v);
-//      std::cout << "Kuu(" << u << "," << v << ")=" << Kuu(u, v) << std::endl;
-    }
-  }
-
-  // TODO: remove the Kuf, just for debugging
-  Kuf = Eigen::MatrixXd::Zero(u_size, f_size);
-  for (int u = 0; u < u_size; u++) {
-    for (int f = 0; f < f_size; f++) {
-      // TODO: remove the Kuu
-      Kuf(u, f) = A(f, u);
     }
   }
 
   // Assign L.T to A matrix
   cum_f = f_size;
   for (int r = 0; r < u_size; r++) {
-    //if (A.islocal(cum_f, 0)) {
     if (blacs::mpirank == 0) {
       for (int c = 0; c < u_size; c++) {
         A.set(cum_f, c, L(c, r)); // the local_f is actually a global index of L.T
@@ -537,20 +455,19 @@ void ParallelSGP::compute_matrices(
 
   A.fence();
   b.fence();
-  std::cout << "Done A, b fence" << std::endl;
 
   // QR factorize A to compute alpha
   DistMatrix<double> QR(u_size + f_size, u_size);
   std::vector<double> tau;
   std::tie(QR, tau) = A.qr();
-  std::cout << "Done QR decompose" << std::endl;
+  QR.fence();
 
   DistMatrix<double> R(u_size, u_size);                                 // Upper triangular R from QR
   R = [&QR](int i, int j) {return i > j ? 0 : QR(i, j);};
+  blacs::barrier();
   DistMatrix<double> Rinv_dist = R.triangular_invert('U');              // Compute the inverse of R
   DistMatrix<double> Q_b = QR.QT_matmul(b, tau);                        // Q_b = Q^T * b
   DistMatrix<double> alpha_dist = Rinv_dist.matmul(Q_b, 1.0, 'N', 'N'); // alpha = R^-1 * Q_b
-  std::cout << "Done alpha" << std::endl;
 
   // Assign value to alpha for mapping
   alpha = Eigen::VectorXd::Zero(u_size);
@@ -558,19 +475,10 @@ void ParallelSGP::compute_matrices(
     alpha(u) = alpha_dist(u, 0);
   }
 
-  // TODO: Debug, need to remove
-  b_vec = Eigen::VectorXd::Zero(f_size);
-  for (int u = 0; u < f_size; u++) {
-    b_vec(u) = b(u, 0);
-  }
-
-
   }
 
   // finalize BLACS
-  std::cout << "start finalize" << std::endl; 
   blacs::finalize();
-  std::cout << "done finalize" << std::endl; 
 
 }
 
@@ -578,36 +486,20 @@ void ParallelSGP ::predict_local_uncertainties(Structure &test_structure) {
   int n_atoms = test_structure.noa;
   int n_out = 1 + 3 * n_atoms + 6;
 
-  std::cout << "begin kernel_mat" << std::endl;
   int n_sparse = Kuu_inverse.rows();
   Eigen::MatrixXd kernel_mat = Eigen::MatrixXd::Zero(n_sparse, n_out);
   int count = 0;
   for (int i = 0; i < Kuu_kernels.size(); i++) {
-    std::cout << "sparse_desc size " <<  sparse_descriptors[i].n_clusters << " " << global_sparse_descriptors[i].n_clusters << std::endl;
     int size = sparse_descriptors[i].n_clusters; 
     kernel_mat.block(count, 0, size, n_out) = kernels[i]->envs_struc(
         sparse_descriptors[i], test_structure.descriptors[i],
         kernels[i]->kernel_hyperparameters);
     count += size;
   }
-  std::cout << "Done kernel_mat" << std::endl;
 
   test_structure.mean_efs = kernel_mat.transpose() * alpha;
-  //TODO: debug
-  for (int a = 0; a < alpha.size(); a++) {
-    std::cout << "alpha(" << a << ")=" << alpha(a) << std::endl;
-  }
-  for (int r = 0; r < kernel_mat.rows(); r++) {
-    for (int c = 0; c < kernel_mat.cols(); c++) {
-      std::cout << "kmat(" << r << "," << c << ")=" << kernel_mat(r, c) << std::endl;
-    }
-  }
-  std::cout << "Done mean_efs " << kernel_mat.rows() << " " << kernel_mat.cols() << " " << alpha.size() << std::endl;
-  std::cout << "mean efs " << test_structure.mean_efs(0) << std::endl;
-
   std::vector<Eigen::VectorXd> local_uncertainties =
     this->compute_cluster_uncertainties(test_structure);
   test_structure.local_uncertainties = local_uncertainties;
-  std::cout << "Done local uncertainties" << std::endl;
 
 }
