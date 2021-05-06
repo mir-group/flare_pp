@@ -2,6 +2,7 @@
 #include "structure.h"
 #include "y_grad.h"
 #include "sparse_gp.h"
+#include "parallel_sgp.h"
 #include "b2.h"
 #include "b2_simple.h"
 #include "b2_norm.h"
@@ -173,8 +174,6 @@ PYBIND11_MODULE(_C_flare, m) {
       .def("compute_likelihood_gradient",
            &SparseGP::compute_likelihood_gradient)
       .def("write_mapping_coefficients", &SparseGP::write_mapping_coefficients)
-      .def_readonly("varmap_coeffs", &SparseGP::varmap_coeffs) // for debugging and unit test
-      .def("compute_cluster_uncertainties", &SparseGP::compute_cluster_uncertainties) // for debugging and unit test
       .def("write_varmap_coefficients", &SparseGP::write_varmap_coefficients)
       .def_readwrite("Kuu_jitter", &SparseGP::Kuu_jitter)
       .def_readonly("complexity_penalty", &SparseGP::complexity_penalty)
@@ -207,4 +206,38 @@ PYBIND11_MODULE(_C_flare, m) {
       .def_readonly("y", &SparseGP::y)
       .def_static("to_json", &SparseGP::to_json)
       .def_static("from_json", &SparseGP::from_json);
+
+  // Parallel Sparse GP
+  py::class_<ParallelSGP>(m, "ParallelSGP")
+      .def(py::init<>())
+      .def(py::init<std::vector<Kernel *>, double, double, double>())
+      .def("predict_local_uncertainties",
+           &ParallelSGP::predict_local_uncertainties)
+      .def("write_mapping_coefficients", &SparseGP::write_mapping_coefficients)
+      .def("write_varmap_coefficients", &SparseGP::write_varmap_coefficients)
+      .def("build", &ParallelSGP::build)
+      .def_readwrite("log_marginal_likelihood",
+                     &ParallelSGP::log_marginal_likelihood)
+      .def_readwrite("likelihood_gradient", &ParallelSGP::likelihood_gradient)
+      .def_readonly("kernels", &ParallelSGP::kernels)
+      .def_readonly("hyperparameters", &ParallelSGP::hyperparameters)
+      .def_readonly("training_structures", &ParallelSGP::training_structures)
+      .def_readonly("sparse_indices", &ParallelSGP::sparse_indices)
+      .def_readonly("sparse_descriptors", &ParallelSGP::sparse_descriptors)
+      .def_readonly("n_energy_labels", &ParallelSGP::n_energy_labels)
+      .def_readonly("n_force_labels", &ParallelSGP::n_force_labels)
+      .def_readonly("n_stress_labels", &ParallelSGP::n_stress_labels)
+      .def_readonly("force_noise", &ParallelSGP::force_noise)
+      .def_readonly("energy_noise", &ParallelSGP::energy_noise)
+      .def_readonly("stress_noise", &ParallelSGP::stress_noise)
+      .def_readonly("noise_vector", &ParallelSGP::noise_vector)
+      .def_readonly("alpha", &ParallelSGP::alpha)
+      .def_readonly("Kuu_inverse", &ParallelSGP::Kuu_inverse)
+      .def_readonly("Sigma", &ParallelSGP::Sigma)
+      .def_readonly("n_sparse", &ParallelSGP::n_sparse)
+      .def_readonly("n_labels", &ParallelSGP::n_labels)
+      .def_readonly("y", &ParallelSGP::y)
+      .def_static("to_json", &SparseGP::to_json)
+      .def_static("from_json", &SparseGP::from_json);
+
 }
