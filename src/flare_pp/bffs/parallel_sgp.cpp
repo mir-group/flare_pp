@@ -400,7 +400,7 @@ void ParallelSGP::compute_matrices(
     std::cout << "Rank=" << blacs::mpirank << ", kuf.rows=" << kuf[i].rows() << ", kuf.cols=" << kuf[i].cols() << std::endl;
     for (int r = 0; r < kuf[i].rows(); r++) {
       for (int c = 0; c < kuf[i].cols(); c++) {
-        std::cout << "kuf(" << c << "," << r << ")=" << kuf[i](r, c) << std::endl;
+//        std::cout << "kuf(" << c << "," << r << ")=" << kuf[i](r, c) << std::endl;
       }
     }
   }
@@ -459,7 +459,7 @@ void ParallelSGP::compute_matrices(
     
           // Assign training label to y 
           b.set(cum_f + l, 0, training_labels[t](l) * global_noise_vector_sqrt(cum_f + l)); 
-          std::cout << "y=" << training_labels[t](l) << ", cum_f=" << cum_f << ", t=" << t << ", l=" << l << ", rank=" << blacs::mpirank << ", nmin=" << nmin_struc << ", nmax=" << nmax_struc << ", noise=" << global_noise_vector_sqrt(cum_f+l) << std::endl;
+//          std::cout << "y=" << training_labels[t](l) << ", cum_f=" << cum_f << ", t=" << t << ", l=" << l << ", rank=" << blacs::mpirank << ", nmin=" << nmin_struc << ", nmax=" << nmax_struc << ", noise=" << global_noise_vector_sqrt(cum_f+l) << std::endl;
         }
       }
       local_f += label_size;
@@ -491,22 +491,22 @@ void ParallelSGP::compute_matrices(
 //  }
     
  
-//  // Cholesky decomposition of Kuu and its inverse.
-//  DistMatrix<double> L = Kuu_dist.cholesky();
-//  std::cout << "Done cholesky" << std::endl; 
-//  DistMatrix<double> L_inv_dist = L.triangular_invert('L');
-//  std::cout << "Done triangular_invert" << std::endl; 
-//  //L_diag = L_inv.diagonal();
-//  DistMatrix<double> Kuu_inv_dist = L_inv_dist.matmul(L_inv_dist, 1.0, 'T', 'N'); 
-//  std::cout << "Done matmul" << std::endl; 
-//  Kuu_inv_dist.fence();
+  // Cholesky decomposition of Kuu and its inverse.
+  DistMatrix<double> L = Kuu_dist.cholesky();
+  std::cout << "Done cholesky" << std::endl; 
+  DistMatrix<double> L_inv_dist = L.triangular_invert('L');
+  std::cout << "Done triangular_invert" << std::endl; 
+  //L_diag = L_inv.diagonal();
+  DistMatrix<double> Kuu_inv_dist = L_inv_dist.matmul(L_inv_dist, 1.0, 'T', 'N'); 
+  std::cout << "Done matmul" << std::endl; 
+  Kuu_inv_dist.fence();
 
   // Assign value to Kuu_inverse for varmap
   Kuu_inverse = Eigen::MatrixXd::Zero(u_size, u_size);
   Kuu = Eigen::MatrixXd::Zero(u_size, u_size);
   for (int u = 0; u < u_size; u++) {
     for (int v = 0; v < u_size; v++) {
-//      Kuu_inverse(u, v) = Kuu_inv_dist(u, v);
+      Kuu_inverse(u, v) = Kuu_inv_dist(u, v);
 
       // TODO: remove the Kuu
       Kuu(u, v) = Kuu_dist(u, v);
@@ -523,40 +523,40 @@ void ParallelSGP::compute_matrices(
     }
   }
 
-//  // Assign L.T to A matrix
-//  cum_f = f_size;
-//  for (int r = 0; r < u_size; r++) {
-//    //if (A.islocal(cum_f, 0)) {
-//    if (blacs::mpirank == 0) {
-//      for (int c = 0; c < u_size; c++) {
-//        A.set(cum_f, c, L(c, r)); // the local_f is actually a global index of L.T
-//      }
-//    }
-//    cum_f += 1;
-//  }
+  // Assign L.T to A matrix
+  cum_f = f_size;
+  for (int r = 0; r < u_size; r++) {
+    //if (A.islocal(cum_f, 0)) {
+    if (blacs::mpirank == 0) {
+      for (int c = 0; c < u_size; c++) {
+        A.set(cum_f, c, L(c, r)); // the local_f is actually a global index of L.T
+      }
+    }
+    cum_f += 1;
+  }
 
   A.fence();
   b.fence();
   std::cout << "Done A, b fence" << std::endl;
 
-//  // QR factorize A to compute alpha
-//  DistMatrix<double> QR(u_size + f_size, u_size);
-//  std::vector<double> tau;
-//  std::tie(QR, tau) = A.qr();
-//  std::cout << "Done QR decompose" << std::endl;
-//
-//  DistMatrix<double> R(u_size, u_size);                                 // Upper triangular R from QR
-//  R = [&QR](int i, int j) {return i > j ? 0 : QR(i, j);};
-//  DistMatrix<double> Rinv_dist = R.triangular_invert('U');              // Compute the inverse of R
-//  DistMatrix<double> Q_b = QR.QT_matmul(b, tau);                        // Q_b = Q^T * b
-//  DistMatrix<double> alpha_dist = Rinv_dist.matmul(Q_b, 1.0, 'N', 'N'); // alpha = R^-1 * Q_b
-//  std::cout << "Done alpha" << std::endl;
-//
-//  // Assign value to alpha for mapping
-//  alpha = Eigen::VectorXd::Zero(u_size);
-//  for (int u = 0; u < u_size; u++) {
-//    alpha(u) = alpha_dist(u, 0);
-//  }
+  // QR factorize A to compute alpha
+  DistMatrix<double> QR(u_size + f_size, u_size);
+  std::vector<double> tau;
+  std::tie(QR, tau) = A.qr();
+  std::cout << "Done QR decompose" << std::endl;
+
+  DistMatrix<double> R(u_size, u_size);                                 // Upper triangular R from QR
+  R = [&QR](int i, int j) {return i > j ? 0 : QR(i, j);};
+  DistMatrix<double> Rinv_dist = R.triangular_invert('U');              // Compute the inverse of R
+  DistMatrix<double> Q_b = QR.QT_matmul(b, tau);                        // Q_b = Q^T * b
+  DistMatrix<double> alpha_dist = Rinv_dist.matmul(Q_b, 1.0, 'N', 'N'); // alpha = R^-1 * Q_b
+  std::cout << "Done alpha" << std::endl;
+
+  // Assign value to alpha for mapping
+  alpha = Eigen::VectorXd::Zero(u_size);
+  for (int u = 0; u < u_size; u++) {
+    alpha(u) = alpha_dist(u, 0);
+  }
 
   // TODO: Debug, need to remove
   b_vec = Eigen::VectorXd::Zero(f_size);
@@ -593,10 +593,20 @@ void ParallelSGP ::predict_local_uncertainties(Structure &test_structure) {
   std::cout << "Done kernel_mat" << std::endl;
 
   test_structure.mean_efs = kernel_mat.transpose() * alpha;
+  //TODO: debug
+  for (int a = 0; a < alpha.size(); a++) {
+    std::cout << "alpha(" << a << ")=" << alpha(a) << std::endl;
+  }
+  for (int r = 0; r < kernel_mat.rows(); r++) {
+    for (int c = 0; c < kernel_mat.cols(); c++) {
+      std::cout << "kmat(" << r << "," << c << ")=" << kernel_mat(r, c) << std::endl;
+    }
+  }
   std::cout << "Done mean_efs " << kernel_mat.rows() << " " << kernel_mat.cols() << " " << alpha.size() << std::endl;
+  std::cout << "mean efs " << test_structure.mean_efs(0) << std::endl;
 
   std::vector<Eigen::VectorXd> local_uncertainties =
-    compute_cluster_uncertainties(test_structure);
+    this->compute_cluster_uncertainties(test_structure);
   test_structure.local_uncertainties = local_uncertainties;
   std::cout << "Done local uncertainties" << std::endl;
 
