@@ -94,12 +94,17 @@ public:
 
   Structure(const Eigen::MatrixXd &cell, const std::vector<int> &species,
             const Eigen::MatrixXd &positions, double cutoff,
+            std::vector<Descriptor *> descriptor_calculators,
+            std::vector<int> atoms);
+
+  Structure(const Eigen::MatrixXd &cell, const std::vector<int> &species,
+            const Eigen::MatrixXd &positions, double cutoff,
             std::vector<Descriptor *> descriptor_calculators);
 
   Eigen::MatrixXd wrap_positions();
   double get_single_sweep_cutoff();
-  void compute_neighbors();
-  void compute_descriptors();
+  void compute_neighbors(std::vector<int> atoms);
+  void compute_descriptors(std::vector<int> atoms);
 
   NLOHMANN_DEFINE_TYPE_INTRUSIVE(Structure, neighbor_count,
     cutoff, cumulative_neighbor_count, structure_indices, neighbor_species,

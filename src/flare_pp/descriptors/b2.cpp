@@ -74,6 +74,12 @@ void B2 ::write_to_file(std::ofstream &coeff_file, int coeff_size) {
 }
 
 DescriptorValues B2 ::compute_struc(Structure &structure) {
+  std::vector<int> atoms(structure.noa);
+  std::iota(atoms.begin(), atoms.end(), 0);
+  compute_struc(structure, atoms);
+}
+
+DescriptorValues B2 ::compute_struc(Structure &structure, std::vector<int> atoms) {
 
   // Initialize descriptor values.
   DescriptorValues desc = DescriptorValues();
@@ -99,7 +105,7 @@ DescriptorValues B2 ::compute_struc(Structure &structure) {
 
   compute_b2(B2_vals, B2_force_dervs, B2_norms, B2_force_dots, single_bond_vals,
              force_dervs, unique_neighbor_count, cumulative_neighbor_count,
-             descriptor_indices, nos, N, lmax);
+             descriptor_indices, nos, N, lmax, atoms);
 
   // Gather species information.
   int noa = structure.noa;
@@ -185,7 +191,7 @@ void compute_b2(Eigen::MatrixXd &B2_vals, Eigen::MatrixXd &B2_force_dervs,
                 const Eigen::VectorXi &unique_neighbor_count,
                 const Eigen::VectorXi &cumulative_neighbor_count,
                 const Eigen::VectorXi &descriptor_indices, int nos, int N,
-                int lmax) {
+                int lmax, std::vector<int> atoms) {
 
   int n_atoms = single_bond_vals.rows();
   int n_neighbors = cumulative_neighbor_count(n_atoms);
@@ -202,6 +208,18 @@ void compute_b2(Eigen::MatrixXd &B2_vals, Eigen::MatrixXd &B2_force_dervs,
 
 #pragma omp parallel for
   for (int atom = 0; atom < n_atoms; atom++) {
+    bool skip_atom = false;
+    if (atoms.size() < n_atoms) {
+      skip_atom = true;
+      for (int a = 0; a < atoms.size(); a++) {
+        if (a == atom) {
+          skip_atom = false;
+          break;
+        }
+      }
+    }
+    if (skip_atom) continue;
+
     int n_atom_neighbors = unique_neighbor_count(atom);
     int force_start = cumulative_neighbor_count(atom) * 3;
     int n1, n2, l, m, n1_l, n2_l;
