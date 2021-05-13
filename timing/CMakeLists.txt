@@ -11,4 +11,4 @@
 add_executable(time_mpi mpi_construction.cpp)
 #target_include_directories(time_mpi PUBLIC ${ACE_INCLUDE_DIR})
 include_directories(../src/flare_pp)
-target_link_libraries(time_mpi PUBLIC flare_pp)
+target_link_libraries(time_mpi PUBLIC flare)

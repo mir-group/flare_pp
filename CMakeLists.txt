@@ -226,4 +226,4 @@ set_target_properties(flare_module PROPERTIES OUTPUT_NAME "_C_flare")
 # Add test directory.
 add_subdirectory(tests)
 
-#add_subdirectory(timing)
+add_subdirectory(timing)

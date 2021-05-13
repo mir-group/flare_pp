@@ -11,18 +11,26 @@
 #include "structure.h"
 #include "normalized_dot_product.h"
 
-int main() {
+int main(int argc, char* argv[]) {
   double sigma_e = 1;
   double sigma_f = 2;
   double sigma_s = 3;
 
   int n_atoms = 100; 
   int n_envs = 5;
-  int n_strucs = 10;
-  int n_species = 3;
+  int n_strucs = std::stoi(argv[1]);
+  int n_species = 2;
 
   double cell_size = 10;
   double cutoff = cell_size / 2;
+
+  int N = 8;
+  int L = 3;
+  std::string radial_string = "chebyshev";
+  std::string cutoff_string = "cosine";
+  std::vector<double> radial_hyps{0, cutoff};
+  std::vector<double> cutoff_hyps;
+  std::vector<int> descriptor_settings{n_species, N, L};
 
   std::vector<Descriptor *> dc;
   B2 ps(radial_string, cutoff_string, radial_hyps, cutoff_hyps,
@@ -50,7 +58,7 @@ int main() {
 
     // Make random positions
     Eigen::MatrixXd positions = Eigen::MatrixXd::Random(n_atoms, 3) * cell_size / 2;
-    MPI_Bcast(positions.data(), n_atoms_1 * 3, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    MPI_Bcast(positions.data(), n_atoms * 3, MPI_DOUBLE, 0, MPI_COMM_WORLD);
     training_positions.push_back(positions);
   
     // Make random labels
@@ -70,8 +78,8 @@ int main() {
     std::vector<int> env_inds;
     for (int i = 0; i < n_atoms; i++) env_inds.push_back(i);
     std::random_shuffle( env_inds.begin(), env_inds.end() );
-    Eigen::VectorXi sparse_inds = Eigen::VectorXi::Zero(n_envs);
-    for (int i = 0; i < n_envs; i++) sparse_inds(i) = env_inds[i];
+    std::vector<int> sparse_inds;
+    for (int i = 0; i < n_envs; i++) sparse_inds.push_back(env_inds[i]);
     MPI_Bcast(sparse_inds.data(), n_envs, MPI_INT, 0, MPI_COMM_WORLD);
     sparse_indices[0].push_back(sparse_inds);
   }
@@ -87,6 +95,5 @@ int main() {
   duration += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2 - t1 ).count();
   std::cout << "Rank: " << blacs::mpirank << ", time: " << duration << " ms" << std::endl;
 
-  blacs::finalize();
   return 0;
 }
