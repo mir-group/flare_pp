@@ -2,7 +2,6 @@
 #include "omp.h"
 #include <fstream> // File operations
 #include <iostream>
-#include <chrono>
 
 Structure ::Structure() {}
 
@@ -29,37 +28,6 @@ Structure ::Structure(const Eigen::MatrixXd &cell,
 Structure ::Structure(const Eigen::MatrixXd &cell,
                       const std::vector<int> &species,
                       const Eigen::MatrixXd &positions, double cutoff,
-                      std::vector<Descriptor *> descriptor_calculators, 
-                      std::vector<int> atoms)
-    : Structure(cell, species, positions) {
-
-  this->cutoff = cutoff;
-  this->descriptor_calculators = descriptor_calculators;
-  sweep = ceil(cutoff / single_sweep_cutoff);
-
-  // Initialize neighbor count.
-  neighbor_count = Eigen::VectorXi::Zero(noa);
-  cumulative_neighbor_count = Eigen::VectorXi::Zero(noa + 1);
-
-  double duration = 0;
-  std::chrono::high_resolution_clock::time_point t1 = std::chrono::high_resolution_clock::now();
-  compute_neighbors(atoms);
-  std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
-  duration += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2 - t1 ).count();
-  std::cout << "Time:  compute_neighbors: " << duration << " ms" << std::endl;
-
-  duration = 0;
-  t1 = std::chrono::high_resolution_clock::now();
-  compute_descriptors(atoms);
-  t2 = std::chrono::high_resolution_clock::now();
-  duration += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2 - t1 ).count();
-  std::cout << "Time:  compute_descriptors: " << duration << " ms" << std::endl;
-
-}
-
-Structure ::Structure(const Eigen::MatrixXd &cell,
-                      const std::vector<int> &species,
-                      const Eigen::MatrixXd &positions, double cutoff,
                       std::vector<Descriptor *> descriptor_calculators)
     : Structure(cell, species, positions) {
 
@@ -71,33 +39,18 @@ Structure ::Structure(const Eigen::MatrixXd &cell,
   neighbor_count = Eigen::VectorXi::Zero(noa);
   cumulative_neighbor_count = Eigen::VectorXi::Zero(noa + 1);
 
-  std::vector<int> atoms;
-  for (int i = 0; i < this->noa; i++) atoms.push_back(i);
-
-  double duration = 0;
-  std::chrono::high_resolution_clock::time_point t1 = std::chrono::high_resolution_clock::now();
-  compute_neighbors(atoms);
-  std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
-  duration += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2 - t1 ).count();
-  std::cout << "Time:  compute_neighbors: " << duration << " ms" << std::endl;
-
-  duration = 0;
-  t1 = std::chrono::high_resolution_clock::now();
-  compute_descriptors(atoms);
-  t2 = std::chrono::high_resolution_clock::now();
-  duration += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2 - t1 ).count();
-  std::cout << "Time:  compute_descriptors: " << duration << " ms" << std::endl;
-
+  compute_neighbors();
+  compute_descriptors();
 }
 
-void Structure ::compute_descriptors(std::vector<int> atoms){
+void Structure ::compute_descriptors(){
   descriptors.clear();
   for (int i = 0; i < descriptor_calculators.size(); i++){
-    descriptors.push_back(descriptor_calculators[i]->compute_struc(*this, atoms));
+    descriptors.push_back(descriptor_calculators[i]->compute_struc(*this));
   }
 }
 
-void Structure ::compute_neighbors(std::vector<int> atoms) {
+void Structure ::compute_neighbors() {
   // Count the neighbors of each atom and compute the relative positions
   // of all candidate neighbors.
   int sweep_unit = 2 * sweep + 1;
@@ -109,19 +62,6 @@ void Structure ::compute_neighbors(std::vector<int> atoms) {
 // Compute neighbor lists and relative positions.
 #pragma omp parallel for
   for (int i = 0; i < noa; i++) {
-
-    bool skip_atom = false;
-    if (atoms.size() < noa) {
-      skip_atom = true;
-      for (int a = 0; a < atoms.size(); a++) {
-        if (a == i) {
-          skip_atom = false;
-          break;
-        }
-      }
-    }
-    if (skip_atom) continue;
-
     Eigen::MatrixXd pos_atom = wrapped_positions.row(i);
     int i_index = i * noa * sweep_no;
     int counter = 0;
@@ -164,19 +104,6 @@ void Structure ::compute_neighbors(std::vector<int> atoms) {
   neighbor_species = Eigen::VectorXi::Zero(n_neighbors);
 #pragma omp parallel for
   for (int i = 0; i < noa; i++) {
-
-    bool skip_atom = false;
-    if (atoms.size() < noa) {
-      skip_atom = true;
-      for (int a = 0; a < atoms.size(); a++) {
-        if (a == i) {
-          skip_atom = false;
-          break;
-        }
-      }
-    }
-    if (skip_atom) continue;
-
     int n_neighbors = neighbor_count(i);
     int rel_index = cumulative_neighbor_count(i);
     int all_index = i * noa * sweep_no;

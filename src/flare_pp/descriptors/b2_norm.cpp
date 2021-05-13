@@ -141,11 +141,9 @@ void compute_b2_norm(
   // Compute unnormalized B2 values.
   Eigen::MatrixXd B2_vals_1, B2_force_dervs_1;
   Eigen::VectorXd B2_norms_1, B2_force_dots_1;
-  std::vector<int> atoms;
-  for (int i = 0; i < n_atoms; i++) atoms.push_back(i);
   compute_b2(B2_vals_1, B2_force_dervs_1, B2_norms_1, B2_force_dots_1,
              single_bond_vals, single_bond_force_dervs, unique_neighbor_count,
-             cumulative_neighbor_count, descriptor_indices, nos, N, lmax, atoms);
+             cumulative_neighbor_count, descriptor_indices, nos, N, lmax);
 
   // Normalize the descriptor values.
   B2_vals = Eigen::MatrixXd::Zero(n_atoms, n_d);

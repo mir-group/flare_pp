@@ -46,7 +46,6 @@ public:
      const Eigen::MatrixXd &cutoffs);
 
   DescriptorValues compute_struc(Structure &structure);
-  DescriptorValues compute_struc(Structure &structure, std::vector<int> atoms);
 
   void write_to_file(std::ofstream &coeff_file, int coeff_size);
 
@@ -60,7 +59,7 @@ void compute_b2(Eigen::MatrixXd &B2_vals, Eigen::MatrixXd &B2_force_dervs,
                 const Eigen::VectorXi &unique_neighbor_count,
                 const Eigen::VectorXi &cumulative_neighbor_count,
                 const Eigen::VectorXi &descriptor_indices, int nos, int N,
-                int lmax, std::vector<int> atoms);
+                int lmax);
 
 /**
  * Compute single bond vector with different cutoffs assigned to different
