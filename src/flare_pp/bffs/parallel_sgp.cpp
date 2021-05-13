@@ -7,6 +7,9 @@
 #include <iostream>
 #include <numeric> // Iota
 
+#define MAXLINE 1024
+
+
 ParallelSGP ::ParallelSGP() {}
 
 ParallelSGP ::ParallelSGP(std::vector<Kernel *> kernels, double energy_noise,
@@ -241,10 +244,20 @@ void ParallelSGP::build(const std::vector<Eigen::MatrixXd> &training_cells,
         double cutoff, std::vector<Descriptor *> descriptor_calculators,
         const std::vector<std::vector<std::vector<int>>> &training_sparse_indices) {
 
+  double duration = 0;
+  std::chrono::high_resolution_clock::time_point t1 = std::chrono::high_resolution_clock::now();
   load_local_training_data(training_cells, training_species, training_positions,
         training_labels, cutoff, descriptor_calculators, training_sparse_indices);
+  std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
+  duration += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2 - t1 ).count();
+  std::cout << "Rank: " << blacs::mpirank << ", load_local_training_data: " << duration << " ms" << std::endl;
 
+  duration = 0;
+  t1 = std::chrono::high_resolution_clock::now();
   compute_matrices(training_labels, descriptor_calculators, training_sparse_indices);
+  t2 = std::chrono::high_resolution_clock::now();
+  duration += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2 - t1 ).count();
+  std::cout << "Rank: " << blacs::mpirank << ", compute_matrices: " << duration << " ms" << std::endl;
 
 }
 
@@ -254,6 +267,8 @@ void ParallelSGP::load_local_training_data(const std::vector<Eigen::MatrixXd> &t
         const std::vector<Eigen::VectorXd> &training_labels,
         double cutoff, std::vector<Descriptor *> descriptor_calculators,
         const std::vector<std::vector<std::vector<int>>> &training_sparse_indices) {
+  double duration = 0;
+  std::chrono::high_resolution_clock::time_point t1 = std::chrono::high_resolution_clock::now();
 
   // initialize BLACS
   blacs::initialize();
@@ -297,28 +312,56 @@ void ParallelSGP::load_local_training_data(const std::vector<Eigen::MatrixXd> &t
     nmax_struc = (world_rank + 1) * f_size_per_proc;
     nmax_envs = (world_rank + 1) * u_size_per_proc;
   }
+  std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
+  duration += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2 - t1 ).count();
+  std::cout << "Rank: " << blacs::mpirank << ", initialize & get data info: " << duration << " ms" << std::endl;
+
+  duration = 0;
+  t1 = std::chrono::high_resolution_clock::now();
+  double time_build, time_noise, time_add_struc, time_add_env;
+  std::chrono::high_resolution_clock::time_point t1_inner, t2_inner, t3_inner, t4_inner, t5_inner;
 
   // Distribute the training structures and sparse envs
   global_n_labels = 0;
   for (int t = 0; t < training_cells.size(); t++) {
+    t1_inner = std::chrono::high_resolution_clock::now();
+
+    int label_size = training_labels[t].size();
+    int noa = training_positions[t].rows();
+    assert (label_size == 1 + 3 * noa + 6); 
     struc = Structure(training_cells[t], training_species[t], 
-            training_positions[t], cutoff, descriptor_calculators);
-    int label_size = 1 + struc.noa * 3 + 6;
-    assert(label_size == training_labels[t].size());
+          training_positions[t], cutoff, descriptor_calculators);
+
+//    if (nmin_struc < cum_f + label_size && cum_f < nmax_struc) {
+//      struc = Structure(training_cells[t], training_species[t], 
+//            training_positions[t], cutoff, descriptor_calculators);
+//    } else {
+//      struc = Structure(training_cells[t], training_species[t], 
+//            training_positions[t], cutoff, descriptor_calculators, 
+//            training_sparse_indices[0][t]);
+//    }
+
     struc.energy = training_labels[t].segment(cum_f, 1);
     struc.forces = training_labels[t].segment(cum_f + 1, 3 * struc.noa);
     struc.stresses = training_labels[t].segment(cum_f + 3 * struc.noa, 6); 
     
+    t2_inner = std::chrono::high_resolution_clock::now();
+    time_build += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2_inner - t1_inner ).count();
     add_global_noise(struc); // for b
 
     //global_sparse_descriptors = initialize_sparse_descriptors(struc, global_sparse_descriptors);
     initialize_global_sparse_descriptors(struc);
+
+    t3_inner = std::chrono::high_resolution_clock::now();
+    time_noise += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t3_inner - t2_inner ).count();
 
     if (nmin_struc < cum_f + label_size && cum_f < nmax_struc) {
       // Collect local training structures for A
       add_training_structure(struc);
     }
 
+    t4_inner = std::chrono::high_resolution_clock::now();
+    time_add_struc += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t4_inner - t3_inner ).count();
     // TODO: now all the kernels share the same sparse envs
     add_global_specific_environments(struc, training_sparse_indices[0][t]);
     if (nmin_struc < cum_f + label_size && cum_f < nmax_struc) {
@@ -327,11 +370,18 @@ void ParallelSGP::load_local_training_data(const std::vector<Eigen::MatrixXd> &t
     }
 
     cum_f += label_size;
+    t5_inner = std::chrono::high_resolution_clock::now();
+    time_add_env += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t5_inner - t4_inner ).count();
 
   }
   // Assign global sparse descritors
   sparse_descriptors = global_sparse_descriptors;
   blacs::barrier();
+
+  t2 = std::chrono::high_resolution_clock::now();
+  duration += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2 - t1 ).count();
+  std::cout << "Rank: " << blacs::mpirank << ", distribute training data: " << duration << " ms" << std::endl;
+  std::cout << "Rank: " << blacs::mpirank << ", time_build: " << time_build << " ms, time_noise: " << time_noise << " ms, time_add_struc: " << time_add_struc << " ms, time_add_env: " << time_add_env << " ms" << std::endl;
 
 }
 
@@ -339,6 +389,8 @@ void ParallelSGP::compute_matrices(
         const std::vector<Eigen::VectorXd> &training_labels,
         std::vector<Descriptor *> descriptor_calculators,
         const std::vector<std::vector<std::vector<int>>> &training_sparse_indices) {
+  double duration = 0;
+  std::chrono::high_resolution_clock::time_point t1 = std::chrono::high_resolution_clock::now();
 
   // Build block of A, y, Kuu using distributed training structures
   std::vector<Eigen::MatrixXd> kuf, kuu;
@@ -364,7 +416,6 @@ void ParallelSGP::compute_matrices(
                 kernels[i]->kernel_hyperparameters));
     }
   }
-
   // Store square root of noise vector.
   Eigen::VectorXd noise_vector_sqrt = sqrt(noise_vector.array());
   Eigen::VectorXd global_noise_vector_sqrt = sqrt(global_noise_vector.array());
@@ -372,8 +423,16 @@ void ParallelSGP::compute_matrices(
   // Synchronize, wait until all training structures are ready on all processors
   blacs::barrier();
 
+  std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
+  duration += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2 - t1 ).count();
+  std::cout << "Rank: " << blacs::mpirank << ", build local kuf kuu: " << duration << " ms" << std::endl;
+
+
   // Create distributed matrices
   { // specify the scope of the DistMatrix
+  duration = 0;
+  t1 = std::chrono::high_resolution_clock::now();
+
   DistMatrix<double> A(f_size + u_size, u_size); // use the default blocking
   DistMatrix<double> b(f_size + u_size, 1);
   DistMatrix<double> Kuu_dist(  u_size, u_size);
@@ -395,6 +454,13 @@ void ParallelSGP::compute_matrices(
     }
   }
   Kuu_dist.fence();
+
+  t2 = std::chrono::high_resolution_clock::now();
+  duration += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2 - t1 ).count();
+  std::cout << "Rank: " << blacs::mpirank << ", set Kuu_dist: " << duration << " ms" << std::endl;
+
+  duration = 0;
+  t1 = std::chrono::high_resolution_clock::now();
 
   int cum_f = 0;
   int local_f = 0;
@@ -426,6 +492,14 @@ void ParallelSGP::compute_matrices(
   A.fence();
   b.fence();
 
+  t2 = std::chrono::high_resolution_clock::now();
+  duration += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2 - t1 ).count();
+  std::cout << "Rank: " << blacs::mpirank << ", set A & b: " << duration << " ms" << std::endl;
+
+  duration = 0;
+  t1 = std::chrono::high_resolution_clock::now();
+
+
   // Cholesky decomposition of Kuu and its inverse.
   DistMatrix<double> L = Kuu_dist.cholesky();
   L.fence();
@@ -433,6 +507,14 @@ void ParallelSGP::compute_matrices(
   L_inv_dist.fence();
   DistMatrix<double> Kuu_inv_dist = L_inv_dist.matmul(L_inv_dist, 1.0, 'T', 'N'); 
   Kuu_inv_dist.fence();
+
+  t2 = std::chrono::high_resolution_clock::now();
+  duration += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2 - t1 ).count();
+  std::cout << "Rank: " << blacs::mpirank << ", cholestky, tri_inv, matmul: " << duration << " ms" << std::endl;
+
+  duration = 0;
+  t1 = std::chrono::high_resolution_clock::now();
+
 
   // Assign value to Kuu_inverse for varmap
   Kuu_inverse = Eigen::MatrixXd::Zero(u_size, u_size);
@@ -454,13 +536,28 @@ void ParallelSGP::compute_matrices(
   }
 
   A.fence();
-  b.fence();
+
+  t2 = std::chrono::high_resolution_clock::now();
+  duration += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2 - t1 ).count();
+  std::cout << "Rank: " << blacs::mpirank << ", set L_inv to A: " << duration << " ms" << std::endl;
+
+  duration = 0;
+  t1 = std::chrono::high_resolution_clock::now();
+
 
   // QR factorize A to compute alpha
   DistMatrix<double> QR(u_size + f_size, u_size);
   std::vector<double> tau;
   std::tie(QR, tau) = A.qr();
   QR.fence();
+
+  t2 = std::chrono::high_resolution_clock::now();
+  duration += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2 - t1 ).count();
+  std::cout << "Rank: " << blacs::mpirank << ", QR: " << duration << " ms" << std::endl;
+
+  duration = 0;
+  t1 = std::chrono::high_resolution_clock::now();
+
 
   DistMatrix<double> R(u_size, u_size);                                 // Upper triangular R from QR
   R = [&QR](int i, int j) {return i > j ? 0 : QR(i, j);};
@@ -474,6 +571,11 @@ void ParallelSGP::compute_matrices(
   for (int u = 0; u < u_size; u++) {
     alpha(u) = alpha_dist(u, 0);
   }
+
+  t2 = std::chrono::high_resolution_clock::now();
+  duration += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2 - t1 ).count();
+  std::cout << "Rank: " << blacs::mpirank << ", get alpha: " << duration << " ms" << std::endl;
+
 
   }
 
@@ -503,3 +605,4 @@ void ParallelSGP ::predict_local_uncertainties(Structure &test_structure) {
   test_structure.local_uncertainties = local_uncertainties;
 
 }
+
