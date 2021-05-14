@@ -1,4 +1,5 @@
 #include "utils.h"
+#include "structure.h"
 #include <Eigen/Dense>
 #include <cmath>
 #include <cstdio>
@@ -52,18 +53,18 @@ std::vector<std::string> split(const std::string &s, char delim) {
   return elems;
 }
 
-int utils::read_xyz(char *filename) {
+std::tuple<std::vector<Structure>, std::vector<std::vector<int>>> utils::read_xyz(char *filename) {
+
   std::ifstream file(filename);
-  int n_atoms;
+  int n_atoms, atom_ind;
   Eigen::MatrixXd cell, positions;
-  Eigen::VectorXd labels;
+  double energy;
+  Eigen::VectorXd forces, stress;
   std::vector<int> species;
 
+  std::vector<Structure> structure_list;
+  std::vector<std::vector<int>> sparse_inds_list;
   std::vector<std::string> values;
-  std::vector<Eigen::MatrixXd> cell_list, position_list;
-  std::vector<Eigen::VectorXd> label_list;
-  std::vector<std::vector<int>> species_list;
-  std::vector<std::vector<int>> sparse_ind_list;
 
   if (file.is_open()) {
     std::string line;
@@ -74,20 +75,57 @@ int utils::read_xyz(char *filename) {
         n_atoms = std::stoi(values[0]);
         cell = Eigen::MatrixXd::Zero(3, 3);
         positions = Eigen::MatrixXd::Zero(n_atoms, 3);
-        labels = Eigen::VectorXd::Zero(1 + 3 * n_atoms + 6);
+        forces = Eigen::VectorXd::Zero(n_atoms * 3);
+        energy = 0;
+        stress = Eigen::VectorXd::Zero(6);
         species = Eigen::VectorXd::Zeros(n_atoms);
         std::vector<int> sparse_inds;
+        atom_ind = 0;
       } else if (values.size() >= 16) {
-        // the 2nd line of a block, including cell, energy, stress, sparse indices
+        // the 2nd line of a block, including cell (9), energy (1), stress (6), sparse indices
+        cell(0, 0) = std::stod(values[0]);
+        cell(0, 1) = std::stod(values[1]);
+        cell(0, 2) = std::stod(values[2]);
+        cell(1, 0) = std::stod(values[3]);
+        cell(1, 1) = std::stod(values[4]);
+        cell(1, 2) = std::stod(values[5]);
+        cell(2, 0) = std::stod(values[6]);
+        cell(2, 1) = std::stod(values[7]);
+        cell(2, 2) = std::stod(values[8]);
+        energy = std::stod(values[9]);
+        stress(0) = std::stod(values[10]);
+        stress(1) = std::stod(values[11]);
+        stress(2) = std::stod(values[12]);
+        stress(3) = std::stod(values[13]);
+        stress(4) = std::stod(values[14]);
+        stress(5) = std::stod(values[15]);
+        for (int i = 16; i < values.size(); i++) {
+          sparse_inds.push_back(std::stoi(values[i]));
+        }
       } else if (values.size() == 7) {
         // the rest n_atoms lines of a block, with format "symbol x y z fx fy fz"
+        species(atom_ind) = std::stoi(values[0]);
+        positions(atom_ind, 0) = std::stod(values[1]);
+        positions(atom_ind, 1) = std::stod(values[2]);
+        positions(atom_ind, 2) = std::stod(values[3]);
+        forces(3 * atom_ind + 0) = std::stod(values[4]);
+        forces(3 * atom_ind + 1) = std::stod(values[5]);
+        forces(3 * atom_ind + 2) = std::stod(values[6]);
+        atom_ind += 1;
       } else {
         // raise error
+        printf("Unknown line!!!");
       }
-      printf("%s", line.c_str());
+
+      Structure structure(cell, species, positions);
+      structure.energy = energy;
+      structure.forces = forces;
+      structure.stresses = stress;
+      structure_list.push_back(structure); 
+      sparse_inds_list.push_back(sparse_inds);
 
     }
     file.close();
   }
-  return 0;
+  return std::make_tuple(structure_list, sparse_inds_list);
 }
