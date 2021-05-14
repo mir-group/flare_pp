@@ -72,8 +72,8 @@ public:
   Eigen::VectorXd global_noise_vector;
 
   void add_training_structure(const Structure &structure);
-  std::vector<std::vector<std::vector<int>>>
-  sparse_indices_by_type(const Structure &structure, const std::vector<int> atoms);    
+  
+  Eigen::VectorXi sparse_indices_by_type(int n_types, std::vector<int> species, const std::vector<int> atoms);    
   void add_local_specific_environments(const Structure &structure, const std::vector<int> atoms);
   void add_global_specific_environments(const Structure &structure, const std::vector<int> atoms);
   void update_Kuu(const std::vector<ClusterDescriptor> &cluster_descriptors);

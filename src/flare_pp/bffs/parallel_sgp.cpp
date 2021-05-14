@@ -140,37 +140,18 @@ void ParallelSGP ::add_training_structure(const Structure &structure) {
   n_strucs += 1;
 }
 
-std::vector<std::vector<std::vector<int>>>
-ParallelSGP ::sparse_indices_by_type(const Structure &structure,
-                                     const std::vector<int> atoms) {
-
-  // Gather clusters with central atom in the given list.
-  std::vector<std::vector<std::vector<int>>> indices_1;
-  for (int i = 0; i < n_kernels; i++){
-    // TODO: change to local/global sparse_indices
-//    sparse_indices[i].push_back(atoms); // for each kernel the added atoms are the same
-
-    int n_types = structure.descriptors[i].n_types;
-    std::vector<std::vector<int>> indices_2;
-    for (int j = 0; j < n_types; j++){
-      int n_clusters = structure.descriptors[i].n_clusters_by_type[j];
-      std::vector<int> indices_3;
-      for (int k = 0; k < n_clusters; k++){
-        int atom_index_1 = structure.descriptors[i].atom_indices[j](k);
-        for (int l = 0; l < atoms.size(); l++){
-          int atom_index_2 = atoms[l];
-          if (atom_index_1 == atom_index_2){
-            indices_3.push_back(k);
-          }
-        }
-      }
-      indices_2.push_back(indices_3);
-    }
-    indices_1.push_back(indices_2);
+Eigen::VectorXi ParallelSGP ::sparse_indices_by_type(int n_types, 
+        std::vector<int> species, const std::vector<int> atoms) {
+  // Compute the number of sparse envs of each type  
+  // TODO: support two-body/three-body descriptors
+  Eigen::VectorXi n_envs_by_type = Eigen::VectorXi::Zero(n_types);
+  for (int a = 0; a < atoms.size(); a++) {
+    int s = species[atoms[a]];
+    n_envs_by_type(s)++;
   }
-
-  return indices_1;
+  return n_envs_by_type;
 }
+
 
 void ParallelSGP ::add_local_specific_environments(const Structure &structure,
                                           const std::vector<int> atoms) {
@@ -230,35 +211,6 @@ void ParallelSGP ::add_global_noise(int n_energy, int n_force, int n_stress) {
   global_n_labels += n_struc_labels;
 
 }
-
-//std::vector<std::vector<int>> ParallelSGP::sparse_indices_by_type(
-//        const std::vector<std::vector<int>> &training_species,
-//        const std::vector<std::vector<std::vector<int>>> &training_sparse_indices,
-//        const int n_types) {
-//  // TODO: multiple kernels with different sparse envs
-//  std::vector<std::vector<int>> untyped_indices = training_sparse_indices[0];
-//  for (int i = 0; i < n_kernels; i++){
-//    std::vector<std::vector<int>> indices_2;
-//    for (int j = 0; j < n_types; j++){
-//      int n_clusters = structure.descriptors[i].n_clusters_by_type[j];
-//      std::vector<int> indices_3;
-//      for (int k = 0; k < n_clusters; k++){
-//        int atom_index_1 = structure.descriptors[i].atom_indices[j](k);
-//        for (int l = 0; l < atoms.size(); l++){
-//          int atom_index_2 = atoms[l];
-//          if (atom_index_1 == atom_index_2){
-//            indices_3.push_back(k);
-//          }
-//        }
-//      }
-//      indices_2.push_back(indices_3);
-//    }
-//    indices_1.push_back(indices_2);
-//  }
-//
-//
-//}
-
 
 void ParallelSGP::build(const std::vector<Eigen::MatrixXd> &training_cells,
         const std::vector<std::vector<int>> &training_species,
@@ -355,27 +307,18 @@ void ParallelSGP::load_local_training_data(const std::vector<Eigen::MatrixXd> &t
     struc = Structure(training_cells[t], training_species[t], 
           training_positions[t], cutoff, descriptor_calculators);
 
-    struc.energy = training_labels[t].segment(cum_f, 1);
-    struc.forces = training_labels[t].segment(cum_f + 1, 3 * struc.noa);
-    struc.stresses = training_labels[t].segment(cum_f + 3 * struc.noa, 6); 
+    struc.energy = training_labels[t].segment(0, 1);
+    struc.forces = training_labels[t].segment(1, 3 * struc.noa);
+    struc.stresses = training_labels[t].segment(1 + 3 * struc.noa, 6); 
     
-//    t2_inner = std::chrono::high_resolution_clock::now();
-//    time_build += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2_inner - t1_inner ).count();
     int n_energy = 1;
     int n_force = 3 * noa;
     int n_stress = 6;
     add_global_noise(n_energy, n_force, n_stress); // for b
 
     //global_sparse_descriptors = initialize_sparse_descriptors(struc, global_sparse_descriptors);
-    initialize_global_sparse_descriptors(struc);
+    //initialize_global_sparse_descriptors(struc);
 
-//    t3_inner = std::chrono::high_resolution_clock::now();
-//    time_noise += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t3_inner - t2_inner ).count();
-//
-//    t4_inner = std::chrono::high_resolution_clock::now();
-//    time_add_struc += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t4_inner - t3_inner ).count();
-    // TODO: now all the kernels share the same sparse envs
-//    add_global_specific_environments(struc, training_sparse_indices[0][t]);
     if (nmin_struc < cum_f + label_size && cum_f < nmax_struc) {
       // Collect local training structures for A
       add_training_structure(struc);
@@ -426,10 +369,10 @@ void ParallelSGP::load_local_training_data(const std::vector<Eigen::MatrixXd> &t
   }
   sparse_descriptors = global_sparse_descriptors;
 
-  t2 = std::chrono::high_resolution_clock::now();
-  duration += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2 - t1 ).count();
-  std::cout << "Rank: " << blacs::mpirank << ", distribute training data: " << duration << " ms" << std::endl;
-  std::cout << "Rank: " << blacs::mpirank << ", time_build: " << time_build << " ms, time_noise: " << time_noise << " ms, time_add_struc: " << time_add_struc << " ms, time_add_env: " << time_add_env << " ms" << std::endl;
+//  t2 = std::chrono::high_resolution_clock::now();
+//  duration += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2 - t1 ).count();
+//  std::cout << "Rank: " << blacs::mpirank << ", distribute training data: " << duration << " ms" << std::endl;
+//  std::cout << "Rank: " << blacs::mpirank << ", time_build: " << time_build << " ms, time_noise: " << time_noise << " ms, time_add_struc: " << time_add_struc << " ms, time_add_env: " << time_add_env << " ms" << std::endl;
 
 }
 
