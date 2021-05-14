@@ -214,13 +214,9 @@ void ParallelSGP ::add_global_specific_environments(const Structure &structure,
   }
 }
 
-void ParallelSGP ::add_global_noise(const Structure &structure) {
+void ParallelSGP ::add_global_noise(int n_energy, int n_force, int n_stress) {
 
-  int n_energy = structure.energy.size();
-  int n_force = structure.forces.size();
-  int n_stress = structure.stresses.size();
   int n_struc_labels = n_energy + n_force + n_stress;
-  int n_atoms = structure.noa;
 
   // Update noise.
   global_noise_vector.conservativeResize(global_n_labels + n_struc_labels);
@@ -235,6 +231,33 @@ void ParallelSGP ::add_global_noise(const Structure &structure) {
 
 }
 
+//std::vector<std::vector<int>> ParallelSGP::sparse_indices_by_type(
+//        const std::vector<std::vector<int>> &training_species,
+//        const std::vector<std::vector<std::vector<int>>> &training_sparse_indices,
+//        const int n_types) {
+//  // TODO: multiple kernels with different sparse envs
+//  std::vector<std::vector<int>> untyped_indices = training_sparse_indices[0];
+//  for (int i = 0; i < n_kernels; i++){
+//    std::vector<std::vector<int>> indices_2;
+//    for (int j = 0; j < n_types; j++){
+//      int n_clusters = structure.descriptors[i].n_clusters_by_type[j];
+//      std::vector<int> indices_3;
+//      for (int k = 0; k < n_clusters; k++){
+//        int atom_index_1 = structure.descriptors[i].atom_indices[j](k);
+//        for (int l = 0; l < atoms.size(); l++){
+//          int atom_index_2 = atoms[l];
+//          if (atom_index_1 == atom_index_2){
+//            indices_3.push_back(k);
+//          }
+//        }
+//      }
+//      indices_2.push_back(indices_3);
+//    }
+//    indices_1.push_back(indices_2);
+//  }
+//
+//
+//}
 
 
 void ParallelSGP::build(const std::vector<Eigen::MatrixXd> &training_cells,
@@ -332,51 +355,76 @@ void ParallelSGP::load_local_training_data(const std::vector<Eigen::MatrixXd> &t
     struc = Structure(training_cells[t], training_species[t], 
           training_positions[t], cutoff, descriptor_calculators);
 
-//    if (nmin_struc < cum_f + label_size && cum_f < nmax_struc) {
-//      struc = Structure(training_cells[t], training_species[t], 
-//            training_positions[t], cutoff, descriptor_calculators);
-//    } else {
-//      struc = Structure(training_cells[t], training_species[t], 
-//            training_positions[t], cutoff, descriptor_calculators, 
-//            training_sparse_indices[0][t]);
-//    }
-
     struc.energy = training_labels[t].segment(cum_f, 1);
     struc.forces = training_labels[t].segment(cum_f + 1, 3 * struc.noa);
     struc.stresses = training_labels[t].segment(cum_f + 3 * struc.noa, 6); 
     
-    t2_inner = std::chrono::high_resolution_clock::now();
-    time_build += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2_inner - t1_inner ).count();
-    add_global_noise(struc); // for b
+//    t2_inner = std::chrono::high_resolution_clock::now();
+//    time_build += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2_inner - t1_inner ).count();
+    int n_energy = 1;
+    int n_force = 3 * noa;
+    int n_stress = 6;
+    add_global_noise(n_energy, n_force, n_stress); // for b
 
     //global_sparse_descriptors = initialize_sparse_descriptors(struc, global_sparse_descriptors);
     initialize_global_sparse_descriptors(struc);
 
-    t3_inner = std::chrono::high_resolution_clock::now();
-    time_noise += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t3_inner - t2_inner ).count();
-
+//    t3_inner = std::chrono::high_resolution_clock::now();
+//    time_noise += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t3_inner - t2_inner ).count();
+//
+//    t4_inner = std::chrono::high_resolution_clock::now();
+//    time_add_struc += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t4_inner - t3_inner ).count();
+    // TODO: now all the kernels share the same sparse envs
+//    add_global_specific_environments(struc, training_sparse_indices[0][t]);
     if (nmin_struc < cum_f + label_size && cum_f < nmax_struc) {
       // Collect local training structures for A
       add_training_structure(struc);
-    }
 
-    t4_inner = std::chrono::high_resolution_clock::now();
-    time_add_struc += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t4_inner - t3_inner ).count();
-    // TODO: now all the kernels share the same sparse envs
-    add_global_specific_environments(struc, training_sparse_indices[0][t]);
-    if (nmin_struc < cum_f + label_size && cum_f < nmax_struc) {
-      initialize_local_sparse_descriptors(struc); 
-      add_local_specific_environments(struc, training_sparse_indices[0][t]);
+      if (nmin_struc <= cum_f && cum_f < nmax_struc) {
+        // add local sparse env when the 1st atom of struc belongs to the current rank
+        initialize_local_sparse_descriptors(struc); 
+        add_local_specific_environments(struc, training_sparse_indices[0][t]);
+      }
     }
 
     cum_f += label_size;
-    t5_inner = std::chrono::high_resolution_clock::now();
-    time_add_env += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t5_inner - t4_inner ).count();
+//    t5_inner = std::chrono::high_resolution_clock::now();
+//    time_add_env += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t5_inner - t4_inner ).count();
 
   }
-  // Assign global sparse descritors
-  sparse_descriptors = global_sparse_descriptors;
   blacs::barrier();
+
+  // Assign global sparse descritors
+  int n_types = training_structures[0].n_types;
+  int n_descriptors = training_structures[0].n_descriptors;
+  // Compute the total number of clusters of each type
+  std::vector<int> n_clusters_by_type, cumulative_type_count;
+  cumulative_type_count.push_back(0);
+  for (int s = 0; s < n_types; s++) {
+    int n_clusters;
+    MPI_Allreduce(&local_sparse_descriptors.n_clusters_by_types[s], &n_clusters,
+            1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+    n_clusters_by_type.push_back(n_clusters); 
+    if (s > 0) {
+      cumulative_type_count.push_back(n_clusters + cumulative_type_count[s - 1]);
+    }
+  }
+
+  int local_f;
+  for (int s = 0; s < n_types; s++) {
+    DistMatrix<double> descriptors(n_clusters_by_type[s], n_descriptors);
+    DistMatrix<double> descriptor_norms(n_clusters_by_type[s], 1);
+    DistMatrix<double> cutoff_values(n_clusters_by_type[s], 1);
+
+    cum_f = 0;
+    local_f = 0;
+    for (int t = 0; t < training_cells.size(); t++) {
+      if (nmin_struc <= cum_f && cum_f < nmax_struc) {
+        descriptors 
+      }
+    }
+  }
+  sparse_descriptors = global_sparse_descriptors;
 
   t2 = std::chrono::high_resolution_clock::now();
   duration += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2 - t1 ).count();

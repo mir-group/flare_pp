@@ -68,7 +68,7 @@ public:
   std::vector<std::vector<int>>
   sort_clusters_by_uncertainty(const Structure &structure);
 
-  void add_global_noise(const Structure &structure); 
+  void add_global_noise(int n_energy, int n_force, int n_stress); 
   Eigen::VectorXd global_noise_vector;
 
   void add_training_structure(const Structure &structure);
