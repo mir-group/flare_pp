@@ -28,7 +28,8 @@ public:
   Eigen::VectorXd alpha, R_inv_diag, L_diag;
 
   // Training and sparse points.
-  std::vector<ClusterDescriptor> local_sparse_descriptors, global_sparse_descriptors, sparse_descriptors;
+  std::vector<ClusterDescriptor> global_sparse_descriptors, sparse_descriptors;
+  std::vector<std::vector<ClusterDescriptor>> local_sparse_descriptors;
   std::vector<Structure> training_structures;
   std::vector<std::vector<std::vector<int>>> sparse_indices, global_sparse_indices;
 
@@ -58,7 +59,6 @@ public:
   void initialize_local_sparse_descriptors(const Structure &structure);
   void initialize_global_sparse_descriptors(const Structure &structure);
   void add_all_environments(const Structure &structure);
-
   void add_specific_environments(const Structure &structure,
                                  const std::vector<int> atoms);
   void add_random_environments(const Structure &structure,
@@ -105,6 +105,11 @@ public:
         const std::vector<Eigen::MatrixXd> &training_positions,
         const std::vector<Eigen::VectorXd> &training_labels,
         double cutoff, std::vector<Descriptor *> descriptor_calculators,
+        const std::vector<std::vector<std::vector<int>>> &training_sparse_indices);
+
+  void gather_sparse_descriptors(std::vector<int> n_clusters_by_type,
+        const std::vector<Eigen::MatrixXd> &training_cells,
+        const std::vector<Eigen::VectorXd> &training_labels,
         const std::vector<std::vector<std::vector<int>>> &training_sparse_indices);
 
   void compute_matrices(const std::vector<Eigen::VectorXd> &training_labels,
