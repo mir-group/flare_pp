@@ -13,10 +13,17 @@ TEST_F(StructureTest, BuildPMatrix){
   double sigma_f = 2;
   double sigma_s = 3;
   int n_atoms_1 = 10;
-  int n_atoms_2 = 7;
+  int n_atoms_2 = 17;
   int n_atoms = 10;      
+  int n_types = n_species;
 
   blacs::initialize();
+
+  std::vector<Descriptor *> dc;
+  B2 ps(radial_string, cutoff_string, radial_hyps, cutoff_hyps,
+        descriptor_settings);
+  dc.push_back(&ps);
+  std::cout << "descriptor calculator " << &dc[0]->descriptor_settings[0] << &dc[0]->descriptor_settings[1] << &dc[0]->descriptor_settings[2] << std::endl;
 
   std::vector<Kernel *> kernels;
   kernels.push_back(&kernel_norm);
@@ -72,11 +79,11 @@ TEST_F(StructureTest, BuildPMatrix){
   std::vector<Eigen::MatrixXd> training_positions = {positions_1, positions_2};
   std::vector<Eigen::VectorXd> training_labels = {labels_1, labels_2};
   //std::vector<std::vector<std::vector<int>>> sparse_indices = {{{0, 1}, {2}}}; 
-  std::vector<std::vector<std::vector<int>>> sparse_indices = {{{0, 2, 3, 6, 7}, {0, 1, 4}}};
+  std::vector<std::vector<std::vector<int>>> sparse_indices = {{{0, 1, 2, 3, 6, 7, 8, 9}, {0, 1, 4, 5, 6, 7, 8, 9}}};
 
   std::cout << "Start building" << std::endl;
   parallel_sgp.build(training_cells, training_species, training_positions, 
-          training_labels, cutoff, dc, sparse_indices);
+          training_labels, cutoff, dc, sparse_indices, n_types);
 
   if (blacs::mpirank == 0) {
     //parallel_sgp.write_mapping_coefficients("beta.txt", "Me", 0);
@@ -101,24 +108,37 @@ TEST_F(StructureTest, BuildPMatrix){
     std::cout << "Done QR for sparse_gp" << std::endl;
   
     // Check the kernel matrices are consistent
+    std::cout << "begin comparing n_clusters" << std::endl;
     EXPECT_EQ(parallel_sgp.sparse_descriptors[0].n_clusters, sparse_gp.Sigma.rows());
-    EXPECT_EQ(sparse_gp.sparse_descriptors[0].n_clusters,
-              parallel_sgp.Kuu_inverse.rows());
+    //EXPECT_EQ(sparse_gp.sparse_descriptors[0].n_clusters,
+    //          parallel_sgp.Kuu_inverse.rows());
     EXPECT_EQ(parallel_sgp.sparse_descriptors[0].n_clusters, sparse_gp.sparse_descriptors[0].n_clusters);
-    for (int t = 0; t < parallel_sgp.local_sparse_descriptors[0].n_types; t++) {
-      for (int r = 0; r < parallel_sgp.local_sparse_descriptors[0].descriptors[t].rows(); r++) {
-        for (int c = 0; c < parallel_sgp.local_sparse_descriptors[0].descriptors[t].cols(); c++) {
-          double par_desc = parallel_sgp.local_sparse_descriptors[0].descriptors[t](r, c);
-          double global_par_desc = parallel_sgp.global_sparse_descriptors[0].descriptors[t](r, c);
+    std::cout << "done comparing n_clusters" << std::endl;
+    for (int t = 0; t < parallel_sgp.sparse_descriptors[0].n_types; t++) {
+      for (int r = 0; r < parallel_sgp.sparse_descriptors[0].descriptors[t].rows(); r++) {
+        for (int c = 0; c < parallel_sgp.sparse_descriptors[0].descriptors[t].cols(); c++) {
+          double par_desc = parallel_sgp.sparse_descriptors[0].descriptors[t](r, c);
+          //double global_par_desc = parallel_sgp.global_sparse_descriptors[0].descriptors[t](r, c);
           double sgp_desc = sparse_gp.sparse_descriptors[0].descriptors[t](r, c);
           //std::cout << "descriptor par ser r=" << r << " c=" << c << " " << par_desc << " " << sgp_desc << std::endl;
           EXPECT_NEAR(par_desc, sgp_desc, 1e-6);
-          EXPECT_NEAR(global_par_desc, sgp_desc, 1e-6);
+          //EXPECT_NEAR(global_par_desc, sgp_desc, 1e-6);
         }
       }
     }
     std::cout << "Checked matrix shape" << std::endl;
+    std::cout << "parallel_sgp.Kuu(0, 0)=" << parallel_sgp.Kuu(0, 0) << std::endl;
   
+    for (int r = 0; r < parallel_sgp.Kuu.rows(); r++) {
+      for (int c = 0; c < parallel_sgp.Kuu.rows(); c++) {
+        std::cout << "parallel_sgp.Kuu_inv(" << r << "," << c << ")=" << parallel_sgp.Kuu(r, c);
+        std::cout << " " << sparse_gp.Kuu(r, c) << std::endl;
+        // Sometimes the accuracy is between 1e-6 ~ 1e-5        
+        EXPECT_NEAR(parallel_sgp.Kuu(r, c), sparse_gp.Kuu(r, c), 1e-6);
+      }
+    }
+    std::cout << "Kuu matches" << std::endl;
+ 
     for (int r = 0; r < parallel_sgp.Kuu_inverse.rows(); r++) {
       for (int c = 0; c < parallel_sgp.Kuu_inverse.rows(); c++) {
 //        std::cout << "parallel_sgp.Kuu_inv(" << r << "," << c << ")=" << parallel_sgp.Kuu_inverse(r, c);
@@ -127,10 +147,13 @@ TEST_F(StructureTest, BuildPMatrix){
         EXPECT_NEAR(parallel_sgp.Kuu_inverse(r, c), sparse_gp.Kuu_inverse(r, c), 1e-5);
       }
     }
+    std::cout << "Kuu_inverse matches" << std::endl;
   
     for (int r = 0; r < parallel_sgp.alpha.size(); r++) {
       EXPECT_NEAR(parallel_sgp.alpha(r), sparse_gp.alpha(r), 1e-6);
     }
+    std::cout << "alpha matches" << std::endl;
+
     // Compare predictions on testing structure are consistent
     parallel_sgp.predict_local_uncertainties(test_struc);
     Structure test_struc_copy(test_struc.cell, test_struc.species, test_struc.positions, cutoff, dc);

@@ -43,6 +43,7 @@ public:
   int u_size, u_size_single_kernel, u_size_per_proc; 
   int f_size, f_size_single_kernel, f_size_per_proc;
   int nmin_struc, nmax_struc, nmin_envs, nmax_envs;
+  std::vector<Eigen::VectorXi> n_struc_clusters_by_type;
 
   // Likelihood attributes.
   double log_marginal_likelihood, data_fit, complexity_penalty, trace_term,
@@ -98,14 +99,16 @@ public:
         const std::vector<Eigen::MatrixXd> &training_positions,
         const std::vector<Eigen::VectorXd> &training_labels,
         double cutoff, std::vector<Descriptor *> descriptor_calculators,
-        const std::vector<std::vector<std::vector<int>>> &sparse_indices);
+        const std::vector<std::vector<std::vector<int>>> &sparse_indices,
+        int n_types);
 
   void load_local_training_data(const std::vector<Eigen::MatrixXd> &training_cells,
         const std::vector<std::vector<int>> &training_species,
         const std::vector<Eigen::MatrixXd> &training_positions,
         const std::vector<Eigen::VectorXd> &training_labels,
         double cutoff, std::vector<Descriptor *> descriptor_calculators,
-        const std::vector<std::vector<std::vector<int>>> &training_sparse_indices);
+        const std::vector<std::vector<std::vector<int>>> &training_sparse_indices,
+        int n_types);
 
   void gather_sparse_descriptors(std::vector<int> n_clusters_by_type,
         const std::vector<Eigen::MatrixXd> &training_cells,
