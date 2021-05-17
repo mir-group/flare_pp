@@ -23,7 +23,6 @@ TEST_F(StructureTest, BuildPMatrix){
   B2 ps(radial_string, cutoff_string, radial_hyps, cutoff_hyps,
         descriptor_settings);
   dc.push_back(&ps);
-  std::cout << "descriptor calculator " << &dc[0]->descriptor_settings[0] << &dc[0]->descriptor_settings[1] << &dc[0]->descriptor_settings[2] << std::endl;
 
   std::vector<Kernel *> kernels;
   kernels.push_back(&kernel_norm);
@@ -131,8 +130,6 @@ TEST_F(StructureTest, BuildPMatrix){
   
     for (int r = 0; r < parallel_sgp.Kuu.rows(); r++) {
       for (int c = 0; c < parallel_sgp.Kuu.rows(); c++) {
-        std::cout << "parallel_sgp.Kuu_inv(" << r << "," << c << ")=" << parallel_sgp.Kuu(r, c);
-        std::cout << " " << sparse_gp.Kuu(r, c) << std::endl;
         // Sometimes the accuracy is between 1e-6 ~ 1e-5        
         EXPECT_NEAR(parallel_sgp.Kuu(r, c), sparse_gp.Kuu(r, c), 1e-6);
       }

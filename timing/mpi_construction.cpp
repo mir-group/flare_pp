@@ -20,6 +20,7 @@ int main(int argc, char* argv[]) {
   int n_envs = 5;
   int n_strucs = std::stoi(argv[1]);
   int n_species = 2;
+  int n_types = n_species;
 
   double cell_size = 10;
   double cutoff = cell_size / 2;
@@ -89,7 +90,7 @@ int main(int argc, char* argv[]) {
   std::chrono::high_resolution_clock::time_point t1 = std::chrono::high_resolution_clock::now();
 
   parallel_sgp.build(training_cells, training_species, training_positions, 
-        training_labels, cutoff, dc, sparse_indices);
+        training_labels, cutoff, dc, sparse_indices, n_types);
 
   std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
   duration += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2 - t1 ).count();
