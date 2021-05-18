@@ -280,6 +280,7 @@ void ParallelSGP::build(const std::vector<Eigen::MatrixXd> &training_cells,
     nmax_struc = (world_rank + 1) * f_size_per_proc;
     nmax_envs = (world_rank + 1) * u_size_per_proc;
   }
+  std::cout << "Start loading data" << std::endl;
 
   // load and distribute training structures, compute descriptors
   load_local_training_data(training_cells, training_species, training_positions,
@@ -361,11 +362,14 @@ void ParallelSGP::load_local_training_data(const std::vector<Eigen::MatrixXd> &t
     cum_f += label_size;
   }
   for (int s = 0; s < n_types; s++) assert(n_clusters_by_type[s] >= world_size);
+  std::cout << "loaded data" << std::endl;
 
   blacs::barrier();
+  std::cout << "barrier" << std::endl;
   
   gather_sparse_descriptors(n_clusters_by_type, training_cells, training_labels, 
           training_sparse_indices);
+  std::cout << "done gathering" << std::endl;
 }
 
 void ParallelSGP::gather_sparse_descriptors(std::vector<int> n_clusters_by_type,
@@ -382,18 +386,24 @@ void ParallelSGP::gather_sparse_descriptors(std::vector<int> n_clusters_by_type,
   std::vector<Eigen::MatrixXd> descriptors;
   std::vector<Eigen::VectorXd> descriptor_norms, cutoff_values;
   int kernel_ind = 0;
+  std::cout << "begin distmat" << std::endl;
   for (int s = 0; s < n_types; s++) {
+    std::cout << "type " << s << " of " << n_types << std::endl;
     DistMatrix<double> dist_descriptors(n_clusters_by_type[s], n_descriptors);
     DistMatrix<double> dist_descriptor_norms(n_clusters_by_type[s], 1);
     DistMatrix<double> dist_cutoff_values(n_clusters_by_type[s], 1);
+    std::cout << "create distmat" << std::endl;
     dist_descriptors = [](int i, int j){return 0.0;};
     dist_descriptor_norms = [](int i, int j){return 0.0;};
     dist_cutoff_values = [](int i, int j){return 0.0;};
+    std::cout << "assigned 0" << std::endl;
     blacs::barrier();
+    std::cout << "barrier" << std::endl;
 
     cum_f = 0;
     cum_u = 0;
     local_u = 0;
+    std::cout << "begin set element" << std::endl;
     for (int t = 0; t < training_cells.size(); t++) {
       if (nmin_struc <= cum_f && cum_f < nmax_struc) {
         ClusterDescriptor cluster_descriptor = local_sparse_descriptors[local_u][kernel_ind];
@@ -412,24 +422,31 @@ void ParallelSGP::gather_sparse_descriptors(std::vector<int> n_clusters_by_type,
       cum_u += n_struc_clusters_by_type[t](s);//training_sparse_indices[kernel_ind][t].size();
       cum_f += training_labels[t].size();
     }
+    std::cout << "finish setting" << std::endl;
     dist_descriptors.fence();
     dist_descriptor_norms.fence();
     dist_cutoff_values.fence();
+    std::cout << "fence" << std::endl;
 
     Eigen::MatrixXd type_descriptors = Eigen::MatrixXd::Zero(n_clusters_by_type[s], n_descriptors);
     Eigen::VectorXd type_descriptor_norms = Eigen::VectorXd::Zero(n_clusters_by_type[s]);
     Eigen::VectorXd type_cutoff_values = Eigen::VectorXd::Zero(n_clusters_by_type[s]);
+    std::cout << "created type_desc" << std::endl;
 
     for (int r = 0; r < n_clusters_by_type[s]; r++) {
       for (int c = 0; c < n_descriptors; c++) {
+        std::cout << "begin assign dist_desc value to type_desc" << std::endl;
         type_descriptors(r, c) = dist_descriptors(r, c);
+        std::cout << "done assign dist_desc value to type_desc" << std::endl;
       }
       type_descriptor_norms(r) = dist_descriptor_norms(r, 0);
       type_cutoff_values(r) = dist_cutoff_values(r, 0);
     }
+    std::cout << "begin push_back" << std::endl;
     descriptors.push_back(type_descriptors);
     descriptor_norms.push_back(type_descriptor_norms);
     cutoff_values.push_back(type_cutoff_values);
+    std::cout << "added to local descriptor" << std::endl;
 
   }
 
