@@ -81,36 +81,88 @@ std::tuple<std::vector<Structure>, std::vector<std::vector<int>>> utils::read_xy
         species = Eigen::VectorXd::Zeros(n_atoms);
         std::vector<int> sparse_inds;
         atom_ind = 0;
+        int pos_col = 0;
+        int forces_col =0;
       } else if (values.size() >= 16) {
-        // the 2nd line of a block, including cell (9), energy (1), stress (6), sparse indices
-        cell(0, 0) = std::stod(values[0]);
-        cell(0, 1) = std::stod(values[1]);
-        cell(0, 2) = std::stod(values[2]);
-        cell(1, 0) = std::stod(values[3]);
-        cell(1, 1) = std::stod(values[4]);
-        cell(1, 2) = std::stod(values[5]);
-        cell(2, 0) = std::stod(values[6]);
-        cell(2, 1) = std::stod(values[7]);
-        cell(2, 2) = std::stod(values[8]);
-        energy = std::stod(values[9]);
-        stress(0) = std::stod(values[10]);
-        stress(1) = std::stod(values[11]);
-        stress(2) = std::stod(values[12]);
-        stress(3) = std::stod(values[13]);
-        stress(4) = std::stod(values[14]);
-        stress(5) = std::stod(values[15]);
-        for (int i = 16; i < values.size(); i++) {
-          sparse_inds.push_back(std::stoi(values[i]));
+        // the 2nd line of a block, including cell, energy, stress, sparse indices
+        int v = 0;
+        while (v < values.size()) {
+          if (values[v].find(std::string("Lattice")) != std::string::npos) {
+            // Example: Lattice="1 0 0 0 1 0 0 0 1"
+            cell(0, 0) = std::stod(values[v].substr(9, values[v].length() - 9));
+            cell(0, 1) = std::stod(values[v + 1]);
+            cell(0, 2) = std::stod(values[v + 2]);
+            cell(1, 0) = std::stod(values[v + 3]);
+            cell(1, 1) = std::stod(values[v + 4]);
+            cell(1, 2) = std::stod(values[v + 5]);
+            cell(2, 0) = std::stod(values[v + 6]);
+            cell(2, 1) = std::stod(values[v + 7]);
+            cell(2, 2) = std::stod(values[v + 8].substr(0, values[v + 8].length() - 1));
+            v += 9;
+          } else if (values[v].find(std::string("energy")) != std::string::npos \
+                  && values[v].find(std::string("free_energy")) == std::string::npos) {
+            // Example: energy=-2.0
+            energy = std::stod(values[9].substr(7, values[9].length() - 7));
+            v++;
+          } else if (values[v].find(std::string("stress")) != std::string::npos) {
+            // Example: stress="1 0 0 0 1 0 0 0 1"
+            stress(0) = std::stod(values[0].substr(8, values[0].length() - 8)); // xx
+            stress(1) = std::stod(values[v + 1]); // xy
+            stress(2) = std::stod(values[v + 2]); // xz
+            stress(3) = std::stod(values[v + 4]); // yy
+            stress(4) = std::stod(values[v + 5]); // yz
+            stress(5) = std::stod(values[v + 8].substr(0, values[v + 8].length() - 1); // zz
+            v += 9;
+          } else if (values[v].find(std::string("sparse_indices")) != std::string::npos) {
+            // Example: sparse_indices="0 2 4 6" or sparse_indices="2"
+            size_t n = std::count(values[v].begin(), values[v].end(), '"');
+            assert(n == 1 || n == 2);
+            if (n == 2) { // Example: sparse_indices="2"
+              sparse_inds.push_back(std::stoi(values[v].substr(16, values[v].length() - 17)));
+              v++;
+            } else if (n == 1) { // Example: sparse_indices="0 2 4 6"
+              sparse_inds.push_back(std::stoi(values[v].substr(16, values[v].length() - 16)));
+              v++;
+              while (values[v].find(std::string("\"") == std::string::npos) {
+                sparse_inds.push_back(std::stoi(values[v]));
+                v++;
+              }
+              sparse_inds.push_back(std::stoi(values[v].substr(0, values[v].length() - 1)));
+              v++;
+            }
+          } else if (values[v].find(std::string("Properties")) != std::string::npos) {
+            // Example: Properties=species:S:1:pos:R:3:forces:R:3:magmoms:R:1 
+            std::vector<std::string> props = split(values[v], ":");
+            bool find_pos = false;
+            bool find_forces = false;
+            for (int p = 0; p < props.size(); p += 3) {
+              // Find the starting column of positions
+              if (props[p].find(std::string("pos")) == std::string::npos) {
+                if (~find_pos) pos_col += std::stoi(props[p + 2]);
+              } else {
+                find_pos = true;
+              }
+              // Find the starting column of forces
+              if (props[p].find(std::string("forces")) == std::string::npos) {
+                if (~find_forces) forces_col += std::stoi(props[p + 2]);
+              } else {
+                find_forces = true;
+              }
+            }
+            v++;
+          } else {
+            v++;
+          }
         }
       } else if (values.size() == 7) {
         // the rest n_atoms lines of a block, with format "symbol x y z fx fy fz"
         species(atom_ind) = std::stoi(values[0]);
-        positions(atom_ind, 0) = std::stod(values[1]);
-        positions(atom_ind, 1) = std::stod(values[2]);
-        positions(atom_ind, 2) = std::stod(values[3]);
-        forces(3 * atom_ind + 0) = std::stod(values[4]);
-        forces(3 * atom_ind + 1) = std::stod(values[5]);
-        forces(3 * atom_ind + 2) = std::stod(values[6]);
+        positions(atom_ind, 0) = std::stod(values[pos_col + 0]);
+        positions(atom_ind, 1) = std::stod(values[pos_col + 1]);
+        positions(atom_ind, 2) = std::stod(values[pos_col + 2]);
+        forces(3 * atom_ind + 0) = std::stod(values[forces_col + 0]);
+        forces(3 * atom_ind + 1) = std::stod(values[forces_col + 1]);
+        forces(3 * atom_ind + 2) = std::stod(values[forces_col + 2]);
         atom_ind += 1;
       } else {
         // raise error
