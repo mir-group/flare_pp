@@ -9,6 +9,7 @@ add_executable(
   test_parallel_sgp.cpp
   test_descriptor.cpp
   test_json.cpp
+  test_utils.cpp
 )
 
 include_directories(../src/flare_pp)

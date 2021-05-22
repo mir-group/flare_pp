@@ -1,36 +1,54 @@
 import numpy as np
-from ase.io import read
+from ase.io import read, write
+from ase import Atoms
+from ase.calculators.singlepoint import SinglePointCalculator
 
 
-def convert_xyz(file_in, file_out, species_map):
-    frames = read(file_in, index=":")
-    with open(file_out, "w") as f:
-        for frame in frames:
-            n_atoms = len(frame)
-            f.write(f"{n_atoms}\n")
-            cell = frame.cell
-            energy = frame.get_potential_energy()
-            forces = frame.get_forces()
-            stress = -frame.get_stress()[[0, 5, 4, 1, 3, 2]]
-            
-            # write cell
-            f.write(" ".join(cell[0]) + " ")
-            f.write(" ".join(cell[1]) + " ")
-            f.write(" ".join(cell[2]) + " ")
+def add_sparse_indices_to_xyz(xyz_file_in, ind_file, xyz_file_out):
+    """
+    Example:
+        sparse_indices.txt has lines with format:
+        frame_number    ind1 ind2 ind3
+    """
+    frames = read(xyz_file_in, format="extxyz", index=":")
+    indices = open(ind_file).readlines()
+    assert len(frames) == len(indices)
+    for i in range(len(frames)):
+        sparse_ind = indices[i].split()[1:]
+        sparse_ind = np.array([int(s) for s in sparse_ind])
+        frames[i].info["sparse_indices"] = sparse_ind
+    
+    write(xyz_file_out, frames, format="extxyz")
 
-            # write energy & stress
-            f.write(str(energy) + " ")
-            f.write(" ".join(stress) + " ")
 
-            # write sparse indices
-            sparse_inds = frame.get_info("sparse_indices")
-            f.write(" ".join(sparse_inds) + "\n")
+def struc_list_to_xyz(struc_list, xyz_file_out, species_map, sparse_indices=None):
+    """
+    Args:
+        struc_list: a list of Structure objects
+    """
+    if sparse_indices:
+        assert len(sparse_indices) == len(struc_list)
 
-            # write symbol, positions, forces
-            for i in range(n_atoms):
-                coded_symbol = species_map[frame.symbol[i]]
-                pos = frame.positions[i]
-                f.write(f"{coded_symbol} {pos[0]} {pos[1]} {pos[2]} {forces[i, 0]} {forces[i, 1]} {forces[i, 2]}\n")
+    frames = []
+    code2species = {v: k for k, v in species_map.items()} # an inverse map of species_map
+    for i, struc in enumerate(struc_list): 
+        species_number = [code2species[s] for s in struc.species]
+        atoms = Atoms(
+            number=species_number, 
+            positions=struc.positions, 
+            cell=struc.cell, 
+            pbc=True
+        )
+    
+        properties = ["forces", "energy", "stress"]
+        results = {"forces": struc.forces, "energy": struc.energy, "stress": struc.stresses}
+        calculator = SinglePointCalculator(atoms, **results)
+        atoms.set_calculator(calculator)
 
-if __name__ == "__main__":
-    convert_xyz("dft.xyz", "data.xyz", {"Si": 0, "C": 1})
+        if sparse_indices:
+            atoms.info["sparse_indices"] = sparse_indices[i]
+
+        frames.append(atoms)
+
+    write(xyz_file_out, frames, format="extxyz")
+

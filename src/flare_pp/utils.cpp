@@ -1,32 +1,21 @@
 #include "utils.h"
-#include "structure.h"
 #include <Eigen/Dense>
-#include <cmath>
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
-#include <iostream>
-#include <fstream>
-#include <vector>
-#include <string>
-#include <sstream>
-#include <iterator>
 
 #define MAXLINE 1024
 
-void utils::grab(FILE *fptr, int n, double *list) {
-  char *ptr;
-  char line[MAXLINE];
-
-  int i = 0;
-  while (i < n) {
-    fgets(line, MAXLINE, fptr);
-    ptr = strtok(line, " \t\n\r\f");
-    list[i++] = atof(ptr);
-    while ((ptr = strtok(NULL, " \t\n\r\f")))
-      list[i++] = atof(ptr);
-  }
-}
+//void utils::grab(FILE *fptr, int n, double *list) {
+//  char *ptr;
+//  char line[MAXLINE];
+//
+//  int i = 0;
+//  while (i < n) {
+//    fgets(line, MAXLINE, fptr);
+//    ptr = strtok(line, " \t\n\r\f");
+//    list[i++] = atof(ptr);
+//    while ((ptr = strtok(NULL, " \t\n\r\f")))
+//      list[i++] = atof(ptr);
+//  }
+//}
 
 //void utils::read_xyz(char *filename) {
 //  char line[MAXLINE];
@@ -36,7 +25,7 @@ void utils::grab(FILE *fptr, int n, double *list) {
 //
 
 template <typename Out>
-void split(const std::string &s, char delim, Out result) {
+void utils::split(const std::string &s, char delim, Out result) {
   std::istringstream iss(s);
   std::string item;
   while (std::getline(iss, item, delim)) {
@@ -44,7 +33,7 @@ void split(const std::string &s, char delim, Out result) {
   }
 }
 
-std::vector<std::string> split(const std::string &s, char delim) {
+std::vector<std::string> utils::split(const std::string &s, char delim) {
   /* Convert a line of string into a list
    * Similar to the python method str.split()
    */
@@ -53,14 +42,16 @@ std::vector<std::string> split(const std::string &s, char delim) {
   return elems;
 }
 
-std::tuple<std::vector<Structure>, std::vector<std::vector<int>>> utils::read_xyz(char *filename) {
+std::tuple<std::vector<Structure>, std::vector<std::vector<int>>> utils::read_xyz(std::string filename) {
 
   std::ifstream file(filename);
   int n_atoms, atom_ind;
   Eigen::MatrixXd cell, positions;
-  double energy;
-  Eigen::VectorXd forces, stress;
+  Eigen::VectorXd energy, forces, stress;
   std::vector<int> species;
+  std::vector<int> sparse_inds;
+  int pos_col = 0;
+  int forces_col = 0;
 
   std::vector<Structure> structure_list;
   std::vector<std::vector<int>> sparse_inds_list;
@@ -69,20 +60,20 @@ std::tuple<std::vector<Structure>, std::vector<std::vector<int>>> utils::read_xy
   if (file.is_open()) {
     std::string line;
     while (std::getline(file, line)) {
-      values = split(line, " ");
+      values = split(line, ' ');
       if (values.size() == 1) {
         // the 1st line of a block, the number of atoms in a frame
         n_atoms = std::stoi(values[0]);
         cell = Eigen::MatrixXd::Zero(3, 3);
         positions = Eigen::MatrixXd::Zero(n_atoms, 3);
         forces = Eigen::VectorXd::Zero(n_atoms * 3);
-        energy = 0;
+        energy = Eigen::VectorXd::Zero(1);;
         stress = Eigen::VectorXd::Zero(6);
-        species = Eigen::VectorXd::Zeros(n_atoms);
-        std::vector<int> sparse_inds;
+        species = std::vector(n_atoms, 0);
+        sparse_inds = {};
         atom_ind = 0;
-        int pos_col = 0;
-        int forces_col =0;
+        pos_col = 0;
+        forces_col = 0;
       } else if (values.size() >= 16) {
         // the 2nd line of a block, including cell, energy, stress, sparse indices
         int v = 0;
@@ -102,7 +93,7 @@ std::tuple<std::vector<Structure>, std::vector<std::vector<int>>> utils::read_xy
           } else if (values[v].find(std::string("energy")) != std::string::npos \
                   && values[v].find(std::string("free_energy")) == std::string::npos) {
             // Example: energy=-2.0
-            energy = std::stod(values[9].substr(7, values[9].length() - 7));
+            energy(0) = std::stod(values[9].substr(7, values[9].length() - 7));
             v++;
           } else if (values[v].find(std::string("stress")) != std::string::npos) {
             // Example: stress="1 0 0 0 1 0 0 0 1"
@@ -111,7 +102,7 @@ std::tuple<std::vector<Structure>, std::vector<std::vector<int>>> utils::read_xy
             stress(2) = std::stod(values[v + 2]); // xz
             stress(3) = std::stod(values[v + 4]); // yy
             stress(4) = std::stod(values[v + 5]); // yz
-            stress(5) = std::stod(values[v + 8].substr(0, values[v + 8].length() - 1); // zz
+            stress(5) = std::stod(values[v + 8].substr(0, values[v + 8].length() - 1)); // zz
             v += 9;
           } else if (values[v].find(std::string("sparse_indices")) != std::string::npos) {
             // Example: sparse_indices="0 2 4 6" or sparse_indices="2"
@@ -123,7 +114,7 @@ std::tuple<std::vector<Structure>, std::vector<std::vector<int>>> utils::read_xy
             } else if (n == 1) { // Example: sparse_indices="0 2 4 6"
               sparse_inds.push_back(std::stoi(values[v].substr(16, values[v].length() - 16)));
               v++;
-              while (values[v].find(std::string("\"") == std::string::npos) {
+              while (values[v].find(std::string("\"")) == std::string::npos) {
                 sparse_inds.push_back(std::stoi(values[v]));
                 v++;
               }
@@ -132,7 +123,8 @@ std::tuple<std::vector<Structure>, std::vector<std::vector<int>>> utils::read_xy
             }
           } else if (values[v].find(std::string("Properties")) != std::string::npos) {
             // Example: Properties=species:S:1:pos:R:3:forces:R:3:magmoms:R:1 
-            std::vector<std::string> props = split(values[v], ":");
+            std::string str = values[v];
+            std::vector<std::string> props = split(str, ':');
             bool find_pos = false;
             bool find_forces = false;
             for (int p = 0; p < props.size(); p += 3) {
@@ -156,7 +148,7 @@ std::tuple<std::vector<Structure>, std::vector<std::vector<int>>> utils::read_xy
         }
       } else if (values.size() == 7) {
         // the rest n_atoms lines of a block, with format "symbol x y z fx fy fz"
-        species(atom_ind) = std::stoi(values[0]);
+        species[atom_ind] = std::stoi(values[0]);
         positions(atom_ind, 0) = std::stod(values[pos_col + 0]);
         positions(atom_ind, 1) = std::stod(values[pos_col + 1]);
         positions(atom_ind, 2) = std::stod(values[pos_col + 2]);

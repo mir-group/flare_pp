@@ -136,6 +136,7 @@ set(FLARE_SOURCES
     src/flare_pp/radial.cpp
     src/flare_pp/cutoffs.cpp
     src/flare_pp/structure.cpp
+    src/flare_pp/utils.cpp
     src/flare_pp/bffs/sparse_gp.cpp
     src/flare_pp/bffs/parallel_sgp.cpp
     src/flare_pp/bffs/gp.cpp
