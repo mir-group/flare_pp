@@ -29,7 +29,7 @@ void utils::split(const std::string &s, char delim, Out result) {
   std::istringstream iss(s);
   std::string item;
   while (std::getline(iss, item, delim)) {
-    *result++ = item;
+    if (item.length() > 0) *result++ = item;
   }
 }
 
@@ -42,7 +42,8 @@ std::vector<std::string> utils::split(const std::string &s, char delim) {
   return elems;
 }
 
-std::tuple<std::vector<Structure>, std::vector<std::vector<int>>> utils::read_xyz(std::string filename) {
+std::tuple<std::vector<Structure>, std::vector<std::vector<int>>>
+utils::read_xyz(std::string filename, std::map<std::string, int> species_map) {
 
   std::ifstream file(filename);
   int n_atoms, atom_ind;
@@ -56,7 +57,10 @@ std::tuple<std::vector<Structure>, std::vector<std::vector<int>>> utils::read_xy
   std::vector<Structure> structure_list;
   std::vector<std::vector<int>> sparse_inds_list;
   std::vector<std::string> values;
+  int new_frame_line = 0;
 
+  int i;
+  
   if (file.is_open()) {
     std::string line;
     while (std::getline(file, line)) {
@@ -74,7 +78,8 @@ std::tuple<std::vector<Structure>, std::vector<std::vector<int>>> utils::read_xy
         atom_ind = 0;
         pos_col = 0;
         forces_col = 0;
-      } else if (values.size() >= 16) {
+        new_frame_line = 0;
+      } else if (new_frame_line == 0) {
         // the 2nd line of a block, including cell, energy, stress, sparse indices
         int v = 0;
         while (v < values.size()) {
@@ -93,11 +98,11 @@ std::tuple<std::vector<Structure>, std::vector<std::vector<int>>> utils::read_xy
           } else if (values[v].find(std::string("energy")) != std::string::npos \
                   && values[v].find(std::string("free_energy")) == std::string::npos) {
             // Example: energy=-2.0
-            energy(0) = std::stod(values[9].substr(7, values[9].length() - 7));
+            energy(0) = std::stod(values[v].substr(7, values[v].length() - 7));
             v++;
           } else if (values[v].find(std::string("stress")) != std::string::npos) {
             // Example: stress="1 0 0 0 1 0 0 0 1"
-            stress(0) = std::stod(values[0].substr(8, values[0].length() - 8)); // xx
+            stress(0) = std::stod(values[v].substr(8, values[v].length() - 8)); // xx
             stress(1) = std::stod(values[v + 1]); // xy
             stress(2) = std::stod(values[v + 2]); // xz
             stress(3) = std::stod(values[v + 4]); // yy
@@ -107,9 +112,11 @@ std::tuple<std::vector<Structure>, std::vector<std::vector<int>>> utils::read_xy
           } else if (values[v].find(std::string("sparse_indices")) != std::string::npos) {
             // Example: sparse_indices="0 2 4 6" or sparse_indices="2"
             size_t n = std::count(values[v].begin(), values[v].end(), '"');
-            assert(n == 1 || n == 2);
-            if (n == 2) { // Example: sparse_indices="2"
-              sparse_inds.push_back(std::stoi(values[v].substr(16, values[v].length() - 17)));
+            assert(n <= 1);
+            if (n == 0) { // Example: sparse_indices=2 or sparse_indices=
+              if (values[v].length() > 15) { 
+                sparse_inds.push_back(std::stoi(values[v].substr(15, values[v].length() - 15)));
+              }
               v++;
             } else if (n == 1) { // Example: sparse_indices="0 2 4 6"
               sparse_inds.push_back(std::stoi(values[v].substr(16, values[v].length() - 16)));
@@ -130,13 +137,13 @@ std::tuple<std::vector<Structure>, std::vector<std::vector<int>>> utils::read_xy
             for (int p = 0; p < props.size(); p += 3) {
               // Find the starting column of positions
               if (props[p].find(std::string("pos")) == std::string::npos) {
-                if (~find_pos) pos_col += std::stoi(props[p + 2]);
+                if (!find_pos) pos_col += std::stoi(props[p + 2]);
               } else {
                 find_pos = true;
               }
               // Find the starting column of forces
               if (props[p].find(std::string("forces")) == std::string::npos) {
-                if (~find_forces) forces_col += std::stoi(props[p + 2]);
+                if (!find_forces) forces_col += std::stoi(props[p + 2]);
               } else {
                 find_forces = true;
               }
@@ -146,28 +153,32 @@ std::tuple<std::vector<Structure>, std::vector<std::vector<int>>> utils::read_xy
             v++;
           }
         }
-      } else if (values.size() == 7) {
+        new_frame_line = 1;
+      } else if (new_frame_line > 0) {
         // the rest n_atoms lines of a block, with format "symbol x y z fx fy fz"
-        species[atom_ind] = std::stoi(values[0]);
+        species[atom_ind] = species_map[values[0]];
         positions(atom_ind, 0) = std::stod(values[pos_col + 0]);
         positions(atom_ind, 1) = std::stod(values[pos_col + 1]);
         positions(atom_ind, 2) = std::stod(values[pos_col + 2]);
         forces(3 * atom_ind + 0) = std::stod(values[forces_col + 0]);
         forces(3 * atom_ind + 1) = std::stod(values[forces_col + 1]);
         forces(3 * atom_ind + 2) = std::stod(values[forces_col + 2]);
-        atom_ind += 1;
+        atom_ind++;
+
+        if (new_frame_line == n_atoms) {
+          Structure structure(cell, species, positions);
+          structure.energy = energy;
+          structure.forces = forces;
+          structure.stresses = stress;
+          structure_list.push_back(structure); 
+          sparse_inds_list.push_back(sparse_inds);
+        }
+
+        new_frame_line++;
       } else {
         // raise error
         printf("Unknown line!!!");
       }
-
-      Structure structure(cell, species, positions);
-      structure.energy = energy;
-      structure.forces = forces;
-      structure.stresses = stress;
-      structure_list.push_back(structure); 
-      sparse_inds_list.push_back(sparse_inds);
-
     }
     file.close();
   }

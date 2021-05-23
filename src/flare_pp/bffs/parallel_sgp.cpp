@@ -435,9 +435,7 @@ void ParallelSGP::gather_sparse_descriptors(std::vector<int> n_clusters_by_type,
 
     for (int r = 0; r < n_clusters_by_type[s]; r++) {
       for (int c = 0; c < n_descriptors; c++) {
-        std::cout << "begin assign dist_desc value to type_desc" << std::endl;
         type_descriptors(r, c) = dist_descriptors(r, c);
-        std::cout << "done assign dist_desc value to type_desc" << std::endl;
       }
       type_descriptor_norms(r) = dist_descriptor_norms(r, 0);
       type_cutoff_values(r) = dist_cutoff_values(r, 0);
