@@ -34,6 +34,7 @@ public:
   int n_energy_labels = 0, n_force_labels = 0, n_stress_labels = 0,
       n_sparse = 0, n_labels = 0, n_strucs = 0;
   double energy_noise, force_noise, stress_noise;
+  bool per_atom_energy_noise = true;
 
   // Likelihood attributes.
   double log_marginal_likelihood, data_fit, complexity_penalty, trace_term,

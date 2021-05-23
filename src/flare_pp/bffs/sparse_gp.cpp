@@ -492,9 +492,15 @@ void SparseGP ::add_training_structure(const Structure &structure) {
 
   // Update noise.
   noise_vector.conservativeResize(n_labels + n_struc_labels);
-  double total_energy_noise = energy_noise * structure.noa;
-  noise_vector.segment(n_labels, n_energy) =
-      Eigen::VectorXd::Constant(n_energy, 1 / (total_energy_noise * total_energy_noise));
+  if (per_atom_energy_noise) {
+    double total_energy_noise = energy_noise * structure.noa;
+    noise_vector.segment(n_labels, n_energy) =
+        Eigen::VectorXd::Constant(n_energy, 1 / (total_energy_noise * total_energy_noise));
+  } else {
+    noise_vector.segment(n_labels, n_energy) =
+        Eigen::VectorXd::Constant(n_energy, 1 / (energy_noise * energy_noise));
+  }
+
   noise_vector.segment(n_labels + n_energy, n_force) =
       Eigen::VectorXd::Constant(n_force, 1 / (force_noise * force_noise));
   noise_vector.segment(n_labels + n_energy + n_force, n_stress) =
@@ -785,8 +791,13 @@ SparseGP ::compute_likelihood_gradient(const Eigen::VectorXd &hyperparameters) {
     int n_atoms = training_structures[i].noa;
 
     if (training_structures[i].energy.size() != 0) {
-      noise_vec(current_count) = sigma_e * sigma_e * n_atoms * n_atoms;
-      e_noise_grad(current_count) = 2 * sigma_e * n_atoms * n_atoms;
+      if (per_atom_energy_noise) {
+        noise_vec(current_count) = sigma_e * sigma_e * n_atoms * n_atoms;
+        e_noise_grad(current_count) = 2 * sigma_e * n_atoms * n_atoms;
+      } else {
+        noise_vec(current_count) = sigma_e * sigma_e;
+        e_noise_grad(current_count) = 2 * sigma_e;
+      }
       current_count += 1;
     }
 
@@ -898,8 +909,13 @@ void SparseGP ::set_hyperparameters(Eigen::VectorXd hyps) {
     int n_atoms = training_structures[i].noa;
 
     if (training_structures[i].energy.size() != 0) {
-      double total_energy_noise = training_structures[i].noa * energy_noise;
-      noise_vector(current_count) = 1 / (total_energy_noise * total_energy_noise);
+
+      if (per_atom_energy_noise) {
+        double total_energy_noise = training_structures[i].noa * energy_noise;
+        noise_vector(current_count) = 1 / (total_energy_noise * total_energy_noise);
+      } else {
+        noise_vector(current_count) = 1 / (energy_noise * energy_noise);
+      }
       current_count += 1;
     }
 

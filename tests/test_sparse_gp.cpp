@@ -200,6 +200,50 @@ TEST_F(StructureTest, LikeGrad) {
   }
 }
 
+TEST_F(StructureTest, Norm_energy_noise) {
+  double sigma_e = 1;
+  double sigma_f = 2;
+  double sigma_s = 3;
+
+  std::vector<Kernel *> kernels;
+  kernels.push_back(&kernel_3);
+
+  Eigen::VectorXd energy = Eigen::VectorXd::Random(1);
+  Eigen::VectorXd forces = Eigen::VectorXd::Random(n_atoms * 3);
+  Eigen::VectorXd stresses = Eigen::VectorXd::Random(6);
+
+  Structure train_struc_1 = Structure(cell, species, positions, cutoff, dc);
+  train_struc_1.energy = energy;
+  train_struc_1.forces = forces;
+  train_struc_1.stresses = stresses;
+
+  Structure train_struc_2 = Structure(cell, species, positions, cutoff, dc);
+  train_struc_2.energy = energy;
+  train_struc_2.forces = forces;
+  train_struc_2.stresses = stresses;
+
+  SparseGP sparse_gp_1 = SparseGP(kernels, sigma_e, sigma_f, sigma_s);
+  sparse_gp_1.per_atom_energy_noise = false;
+  sparse_gp_1.add_training_structure(train_struc_1);
+  sparse_gp_1.add_all_environments(train_struc_1);
+  sparse_gp_1.update_matrices_QR();
+  double log_mgn_like_1 = sparse_gp_1.compute_likelihood_gradient(sparse_gp_1.hyperparameters);
+  Eigen::VectorXd like_grad_1 = sparse_gp_1.likelihood_gradient;
+
+  SparseGP sparse_gp_2 = SparseGP(kernels, sigma_e / n_atoms, sigma_f, sigma_s);
+  sparse_gp_2.add_training_structure(train_struc_2);
+  sparse_gp_2.add_all_environments(train_struc_2);
+  sparse_gp_2.update_matrices_QR();
+  double log_mgn_like_2 = sparse_gp_2.compute_likelihood_gradient(sparse_gp_2.hyperparameters);
+  Eigen::VectorXd like_grad_2 = sparse_gp_2.likelihood_gradient;
+  like_grad_2(sparse_gp_2.hyperparameters.size() - 3) /= n_atoms;
+
+  EXPECT_NEAR(log_mgn_like_1, log_mgn_like_2, 1e-8);
+  for (int i = 0; i < like_grad_1.size(); i++) {
+    EXPECT_NEAR(like_grad_1(i), like_grad_2(i), 1e-8);
+  }
+}
+
 TEST_F(StructureTest, Set_Hyps) {
   // Check the reset hyperparameters method.
 
