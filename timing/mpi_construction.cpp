@@ -46,12 +46,16 @@ int main(int argc, char* argv[]) {
   std::vector<Kernel *> kernels;
   kernels.push_back(&kernel_norm);
   ParallelSGP parallel_sgp = ParallelSGP(kernels, sigma_e, sigma_f, sigma_s);
+  SparseGP sparse_gp = SparseGP(kernels, sigma_e, sigma_f, sigma_s);
 
   // Build kernel matrices for paralle sgp
   std::vector<Eigen::MatrixXd> training_cells, training_positions;
   std::vector<std::vector<int>> training_species;
   std::vector<Eigen::VectorXd> training_labels;
   std::vector<std::vector<std::vector<int>>> sparse_indices = {{}};
+  Eigen::MatrixXd cell, positions;
+  Eigen::VectorXd labels; 
+  std::vector<int> species, sparse_inds; 
 
   for (int t = 0; t < n_strucs; t++) {
     Eigen::MatrixXd cell = Eigen::MatrixXd::Identity(3, 3) * cell_size;
@@ -95,6 +99,117 @@ int main(int argc, char* argv[]) {
   std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
   duration += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2 - t1 ).count();
   std::cout << "Rank: " << blacs::mpirank << ", time: " << duration << " ms" << std::endl;
+
+  if (blacs::mpirank == 0) {
+    // Build sparse_gp (non parallel)
+    for (int t = 0; t < n_strucs; t++) {
+      cell = training_cells[t];
+      positions = training_positions[t];
+      labels = training_labels[t];
+      species = training_species[t];
+      sparse_inds = sparse_indices[0][t];
+
+      Structure train_struc(cell, species, positions, cutoff, dc);
+      train_struc.energy = labels.segment(0, 1);
+      train_struc.forces = labels.segment(1, n_atoms * 3);
+      train_struc.stresses = labels.segment(1 + n_atoms * 3, 6);
+ 
+      sparse_gp.add_training_structure(train_struc);
+      sparse_gp.add_specific_environments(train_struc, sparse_inds);
+    }
+    sparse_gp.update_matrices_QR();
+    std::cout << "Done QR for sparse_gp" << std::endl;
+  
+    // Check the kernel matrices are consistent
+    std::cout << "begin comparing n_clusters" << std::endl;
+    assert(parallel_sgp.sparse_descriptors[0].n_clusters == sparse_gp.Sigma.rows());
+    assert(parallel_sgp.sparse_descriptors[0].n_clusters == sparse_gp.sparse_descriptors[0].n_clusters);
+    std::cout << "done comparing n_clusters" << std::endl;
+    for (int t = 0; t < parallel_sgp.sparse_descriptors[0].n_types; t++) {
+      for (int r = 0; r < parallel_sgp.sparse_descriptors[0].descriptors[t].rows(); r++) {
+        double par_desc_norm = parallel_sgp.sparse_descriptors[0].descriptor_norms[t](r);
+        double sgp_desc_norm = sparse_gp.sparse_descriptors[0].descriptor_norms[t](r);
+
+        if (std::abs(par_desc_norm - sgp_desc_norm) > 1e-6) {
+          std::cout << "++ t=" << t << ", r=" << r;
+          std::cout << ", par_desc_norm=" << par_desc_norm << ", sgp_desc_norm=" << sgp_desc_norm << std::endl;
+//          throw std::runtime_error("descriptors does not match");
+        }
+
+        for (int c = 0; c < parallel_sgp.sparse_descriptors[0].descriptors[t].cols(); c++) {
+          double par_desc = parallel_sgp.sparse_descriptors[0].descriptors[t](r, c);
+          double sgp_desc = sparse_gp.sparse_descriptors[0].descriptors[t](r, c);
+          std::cout << "t=" << t << ", r=" << r << " c=" << c;
+          std::cout << ", par_desc=" << par_desc << ", sgp_desc=" << sgp_desc << std::endl;
+
+          if (std::abs(par_desc - sgp_desc) > 1e-6) {
+            std::cout << "*** t=" << t << ", r=" << r << " c=" << c;
+            std::cout << ", par_desc=" << par_desc << ", sgp_desc=" << sgp_desc << std::endl;
+//            throw std::runtime_error("descriptors does not match");
+          }
+        }
+      }
+    }
+    std::cout << "Checked matrix shape" << std::endl;
+    std::cout << "parallel_sgp.Kuu(0, 0)=" << parallel_sgp.Kuu(0, 0) << std::endl;
+  
+    for (int r = 0; r < parallel_sgp.Kuu.rows(); r++) {
+      for (int c = 0; c < parallel_sgp.Kuu.rows(); c++) {
+        // Sometimes the accuracy is between 1e-6 ~ 1e-5        
+        if (std::abs(parallel_sgp.Kuu(r, c) - sparse_gp.Kuu(r, c)) > 1e-6) {
+          throw std::runtime_error("Kuu does not match");
+        }
+      }
+    }
+    std::cout << "Kuu matches" << std::endl;
+ 
+    for (int r = 0; r < parallel_sgp.Kuu_inverse.rows(); r++) {
+      for (int c = 0; c < parallel_sgp.Kuu_inverse.rows(); c++) {
+        if (std::abs(parallel_sgp.Kuu_inverse(r, c) - sparse_gp.Kuu_inverse(r, c)) > 1e-5) {
+          throw std::runtime_error("Kuu_inverse does not match");
+        }
+      }
+    }
+    std::cout << "Kuu_inverse matches" << std::endl;
+  
+    for (int r = 0; r < parallel_sgp.alpha.size(); r++) {
+      if (std::abs(parallel_sgp.alpha(r) - sparse_gp.alpha(r)) > 1e-6) {
+        std::cout << "alpha: r=" << r << " " << parallel_sgp.alpha(r) << " " << sparse_gp.alpha(r) << std::endl;
+        throw std::runtime_error("alpha does not match");
+      }
+    }
+    std::cout << "alpha matches" << std::endl;
+
+    // Compare predictions on testing structure are consistent
+    cell = Eigen::MatrixXd::Identity(3, 3) * cell_size;
+    positions = Eigen::MatrixXd::Random(n_atoms, 3) * cell_size / 2;
+    // Make random species.
+    species.clear(); 
+    for (int i = 0; i < n_atoms; i++) {
+      species.push_back(rand() % n_species);
+    }
+    Structure test_struc(cell, species, positions, cutoff, dc);
+    parallel_sgp.predict_local_uncertainties(test_struc);
+    Structure test_struc_copy(test_struc.cell, test_struc.species, test_struc.positions, cutoff, dc);
+    sparse_gp.predict_local_uncertainties(test_struc_copy);
+  
+    for (int r = 0; r < test_struc.mean_efs.size(); r++) {
+      if (std::abs(test_struc.mean_efs(r) - test_struc_copy.mean_efs(r)) > 1e-5) {
+        std::cout << "mean_efs: r=" << r << " " << test_struc.mean_efs(r) << " " << test_struc_copy.mean_efs(r) << std::endl;
+        throw std::runtime_error("mean_efs does not match");
+      }
+    }
+    std::cout << "mean_efs matches" << std::endl;
+  
+    for (int i = 0; i < test_struc.local_uncertainties.size(); i++) {
+      for (int r = 0; r < test_struc.local_uncertainties[i].size(); r++) {
+        if (std::abs(test_struc.local_uncertainties[i](r) - test_struc_copy.local_uncertainties[i](r)) > 1e-5) {
+          throw std::runtime_error("local_unc does not match");
+        }
+      }
+    }
+    std::cout << "local_unc matches" << std::endl;
+  }
 
   return 0;
 }
