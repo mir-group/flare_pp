@@ -78,12 +78,12 @@ public:
   double compute_likelihood_gradient(const Eigen::VectorXd &hyperparameters);
   void set_hyperparameters(Eigen::VectorXd hyps);
 
-  void write_mapping_coefficients(std::string file_name,
+  virtual void write_mapping_coefficients(std::string file_name,
                                   std::string contributor,
                                   int kernel_index);
 
   Eigen::MatrixXd varmap_coeffs; // for debugging. TODO: remove this line 
-  void write_varmap_coefficients(std::string file_name,
+  virtual void write_varmap_coefficients(std::string file_name,
                                   std::string contributor,
                                   int kernel_index);
 

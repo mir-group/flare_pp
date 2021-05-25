@@ -642,9 +642,11 @@ void ParallelSGP::compute_matrices(
 
   // TODO: for debug 
   Kuu = Eigen::MatrixXd::Zero(u_size, u_size);
+  L_inv = Eigen::MatrixXd::Zero(u_size, u_size);
   for (int u = 0; u < u_size; u++) {
     for (int v = 0; v < u_size; v++) {
       Kuu(u, v) = Kuu_dist(u, v, lock);
+      L_inv(u, v) = L_inv_dist(u, v, lock);
     }
   }
 
@@ -709,6 +711,7 @@ void ParallelSGP ::predict_local_uncertainties(Structure &test_structure) {
   int n_sparse = Kuu_inverse.rows();
   Eigen::MatrixXd kernel_mat = Eigen::MatrixXd::Zero(n_sparse, n_out);
   int count = 0;
+  std::cout << "In predict: sparse_desc size " << sparse_descriptors.size() << std::endl;
   for (int i = 0; i < Kuu_kernels.size(); i++) {
     int size = sparse_descriptors[i].n_clusters; 
     kernel_mat.block(count, 0, size, n_out) = kernels[i]->envs_struc(
@@ -716,8 +719,11 @@ void ParallelSGP ::predict_local_uncertainties(Structure &test_structure) {
         kernels[i]->kernel_hyperparameters);
     count += size;
   }
+  std::cout << "kernel_mat size " << kernel_mat.rows() << " " << kernel_mat.cols() << std::endl;
+  std::cout << "alpha size " << alpha.size() << std::endl;
 
   test_structure.mean_efs = kernel_mat.transpose() * alpha;
+  std::cout << "Begin compute_cluster" << std::endl;
   std::vector<Eigen::VectorXd> local_uncertainties =
     this->compute_cluster_uncertainties(test_structure);
   test_structure.local_uncertainties = local_uncertainties;

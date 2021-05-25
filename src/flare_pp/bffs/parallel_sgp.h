@@ -15,41 +15,17 @@
 
 class ParallelSGP : public SparseGP {
 public:
-  Eigen::VectorXd hyperparameters;
-
-  // Kernel attributes.
-  std::vector<Kernel *> kernels;
-  std::vector<Eigen::MatrixXd> Kuu_kernels, Kuf_kernels;
-  Eigen::MatrixXd Kuu, Kuf;
-  int n_kernels = 0;
-  double Kuu_jitter;
-
-  // Solution attributes.
-  Eigen::MatrixXd Sigma, Kuu_inverse, R_inv, L_inv;
-  Eigen::VectorXd alpha, R_inv_diag, L_diag;
-
   // Training and sparse points.
-  std::vector<ClusterDescriptor> global_sparse_descriptors, sparse_descriptors;
+  std::vector<ClusterDescriptor> global_sparse_descriptors;
   std::vector<std::vector<ClusterDescriptor>> local_sparse_descriptors;
-  std::vector<Structure> training_structures;
-  std::vector<std::vector<std::vector<int>>> sparse_indices, global_sparse_indices;
-
-  // Label attributes.
-  Eigen::VectorXd noise_vector, y, label_count;
-  int n_energy_labels = 0, n_force_labels = 0, n_stress_labels = 0,
-      n_sparse = 0, n_labels = 0, n_strucs = 0, global_n_labels = 0;
-  double energy_noise, force_noise, stress_noise;
+  std::vector<std::vector<std::vector<int>>> global_sparse_indices;
 
   // Parallel parameters
   int u_size, u_size_single_kernel, u_size_per_proc; 
   int f_size, f_size_single_kernel, f_size_per_proc;
   int nmin_struc, nmax_struc, nmin_envs, nmax_envs;
   std::vector<Eigen::VectorXi> n_struc_clusters_by_type;
-
-  // Likelihood attributes.
-  double log_marginal_likelihood, data_fit, complexity_penalty, trace_term,
-      constant_term;
-  Eigen::VectorXd likelihood_gradient;
+  int global_n_labels;
 
   // Constructors.
   ParallelSGP();
@@ -60,15 +36,6 @@ public:
 //  initialize_sparse_descriptors(const Structure &structure, std::vector<ClusterDescriptor> sparse_desc);
   void initialize_local_sparse_descriptors(const Structure &structure);
   void initialize_global_sparse_descriptors(const Structure &structure);
-  void add_all_environments(const Structure &structure);
-  void add_specific_environments(const Structure &structure,
-                                 const std::vector<int> atoms);
-  void add_random_environments(const Structure &structure,
-                               const std::vector<int> &n_added);
-  void add_uncertain_environments(const Structure &structure,
-                                  const std::vector<int> &n_added);
-  std::vector<std::vector<int>>
-  sort_clusters_by_uncertainty(const Structure &structure);
 
   void add_global_noise(int n_energy, int n_force, int n_stress); 
   Eigen::VectorXd global_noise_vector;
@@ -76,24 +43,10 @@ public:
   void add_training_structure(const Structure &structure);
   
   Eigen::VectorXi sparse_indices_by_type(int n_types, std::vector<int> species, const std::vector<int> atoms);    
+  void add_specific_environments(const Structure&, std::vector<int>);
   void add_local_specific_environments(const Structure &structure, const std::vector<int> atoms);
   void add_global_specific_environments(const Structure &structure, const std::vector<int> atoms);
-  void update_Kuu(const std::vector<ClusterDescriptor> &cluster_descriptors);
-  void update_Kuf(const std::vector<ClusterDescriptor> &cluster_descriptors);
-  void stack_Kuu();
-  void stack_Kuf();
-
-  void update_matrices_QR();
-
-  void predict_SOR(Structure &structure);
-  void predict_DTC(Structure &structure);
   void predict_local_uncertainties(Structure &structure);
-
-  void compute_likelihood_stable();
-  void compute_likelihood();
-
-  double compute_likelihood_gradient(const Eigen::VectorXd &hyperparameters);
-  void set_hyperparameters(Eigen::VectorXd hyps);
 
   void build(const std::vector<Eigen::MatrixXd> &training_cells,
         const std::vector<std::vector<int>> &training_species,
