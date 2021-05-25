@@ -1,3 +1,8 @@
+if (NOT EXISTS ${CMAKE_CURRENT_BINARY_DIR}/dft_data.xyz)
+    file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/dft_data.xyz
+                DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+endif ()
+
 # make executable
 add_executable(
   tests
