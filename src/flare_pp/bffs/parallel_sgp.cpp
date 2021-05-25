@@ -432,20 +432,28 @@ void ParallelSGP::gather_sparse_descriptors(std::vector<int> n_clusters_by_type,
     dist_cutoff_values.fence();
     std::cout << "fence" << std::endl;
 
-    Eigen::MatrixXd type_descriptors = Eigen::MatrixXd::Zero(n_clusters_by_type[s], n_descriptors);
-    Eigen::VectorXd type_descriptor_norms = Eigen::VectorXd::Zero(n_clusters_by_type[s]);
-    Eigen::VectorXd type_cutoff_values = Eigen::VectorXd::Zero(n_clusters_by_type[s]);
-    std::cout << "created type_desc" << std::endl;
+    int nrows = n_clusters_by_type[s];
+    int ncols = n_descriptors;
+    Eigen::MatrixXd type_descriptors = Eigen::MatrixXd::Zero(nrows, ncols);
+    Eigen::VectorXd type_descriptor_norms = Eigen::VectorXd::Zero(nrows);
+    Eigen::VectorXd type_cutoff_values = Eigen::VectorXd::Zero(nrows);
 
     std::cout << "Rank: " << blacs::mpirank << ", descriptor size: " << s << " " << n_clusters_by_type[s] << " " << n_descriptors << " " << std::endl;
+    Matrix<double> descriptors_array(nrows, ncols);
+    Matrix<double> descriptor_norms_array(nrows, 1);
+    Matrix<double> cutoff_values_array(nrows, 1);
+
+    dist_descriptors.allgather(descriptors_array.array.get());
+    dist_descriptor_norms.allgather(descriptor_norms_array.array.get());
+    dist_cutoff_values.allgather(cutoff_values_array.array.get());
+    std::cout << "done allgather" << std::endl;
+    // TODO: use Eigen::Map to save memory
     for (int r = 0; r < n_clusters_by_type[s]; r++) {
       for (int c = 0; c < n_descriptors; c++) {
-        type_descriptors(r, c) = dist_descriptors(r, c, lock);
+        type_descriptors(r, c) = descriptors_array(r, c);//dist_descriptors(r, c, lock);
       }
-      type_descriptor_norms(r) = dist_descriptor_norms(r, 0, lock);
-      std::cout << "type_descritor_norms(" << r << ")=" << type_descriptor_norms(r) << std::endl;
-
-      type_cutoff_values(r) = dist_cutoff_values(r, 0, lock);
+      type_descriptor_norms(r) = descriptor_norms_array(r, 0); //dist_descriptor_norms(r, 0, lock);
+      type_cutoff_values(r) = cutoff_values_array(r, 0); //dist_cutoff_values(r, 0, lock);
     }
     std::cout << "begin push_back" << std::endl;
     descriptors.push_back(type_descriptors);

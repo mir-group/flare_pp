@@ -11,6 +11,7 @@
 
 #include <blacs.h>
 #include <distmatrix.h>
+#include <matrix.h>
 
 class ParallelSGP : public SparseGP {
 public:
