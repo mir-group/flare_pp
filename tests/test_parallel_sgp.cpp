@@ -73,16 +73,22 @@ TEST_F(StructureTest, BuildPMatrix){
   MPI_Bcast(species_2.data(), n_atoms_2, MPI_INT, 0, MPI_COMM_WORLD);
 
   // Build kernel matrices for paralle sgp
-  std::vector<Eigen::MatrixXd> training_cells = {cell_1, cell_2};
-  std::vector<std::vector<int>> training_species = {species_1, species_2};
-  std::vector<Eigen::MatrixXd> training_positions = {positions_1, positions_2};
-  std::vector<Eigen::VectorXd> training_labels = {labels_1, labels_2};
   //std::vector<std::vector<std::vector<int>>> sparse_indices = {{{0, 1}, {2}}}; 
   std::vector<std::vector<std::vector<int>>> sparse_indices = {{{0, 1, 2, 3, 6, 7, 8, 9}, {0, 1, 4, 5, 6, 7, 8, 9}}};
 
   std::cout << "Start building" << std::endl;
-  parallel_sgp.build(training_cells, training_species, training_positions, 
-          training_labels, cutoff, dc, sparse_indices, n_types);
+  Structure struc_1 = Structure(cell_1, species_1, positions_1);
+  struc_1.energy = labels_1.segment(0, 1);
+  struc_1.forces = labels_1.segment(1, n_atoms_1 * 3);
+  struc_1.stresses = labels_1.segment(1 + n_atoms_1 * 3, 6);
+
+  Structure struc_2 = Structure(cell_2, species_2, positions_2);
+  struc_2.energy = labels_2.segment(0, 1);
+  struc_2.forces = labels_2.segment(1, n_atoms_2 * 3);
+  struc_2.stresses = labels_2.segment(1 + n_atoms_2 * 3, 6);
+
+  std::vector<Structure> training_strucs = {struc_1, struc_2};
+  parallel_sgp.build(training_strucs, cutoff, dc, sparse_indices, n_types);
 
   if (blacs::mpirank == 0) {
     std::cout << "Start mapping" << std::endl;

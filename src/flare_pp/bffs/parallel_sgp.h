@@ -48,30 +48,21 @@ public:
   void add_global_specific_environments(const Structure &structure, const std::vector<int> atoms);
   void predict_local_uncertainties(Structure &structure);
 
-  void build(const std::vector<Eigen::MatrixXd> &training_cells,
-        const std::vector<std::vector<int>> &training_species,
-        const std::vector<Eigen::MatrixXd> &training_positions,
-        const std::vector<Eigen::VectorXd> &training_labels,
+  void build(const std::vector<Structure> &training_strucs,
         double cutoff, std::vector<Descriptor *> descriptor_calculators,
-        const std::vector<std::vector<std::vector<int>>> &sparse_indices,
+        const std::vector<std::vector<std::vector<int>>> &training_sparse_indices,
         int n_types);
-
-  void load_local_training_data(const std::vector<Eigen::MatrixXd> &training_cells,
-        const std::vector<std::vector<int>> &training_species,
-        const std::vector<Eigen::MatrixXd> &training_positions,
-        const std::vector<Eigen::VectorXd> &training_labels,
+ 
+  void load_local_training_data(const std::vector<Structure> &training_strucs,
         double cutoff, std::vector<Descriptor *> descriptor_calculators,
         const std::vector<std::vector<std::vector<int>>> &training_sparse_indices,
         int n_types);
 
   void gather_sparse_descriptors(std::vector<int> n_clusters_by_type,
-        const std::vector<Eigen::MatrixXd> &training_cells,
-        const std::vector<Eigen::VectorXd> &training_labels,
+        const std::vector<Structure> &training_strucs,
         const std::vector<std::vector<std::vector<int>>> &training_sparse_indices);
 
-  void compute_matrices(const std::vector<Eigen::VectorXd> &training_labels,
-        std::vector<Descriptor *> descriptor_calculators,
-        const std::vector<std::vector<std::vector<int>>> &training_sparse_indices);
+  void compute_matrices(const std::vector<Structure> &training_strucs);
 
   Eigen::MatrixXd varmap_coeffs; // for debugging. TODO: remove this line 
 };

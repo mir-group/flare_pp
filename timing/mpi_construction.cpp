@@ -49,9 +49,7 @@ int main(int argc, char* argv[]) {
   SparseGP sparse_gp = SparseGP(kernels, sigma_e, sigma_f, sigma_s);
 
   // Build kernel matrices for paralle sgp
-  std::vector<Eigen::MatrixXd> training_cells, training_positions;
-  std::vector<std::vector<int>> training_species;
-  std::vector<Eigen::VectorXd> training_labels;
+  std::vector<Structure> training_strucs;
   std::vector<std::vector<std::vector<int>>> sparse_indices = {{}};
   Eigen::MatrixXd cell, positions;
   Eigen::VectorXd labels; 
@@ -59,17 +57,14 @@ int main(int argc, char* argv[]) {
 
   for (int t = 0; t < n_strucs; t++) {
     Eigen::MatrixXd cell = Eigen::MatrixXd::Identity(3, 3) * cell_size;
-    training_cells.push_back(cell);
 
     // Make random positions
     Eigen::MatrixXd positions = Eigen::MatrixXd::Random(n_atoms, 3) * cell_size / 2;
     MPI_Bcast(positions.data(), n_atoms * 3, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    training_positions.push_back(positions);
   
     // Make random labels
     Eigen::VectorXd labels = Eigen::VectorXd::Random(1 + n_atoms * 3 + 6);
     MPI_Bcast(labels.data(), 1 + n_atoms * 3 + 6, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    training_labels.push_back(labels);
   
     // Make random species.
     std::vector<int> species;
@@ -77,7 +72,6 @@ int main(int argc, char* argv[]) {
       species.push_back(rand() % n_species);
     }
     MPI_Bcast(species.data(), n_atoms, MPI_INT, 0, MPI_COMM_WORLD);
-    training_species.push_back(species);
 
     // Make random sparse envs
     std::vector<int> env_inds;
@@ -87,14 +81,19 @@ int main(int argc, char* argv[]) {
     for (int i = 0; i < n_envs; i++) sparse_inds.push_back(env_inds[i]);
     MPI_Bcast(sparse_inds.data(), n_envs, MPI_INT, 0, MPI_COMM_WORLD);
     sparse_indices[0].push_back(sparse_inds);
+
+    Structure struc(cell, species, positions);
+    struc.energy = labels.segment(0, 1);
+    struc.forces = labels.segment(1, n_atoms * 3);
+    struc.stresses = labels.segment(1 + n_atoms * 3, 6);
+    training_strucs.push_back(struc);
   }
 
   std::cout << "Start building" << std::endl;
   double duration = 0;
   std::chrono::high_resolution_clock::time_point t1 = std::chrono::high_resolution_clock::now();
 
-  parallel_sgp.build(training_cells, training_species, training_positions, 
-        training_labels, cutoff, dc, sparse_indices, n_types);
+  parallel_sgp.build(training_strucs, cutoff, dc, sparse_indices, n_types);
 
   std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
   duration += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2 - t1 ).count();
@@ -103,16 +102,15 @@ int main(int argc, char* argv[]) {
   if (blacs::mpirank == 0) {
     // Build sparse_gp (non parallel)
     for (int t = 0; t < n_strucs; t++) {
-      cell = training_cells[t];
-      positions = training_positions[t];
-      labels = training_labels[t];
-      species = training_species[t];
+      cell = training_strucs[t].cell;
+      positions = training_strucs[t].positions;
+      species = training_strucs[t].species;
       sparse_inds = sparse_indices[0][t];
 
       Structure train_struc(cell, species, positions, cutoff, dc);
-      train_struc.energy = labels.segment(0, 1);
-      train_struc.forces = labels.segment(1, n_atoms * 3);
-      train_struc.stresses = labels.segment(1 + n_atoms * 3, 6);
+      train_struc.energy = training_strucs[t].energy; 
+      train_struc.forces = training_strucs[t].forces;
+      train_struc.stresses = training_strucs[t].stresses;
  
       sparse_gp.add_training_structure(train_struc);
       sparse_gp.add_specific_environments(train_struc, sparse_inds);
