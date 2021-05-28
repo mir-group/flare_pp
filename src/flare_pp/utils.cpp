@@ -3,26 +3,6 @@
 
 #define MAXLINE 1024
 
-//void utils::grab(FILE *fptr, int n, double *list) {
-//  char *ptr;
-//  char line[MAXLINE];
-//
-//  int i = 0;
-//  while (i < n) {
-//    fgets(line, MAXLINE, fptr);
-//    ptr = strtok(line, " \t\n\r\f");
-//    list[i++] = atof(ptr);
-//    while ((ptr = strtok(NULL, " \t\n\r\f")))
-//      list[i++] = atof(ptr);
-//  }
-//}
-
-//void utils::read_xyz(char *filename) {
-//  char line[MAXLINE];
-//  FILE *fptr;
-//  fptr = fopen(filename.c_str(), "r");
-//}
-//
 
 template <typename Out>
 void utils::split(const std::string &s, char delim, Out result) {
@@ -42,7 +22,7 @@ std::vector<std::string> utils::split(const std::string &s, char delim) {
   return elems;
 }
 
-std::tuple<std::vector<Structure>, std::vector<std::vector<int>>>
+std::tuple<std::vector<Structure>, std::vector<std::vector<std::vector<int>>>>
 utils::read_xyz(std::string filename, std::map<std::string, int> species_map) {
 
   std::ifstream file(filename);
@@ -55,7 +35,7 @@ utils::read_xyz(std::string filename, std::map<std::string, int> species_map) {
   int forces_col = 0;
 
   std::vector<Structure> structure_list;
-  std::vector<std::vector<int>> sparse_inds_list;
+  std::vector<std::vector<int>> sparse_inds_0;
   std::vector<std::string> values;
   int new_frame_line = 0;
 
@@ -171,7 +151,7 @@ utils::read_xyz(std::string filename, std::map<std::string, int> species_map) {
           structure.forces = forces;
           structure.stresses = stress;
           structure_list.push_back(structure); 
-          sparse_inds_list.push_back(sparse_inds);
+          sparse_inds_0.push_back(sparse_inds); // TODO: multiple kernels with different sparse inds
         }
 
         new_frame_line++;
@@ -182,5 +162,7 @@ utils::read_xyz(std::string filename, std::map<std::string, int> species_map) {
     }
     file.close();
   }
+  std::vector<std::vector<std::vector<int>>> sparse_inds_list;
+  sparse_inds_list.push_back(sparse_inds_0);
   return std::make_tuple(structure_list, sparse_inds_list);
 }

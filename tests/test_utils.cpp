@@ -8,7 +8,7 @@
 class UtilsTest : public ::testing::Test {
 protected:
   std::vector<Structure> struc_list;
-  std::vector<std::vector<int>> sparse_indices;
+  std::vector<std::vector<std::vector<int>>> sparse_indices;
   std::string filename = std::string("dft_data.xyz");
   std::map<std::string, int> species_map = {{"H", 0,}, {"He", 1,}}; 
 };
@@ -60,10 +60,10 @@ TEST_F(UtilsTest, XYZTest) {
   std::cout << "stress matches" << std::endl;
 
   // Test if sparse indices are read correctly
-  EXPECT_EQ(sparse_indices[0].size(), 0);
-  EXPECT_EQ(sparse_indices[1].size(), 1);
-  EXPECT_EQ(sparse_indices[2].size(), 3);
-  EXPECT_EQ(sparse_indices[1][0], 2);
-  EXPECT_EQ(sparse_indices[2][2], 4);
+  EXPECT_EQ(sparse_indices[0][0].size(), 0);
+  EXPECT_EQ(sparse_indices[0][1].size(), 1);
+  EXPECT_EQ(sparse_indices[0][2].size(), 3);
+  EXPECT_EQ(sparse_indices[0][1][0], 2);
+  EXPECT_EQ(sparse_indices[0][2][2], 4);
   std::cout << "sparse ind matches" << std::endl;
 }

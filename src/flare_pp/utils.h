@@ -17,7 +17,7 @@
 
 namespace utils {
 //  void grab(FILE *fptr, int n, double *list);
-  std::tuple<std::vector<Structure>, std::vector<std::vector<int>>>
+  std::tuple<std::vector<Structure>, std::vector<std::vector<std::vector<int>>>>
   read_xyz(std::string filename, std::map<std::string, int> species_map);
 
   template <typename Out>
