@@ -82,12 +82,12 @@ utils::read_xyz(std::string filename, std::map<std::string, int> species_map) {
             v++;
           } else if (values[v].find(std::string("stress")) != std::string::npos) {
             // Example: stress="1 0 0 0 1 0 0 0 1"
-            stress(0) = std::stod(values[v].substr(8, values[v].length() - 8)); // xx
-            stress(1) = std::stod(values[v + 1]); // xy
-            stress(2) = std::stod(values[v + 2]); // xz
-            stress(3) = std::stod(values[v + 4]); // yy
-            stress(4) = std::stod(values[v + 5]); // yz
-            stress(5) = std::stod(values[v + 8].substr(0, values[v + 8].length() - 1)); // zz
+            stress(0) = - std::stod(values[v].substr(8, values[v].length() - 8)); // xx
+            stress(1) = - std::stod(values[v + 1]); // xy
+            stress(2) = - std::stod(values[v + 2]); // xz
+            stress(3) = - std::stod(values[v + 4]); // yy
+            stress(4) = - std::stod(values[v + 5]); // yz
+            stress(5) = - std::stod(values[v + 8].substr(0, values[v + 8].length() - 1)); // zz
             v += 9;
           } else if (values[v].find(std::string("sparse_indices")) != std::string::npos) {
             // Example: sparse_indices="0 2 4 6" or sparse_indices="2"
