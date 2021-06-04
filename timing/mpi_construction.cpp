@@ -137,8 +137,6 @@ int main(int argc, char* argv[]) {
         for (int c = 0; c < parallel_sgp.sparse_descriptors[0].descriptors[t].cols(); c++) {
           double par_desc = parallel_sgp.sparse_descriptors[0].descriptors[t](r, c);
           double sgp_desc = sparse_gp.sparse_descriptors[0].descriptors[t](r, c);
-          std::cout << "t=" << t << ", r=" << r << " c=" << c;
-          std::cout << ", par_desc=" << par_desc << ", sgp_desc=" << sgp_desc << std::endl;
 
           if (std::abs(par_desc - sgp_desc) > 1e-6) {
             std::cout << "*** t=" << t << ", r=" << r << " c=" << c;
@@ -163,6 +161,7 @@ int main(int argc, char* argv[]) {
  
     for (int r = 0; r < parallel_sgp.Kuu_inverse.rows(); r++) {
       for (int c = 0; c < parallel_sgp.Kuu_inverse.rows(); c++) {
+        std::cout << parallel_sgp.Kuu_inverse(r, c) << std::endl;
         if (std::abs(parallel_sgp.Kuu_inverse(r, c) - sparse_gp.Kuu_inverse(r, c)) > 1e-5) {
           throw std::runtime_error("Kuu_inverse does not match");
         }

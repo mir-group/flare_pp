@@ -141,7 +141,7 @@ TEST_F(StructureTest, BuildPMatrix){
     std::cout << "parallel_sgp.Kuu(0, 0)=" << parallel_sgp.Kuu(0, 0) << std::endl;
   
     for (int r = 0; r < parallel_sgp.Kuu.rows(); r++) {
-      for (int c = 0; c < parallel_sgp.Kuu.rows(); c++) {
+      for (int c = 0; c < parallel_sgp.Kuu.cols(); c++) {
         // Sometimes the accuracy is between 1e-6 ~ 1e-5        
         EXPECT_NEAR(parallel_sgp.Kuu(r, c), sparse_gp.Kuu(r, c), 1e-6);
       }
@@ -171,6 +171,7 @@ TEST_F(StructureTest, BuildPMatrix){
     for (int r = 0; r < test_struc.mean_efs.size(); r++) {
       EXPECT_NEAR(test_struc.mean_efs(r), test_struc_copy.mean_efs(r), 1e-5);
     }
+    std::cout << "mean_efs matches" << std::endl;
   
     for (int i = 0; i < test_struc.local_uncertainties.size(); i++) {
       for (int r = 0; r < test_struc.local_uncertainties[i].size(); r++) {
