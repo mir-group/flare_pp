@@ -52,7 +52,17 @@ public:
         double cutoff, std::vector<Descriptor *> descriptor_calculators,
         const std::vector<std::vector<std::vector<int>>> &training_sparse_indices,
         int n_types);
- 
+  /**
+   Method for constructing SGP model from training dataset.  
+
+   @param training_strucs A list of Structure objects
+   @param cutoff The cutoff for SGP
+   @param descriptor_calculators A list of Descriptor objects, e.g. B2, B3, ...
+   @param trianing_sparse_indices A list of indices of sparse environments in each training structure
+   @param n_types An integer to specify number of types. For B2 descriptor, n_type is equal to the
+        number of species
+   */
+
   void load_local_training_data(const std::vector<Structure> &training_strucs,
         double cutoff, std::vector<Descriptor *> descriptor_calculators,
         const std::vector<std::vector<std::vector<int>>> &training_sparse_indices,
