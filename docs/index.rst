@@ -13,3 +13,4 @@ Contents
    :maxdepth: 4
 
    flare_pp/flare_pp
+   python_api/index
