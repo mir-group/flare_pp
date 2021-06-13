@@ -671,7 +671,6 @@ NormalizedDotProduct ::compute_mapping_coefficients(const SparseGP &gp_model,
         continue;
 
       double alpha_val = gp_model.alpha(alpha_ind + c_types + j);
-      int beta_count = 0;
 
       // First loop over descriptor values.
 #pragma omp parallel for
@@ -680,6 +679,7 @@ NormalizedDotProduct ::compute_mapping_coefficients(const SparseGP &gp_model,
 
         // Second loop over descriptor values.
         for (int l = k; l < p_size; l++) {
+          int beta_count = std::round((2 * p_size - k + 1) * k / 2 + l - k);
           double p_il = p_current(l) / p_norm;
           double beta_val = sig2 * p_ik * p_il * alpha_val;
 
@@ -690,7 +690,6 @@ NormalizedDotProduct ::compute_mapping_coefficients(const SparseGP &gp_model,
             mapping_coeffs(i, beta_count) += beta_val;
           }
 
-          beta_count++;
         }
       }
     }
@@ -754,7 +753,6 @@ Eigen::MatrixXd NormalizedDotProduct ::compute_varmap_coefficients(
           double Kuu_inv_ij_normed = Kuu_inv_ij / pi_norm / pj_norm;
 //          double Sigma_ij = gp_model.Sigma(K_ind + i, K_ind + j);
 //          double Sigma_ij_normed = Sigma_ij / pi_norm / pj_norm;
-          int beta_count = 0;
 
           // First loop over descriptor values.
 #pragma omp parallel for
@@ -763,6 +761,7 @@ Eigen::MatrixXd NormalizedDotProduct ::compute_varmap_coefficients(
     
             // Second loop over descriptor values.
             for (int l = 0; l < p_size; l++){
+              int beta_count = std::round((2 * p_size - k + 1) * k / 2 + l - k);
               double p_jl = pj_current(l);
     
               // Update beta vector.
@@ -773,7 +772,6 @@ Eigen::MatrixXd NormalizedDotProduct ::compute_varmap_coefficients(
                 mapping_coeffs(s, beta_count) += sig2; // the self kernel term
               }
     
-              beta_count++;
             }
         }
       }
