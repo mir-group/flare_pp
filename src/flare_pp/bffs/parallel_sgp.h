@@ -29,6 +29,17 @@ public:
 
   // Constructors.
   ParallelSGP();
+
+  /**
+   Basic Parallel Sparse GP constructor. This class inherits from SparseGP class and accept
+   the same input parameters.
+
+   @param kernels A list of Kernel objects, e.g. NormalizedInnerProduct, SquaredExponential.
+        Note the number of kernels should be equal to the number of descriptor calculators.
+   @param energy_noise Noise hyperparameter for total energy.
+   @param force_noise Noise hyperparameter for atomic forces.
+   @param stress_noise Noise hyperparameter for total stress.
+   */
   ParallelSGP(std::vector<Kernel *> kernels, double energy_noise,
            double force_noise, double stress_noise);
 
@@ -48,10 +59,6 @@ public:
   void add_global_specific_environments(const Structure &structure, const std::vector<int> atoms);
   void predict_local_uncertainties(Structure &structure);
 
-  void build(const std::vector<Structure> &training_strucs,
-        double cutoff, std::vector<Descriptor *> descriptor_calculators,
-        const std::vector<std::vector<std::vector<int>>> &training_sparse_indices,
-        int n_types);
   /**
    Method for constructing SGP model from training dataset.  
 
@@ -62,7 +69,22 @@ public:
    @param n_types An integer to specify number of types. For B2 descriptor, n_type is equal to the
         number of species
    */
+  void build(const std::vector<Structure> &training_strucs,
+        double cutoff, std::vector<Descriptor *> descriptor_calculators,
+        const std::vector<std::vector<std::vector<int>>> &training_sparse_indices,
+        int n_types);
 
+  /**
+   Method for loading training data distributedly. Each process loads a portion of the whole training
+   data set, and load the whole sparse set.
+
+   @param training_strucs A list of Structure objects
+   @param cutoff The cutoff for SGP
+   @param descriptor_calculators A list of Descriptor objects, e.g. B2, B3, ...
+   @param trianing_sparse_indices A list of indices of sparse environments in each training structure
+   @param n_types An integer to specify number of types. For B2 descriptor, n_type is equal to the
+        number of species
+   */
   void load_local_training_data(const std::vector<Structure> &training_strucs,
         double cutoff, std::vector<Descriptor *> descriptor_calculators,
         const std::vector<std::vector<std::vector<int>>> &training_sparse_indices,
@@ -72,7 +94,13 @@ public:
         const std::vector<Structure> &training_strucs,
         const std::vector<std::vector<std::vector<int>>> &training_sparse_indices);
 
+  /**
+   Method for computing kernel matrices and vectors
+ 
+   @param training_strucs A list of Structure objects
+   */
   void compute_matrices(const std::vector<Structure> &training_strucs);
+
 
   Eigen::MatrixXd varmap_coeffs; // for debugging. TODO: remove this line 
 };
