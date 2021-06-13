@@ -761,7 +761,7 @@ Eigen::MatrixXd NormalizedDotProduct ::compute_varmap_coefficients(
     
             // Second loop over descriptor values.
             for (int l = 0; l < p_size; l++){
-              int beta_count = std::round((2 * p_size - k + 1) * k / 2 + l - k);
+              int beta_count = k * p_size + l;
               double p_jl = pj_current(l);
     
               // Update beta vector.
