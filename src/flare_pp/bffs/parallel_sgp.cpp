@@ -430,16 +430,10 @@ void ParallelSGP::gather_sparse_descriptors(std::vector<int> n_clusters_by_type,
     std::cout << "created serial matrix" << std::endl;
 
     dist_descriptors.allgather(descriptors_array.array.get());
-//    blacs::barrier();
-//    dist_descriptors.fence();
     std::cout << "something" << std::endl;
     dist_descriptor_norms.allgather(descriptor_norms_array.array.get());
-//    blacs::barrier();
-//    dist_descriptor_norms.fence();
     std::cout << "something 1" << std::endl;
     dist_cutoff_values.allgather(cutoff_values_array.array.get());
-//    blacs::barrier();
-//    dist_cutoff_values.fence();
     std::cout << "done allgather" << std::endl;
     // TODO: use Eigen::Map to save memory
     for (int r = 0; r < n_clusters_by_type[s]; r++) {
@@ -510,12 +504,10 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
 
     t1_inner = std::chrono::high_resolution_clock::now();
 
-    if (blacs::mpirank == 0) {
-      kuu.push_back(kernels[i]->envs_envs(
-                sparse_descriptors[i], 
-                sparse_descriptors[i],
-                kernels[i]->kernel_hyperparameters));
-    }
+    kuu.push_back(kernels[i]->envs_envs(
+              sparse_descriptors[i], 
+              sparse_descriptors[i],
+              kernels[i]->kernel_hyperparameters));
 
     t2_inner = std::chrono::high_resolution_clock::now();
     duration += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2_inner - t1_inner ).count();
@@ -541,11 +533,9 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
 
   std::cout << "f_size=" << f_size << " , u_size=" << u_size << std::endl;
   DistMatrix<double> A(f_size + u_size, u_size); // use the default blocking
-  std::cout << "Created A" << std::endl;
   DistMatrix<double> b(f_size + u_size, 1);
-  std::cout << "Created b" << std::endl;
   DistMatrix<double> Kuu_dist(u_size, u_size);
-  std::cout << "Created Kuu_dist" << std::endl;
+  std::cout << "Created A, b, Kuu_dist" << std::endl;
   A = [](int i, int j){return 0.0;};
   b = [](int i, int j){return 0.0;};
   Kuu_dist = [](int i, int j){return 0.0;};
@@ -555,79 +545,52 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
   bool lock = true;
   cum_u = 0;
   // Assign sparse set kernel matrix Kuu
-  if (blacs::mpirank == 0) {
-    for (int i = 0; i < n_kernels; i++) { 
-      for (int r = 0; r < kuu[i].rows(); r++) {
-        for (int c = r; c < kuu[i].cols(); c++) {
-          if (r + cum_u == c + cum_u) {
-            Kuu_dist.set(r + cum_u, c + cum_u, kuu[i](r, c) + Kuu_jitter, lock);
-          } else {
-            Kuu_dist.set(r + cum_u, c + cum_u, kuu[i](r, c), lock);
-            Kuu_dist.set(c + cum_u, r + cum_u, kuu[i](c, r), lock);
-          }
+  for (int i = 0; i < n_kernels; i++) { 
+    for (int r = 0; r < kuu[i].rows(); r++) {
+      for (int c = 0; c < kuu[i].cols(); c++) {
+        if (Kuu_dist.islocal(r + cum_u, c + cum_u)) { // only set the local part
+          Kuu_dist.set(r + cum_u, c + cum_u, kuu[i](r, c), lock);
         }
       }
-      cum_u += kuu[i].rows();
     }
+    cum_u += kuu[i].rows();
   }
   Kuu_dist.fence();
-  std::cout << "Kuu_dist built" << std::endl;
+
+  t2 = std::chrono::high_resolution_clock::now();
+  duration += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2 - t1 ).count();
+  std::cout << "Rank: " << blacs::mpirank << ", build Kuu_dist: " << duration << " ms" << std::endl;
+
+  duration = 0;
+  t1 = std::chrono::high_resolution_clock::now();
 
   // TODO: Kuu and L_inv are only needed for debug and unit test 
   Matrix<double> Kuu_array(u_size, u_size);
+  std::cout << "Begin allgather Kuu" << std::endl;
   Kuu_dist.allgather(Kuu_array.array.get());
   Kuu = Eigen::Map<Eigen::MatrixXd>(Kuu_array.array.get(), u_size, u_size);
-  Kuu -= Kuu_jitter * Eigen::MatrixXd::Identity(u_size, u_size);
   std::cout << "Allgathered Kuu" << std::endl;
 
   t2 = std::chrono::high_resolution_clock::now();
   duration += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2 - t1 ).count();
   std::cout << "Rank: " << blacs::mpirank << ", set Kuu_dist: " << duration << " ms" << std::endl;
 
-  // validate the Kuu is symmetric
-  for (int r = 0; r < Kuu.rows(); r++) {
-    for (int c = r; c < Kuu.cols(); c++) {
-      double dKuu = Kuu(r, c) - Kuu(c, r);
-      if (std::abs(dKuu) > 1e-6) {
-        std::cout << r << " " << c << " " << dKuu << " " << Kuu(r, c) << std::endl;
-      }
-    }
-  }
-
   duration = 0;
   t1 = std::chrono::high_resolution_clock::now();
 
-  //Eigen::LLT<Eigen::MatrixXd> chol(
-  //    Kuu + Kuu_jitter * Eigen::MatrixXd::Identity(Kuu.rows(), Kuu.cols()));
-  //std::cout << "Done Eigen cholesky" << std::endl;
-
   // Cholesky decomposition of Kuu and its inverse.
-  Kuu_dist.fence();
-  DistMatrix<double> L = Kuu_dist.cholesky();
-  L.fence();
-  DistMatrix<double> L_inv_dist = L.triangular_invert('L');
-  L_inv_dist.fence();
-  DistMatrix<double> Kuu_inv_dist = L_inv_dist.matmul(L_inv_dist, 1.0, 'T', 'N'); 
-  Kuu_inv_dist.fence();
+  Eigen::LLT<Eigen::MatrixXd> chol(
+      Kuu + Kuu_jitter * Eigen::MatrixXd::Identity(Kuu.rows(), Kuu.cols()));
+
+  // Get the inverse of Kuu from Cholesky decomposition.
+  Eigen::MatrixXd Kuu_eye = Eigen::MatrixXd::Identity(Kuu.rows(), Kuu.cols());
+  Eigen::MatrixXd L = chol.matrixL();
+  L_inv = chol.matrixL().solve(Kuu_eye);
+  Kuu_inverse = L_inv.transpose() * L_inv;
 
   t2 = std::chrono::high_resolution_clock::now();
   duration += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2 - t1 ).count();
   std::cout << "Rank: " << blacs::mpirank << ", cholestky, tri_inv, matmul: " << duration << " ms" << std::endl;
-
-  duration = 0;
-  t1 = std::chrono::high_resolution_clock::now();
-
-  // Assign value to Kuu_inverse for varmap
-  Matrix<double> Kuu_inv_array(u_size, u_size);
-  std::cout << "Begin allgather Kuu_inverse" << std::endl;
-  Kuu_inv_dist.allgather(Kuu_inv_array.array.get());
-  Kuu_inverse = Eigen::Map<Eigen::MatrixXd>(Kuu_inv_array.array.get(), u_size, u_size);
-  std::cout << "Allgathered Kuu_inverse" << std::endl;
-
-  Matrix<double> L_inv_array(u_size, u_size);
-  L_inv_dist.allgather(L_inv_array.array.get());
-  L_inv = Eigen::Map<Eigen::MatrixXd>(L_inv_array.array.get(), u_size, u_size);
-  std::cout << "Allgathered L_inv" << std::endl;
 
 
   duration = 0;
@@ -676,12 +639,11 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
   duration = 0;
   t1 = std::chrono::high_resolution_clock::now();
 
-  // Assign L.T to A matrix
   cum_f = f_size;
   for (int r = 0; r < u_size; r++) {
-    if (blacs::mpirank == 0) {
-      for (int c = 0; c < u_size; c++) {
-        A.set(cum_f, c, L(c, r, lock), lock); // the local_f is actually a global index of L.T
+    for (int c = 0; c < u_size; c++) {
+      if (A.islocal(cum_f, c)) {
+        A.set(cum_f, c, L(c, r), lock); // the local_f is actually a global index of L.T
       }
     }
     cum_f += 1;
@@ -691,7 +653,7 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
 
   t2 = std::chrono::high_resolution_clock::now();
   duration += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2 - t1 ).count();
-  std::cout << "Rank: " << blacs::mpirank << ", set L_inv to A: " << duration << " ms" << std::endl;
+  std::cout << "Rank: " << blacs::mpirank << ", set L.T to A: " << duration << " ms" << std::endl;
 
   duration = 0;
   t1 = std::chrono::high_resolution_clock::now();
@@ -709,25 +671,28 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
   duration = 0;
   t1 = std::chrono::high_resolution_clock::now();
 
-
-  DistMatrix<double> R(u_size, u_size);                                 // Upper triangular R from QR
-  R = [&QR](int i, int j) {return i > j ? 0 : QR(i, j, true);};
+  DistMatrix<double> R_dist(u_size, u_size);                                 // Upper triangular R from QR
+  R_dist = [&QR](int i, int j) {return i > j ? 0 : QR(i, j, true);};
   blacs::barrier();
-  DistMatrix<double> Rinv_dist = R.triangular_invert('U');              // Compute the inverse of R
-  DistMatrix<double> Q_b = QR.QT_matmul(b, tau);                        // Q_b = Q^T * b
-  DistMatrix<double> alpha_dist = Rinv_dist.matmul(Q_b, 1.0, 'N', 'N'); // alpha = R^-1 * Q_b
 
-  // Assign value to alpha for mapping
-//  std::cout << "start gathering alpha" << std::endl;
-//  Matrix<double> alpha_array(u_size, 1);
-//  alpha_dist.allgather(alpha_array.array.get());
-//  alpha = Eigen::Map<Eigen::VectorXd>(alpha_array.array.get(), u_size);
-//  std::cout << "Allgathered alpha" << std::endl;
+  // Directly use triangular_solve to get alpha: R * alpha = Q_b
+  DistMatrix<double> Qb_dist = QR.QT_matmul(b, tau);                        // Q_b = Q^T * b
 
-  alpha = Eigen::VectorXd::Zero(u_size);
-  for (int u = 0; u < u_size; u++) {
-    alpha(u) = alpha_dist(u, 0, lock);
-  }
+  Matrix<double> Qb_array(f_size + u_size, 1);
+  std::cout << "Begin allgather Qb" << std::endl;
+  Qb_dist.allgather(Qb_array.array.get());
+  Q_b = Eigen::Map<Eigen::VectorXd>(Qb_array.array.get(), f_size + u_size).segment(0, u_size);
+  std::cout << "Allgathered Qb" << std::endl;
+
+  Matrix<double> R_array(u_size, u_size);
+  R_dist.allgather(R_array.array.get());
+  R = Eigen::Map<Eigen::MatrixXd>(R_array.array.get(), u_size, u_size);
+  std::cout << "Allgathered R" << std::endl;
+
+  // Using Lapack triangular solver to temporarily avoid the numerical issue 
+  // with Scalapack block algorithm with ill-conditioned matrix
+  alpha = R.triangularView<Eigen::Upper>().solve(Q_b);
+
 
   t2 = std::chrono::high_resolution_clock::now();
   duration += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2 - t1 ).count();

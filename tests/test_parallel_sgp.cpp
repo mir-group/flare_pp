@@ -74,7 +74,7 @@ TEST_F(StructureTest, BuildPMatrix){
 
   // Build kernel matrices for paralle sgp
   //std::vector<std::vector<std::vector<int>>> sparse_indices = {{{0, 1}, {2}}}; 
-  std::vector<std::vector<std::vector<int>>> sparse_indices = {{{0, 1, 2, 3, 6, 7, 8, 9}, {0, 1, 4, 5, 6, 7, 8, 9}}};
+  std::vector<std::vector<std::vector<int>>> sparse_indices = {{{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}, {0, 1, 2, 4, 5, 6, 7, 8, 9}}};
 
   std::cout << "Start building" << std::endl;
   Structure struc_1 = Structure(cell_1, species_1, positions_1);

@@ -1,6 +1,8 @@
 #include <chrono>
 #include <iostream>
 #include <cmath>
+#include <iomanip>
+#include <limits>
 #include <Eigen/Dense>
 #include "omp.h"
 #include "mpi.h"
@@ -115,17 +117,56 @@ int main(int argc, char* argv[]) {
   parallel_sgp.build(struc_list, cutoff, dc, sparse_indices, n_types);
   std::cout << "Parallel_sgp is built!" << std::endl;
 
-  parallel_sgp.write_mapping_coefficients(coefname, contributor, 0);
-  std::cout << "Mapping coefficients are written" << std::endl;
+  if (blacs::mpirank == 0) {
+    parallel_sgp.write_mapping_coefficients(coefname, contributor, 0);
+    std::cout << "Mapping coefficients are written" << std::endl;
 
-  // validate the Kuu is symmetric
-  for (int r = 0; r < parallel_sgp.Kuu.rows(); r++) {
-    for (int c = r; c < parallel_sgp.Kuu.cols(); c++) {
-      double dKuu = parallel_sgp.Kuu(r, c) - parallel_sgp.Kuu(c, r);
-      if (std::abs(dKuu) > 1e-6) {
-        std::cout << r << " " << c << " " << dKuu << " " << parallel_sgp.Kuu(r, c) << std::endl;
+    // validate the Kuu is symmetric
+    for (int r = 0; r < parallel_sgp.Kuu.rows(); r++) {
+      for (int c = r; c < parallel_sgp.Kuu.cols(); c++) {
+        double dKuu = parallel_sgp.Kuu(r, c) - parallel_sgp.Kuu(c, r);
+        if (std::abs(dKuu) > 1e-6) {
+          std::cout << r << " " << c << " " << dKuu << " " << parallel_sgp.Kuu(r, c) << std::endl;
+        }
       }
     }
+
+    std::cout << "start L_inv" << std::endl;
+    for (int r = 0; r < parallel_sgp.L_inv.rows(); r++) {
+      for (int c = 0; c <= r; c++) {
+        std::cout << r << " " << c << " " << parallel_sgp.L_inv(r, c) << std::endl;
+      }
+    }
+    std::cout << "end L_inv" << std::endl;
+
+    std::cout << "start R_inv" << std::endl;
+    for (int r = 0; r < parallel_sgp.R_inv.rows(); r++) {
+      for (int c = r; c < parallel_sgp.R_inv.cols(); c++) {
+        std::cout << r << " " << c << " " << parallel_sgp.R_inv(r, c) << std::endl;
+      }
+    }
+    std::cout << "end R_inv" << std::endl;
+
+    std::cout << "start R" << std::endl;
+    for (int r = 0; r < parallel_sgp.R.rows(); r++) {
+      for (int c = r; c < parallel_sgp.R.cols(); c++) {
+        std::cout << r << " " << c << " " << std::setprecision (17) << parallel_sgp.R(r, c) << std::endl;
+      }
+    }
+    std::cout << "end R" << std::endl;
+
+
+    std::cout << "Start Q_b" << std::endl;
+    for (int r = 0; r < parallel_sgp.Q_b.size(); r++) {
+      std::cout << std::setprecision (17) << parallel_sgp.Q_b(r) << std::endl;
+    }
+    std::cout << "End Q_b" << std::endl;
+
+    std::cout << "Start alpha" << std::endl;
+    for (int r = 0; r < parallel_sgp.alpha.size(); r++) {
+      std::cout << std::setprecision (17) << parallel_sgp.alpha(r) << std::endl;
+    }
+    std::cout << "End alpha" << std::endl;
   }
 
 }

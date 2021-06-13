@@ -54,9 +54,9 @@ TEST_F(UtilsTest, XYZTest) {
 
   // Test if stress are read correctly
   // the struc stress are the xx, xy, xz, yy, yz, zz of xyz file
-  EXPECT_NEAR(struc_list[0].stresses(2), 0.38721540888657746, 1e-8);
-  EXPECT_NEAR(struc_list[1].stresses(3), 0.04982809557310608, 1e-8);
-  EXPECT_NEAR(struc_list[2].stresses(5), 0.00887571986324354, 1e-8);
+  EXPECT_NEAR(struc_list[0].stresses(2), -0.38721540888657746, 1e-8);
+  EXPECT_NEAR(struc_list[1].stresses(3), -0.04982809557310608, 1e-8);
+  EXPECT_NEAR(struc_list[2].stresses(5), -0.00887571986324354, 1e-8);
   std::cout << "stress matches" << std::endl;
 
   // Test if sparse indices are read correctly
