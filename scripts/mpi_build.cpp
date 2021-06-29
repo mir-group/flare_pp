@@ -26,6 +26,7 @@ int main(int argc, char* argv[]) {
   int n_species = 1;
   bool input_species = false;
   std::map<std::string, int> species_map; 
+  std::vector<double> single_atom_energy;
 
   // Default setting of kernels
   double sigma = 7.0;
@@ -65,6 +66,10 @@ int main(int argc, char* argv[]) {
         }
         n_species = v.size() - 1;
         input_species = true;
+      } else if (v[0] == std::string("single_atom_energy")) {
+        for (int s = 1; s < v.size(); s++) {
+          single_atom_energy.push_back(std::stod(v[s]));
+        }
       } else if (v[0] == std::string("sigma")) {
         sigma = std::stod(v[1]);
       } else if (v[0] == std::string("power")) {
@@ -87,8 +92,16 @@ int main(int argc, char* argv[]) {
     }
   }
 
-  if (!input_species) throw;
+  if (!input_species) throw;    // Check the species are input
+  if (single_atom_energy.size() == 0) {     // Check single atom energies are input
+    for (int s = 0; s < n_species; s++) {   // Otherwise set to 0
+      single_atom_energy.push_back(0.0);
+    }
+  } else {                                  // Single atoms energies should correspond
+    assert(single_atom_energy.size() == n_species); // to species list
+  }
 
+  // Set descriptors for SGP
   std::vector<double> radial_hyps{0, cutoff};
   std::vector<double> cutoff_hyps;
 
@@ -99,6 +112,7 @@ int main(int argc, char* argv[]) {
         descriptor_settings);
   dc.push_back(&ps);
 
+  // Set kernels for SGP
   NormalizedDotProduct kernel_norm = NormalizedDotProduct(sigma, power);
   std::vector<Kernel *> kernels;
   kernels.push_back(&kernel_norm);
