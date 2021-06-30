@@ -224,9 +224,9 @@ class SGP_Wrapper:
 
         # change the keys of single_atom_energies and species_map to int
         if in_dict["single_atom_energies"] is not None:
-             sae_dict = {int(k): v for k, v in in_dict["single_atom_energies"].items()}
+            sae_dict = {int(k): v for k, v in in_dict["single_atom_energies"].items()}
         else:
-             sae_dict = None
+            sae_dict = None
         species_map = {int(k): v for k, v in in_dict["species_map"].items()}
 
         gp = SGP_Wrapper(
@@ -408,7 +408,7 @@ class SGP_Wrapper:
         )
         n_sgp = len(self.training_data)
         n_sgp_var = len(self.sgp_var.training_structures)
-        is_same_data = n_sgp == n_sgp_var 
+        is_same_data = n_sgp == n_sgp_var
 
         # Add new data if sparse_gp has more data than sgp_var
         if not is_same_data:
@@ -418,12 +418,12 @@ class SGP_Wrapper:
             for s in range(n_add):
                 custom_range = self.sparse_gp.sparse_indices[0][s + n_sgp_var]
                 struc_cpp = self.training_data[s + n_sgp_var]
-    
+
                 if len(struc_cpp.energy) > 0:
                     energy = struc_cpp.energy[0]
                 else:
                     energy = None
-    
+
                 self.update_db(
                     struc_cpp,
                     struc_cpp.forces,
@@ -434,9 +434,9 @@ class SGP_Wrapper:
                     sgp=self.sgp_var,
                     update_qr=False,
                 )
-    
+
             self.sgp_var.update_matrices_QR()
-      
+
         if not is_same_hyps:
             print("Hyps not match, set hyperparameters")
             self.sgp_var.set_hyperparameters(self.sparse_gp.hyperparameters)
@@ -444,9 +444,9 @@ class SGP_Wrapper:
 
         new_kernels = self.sgp_var.kernels
         print("Map with current sgp_var")
-       
+
         self.sgp_var.write_varmap_coefficients(filename, contributor, kernel_idx)
-        
+
         return new_kernels
 
     def duplicate(self, new_hyps=None, new_kernels=None, new_powers=None):
@@ -503,7 +503,7 @@ class SGP_Wrapper:
         return new_gp, kernels
 
 
-def compute_negative_likelihood(hyperparameters, sparse_gp):
+def compute_negative_likelihood(hyperparameters, sparse_gp, reg_weight):
     """Compute the negative log likelihood and gradient with respect to the
     hyperparameters."""
 
@@ -512,13 +512,15 @@ def compute_negative_likelihood(hyperparameters, sparse_gp):
     sparse_gp.set_hyperparameters(hyperparameters)
     sparse_gp.compute_likelihood()
     negative_likelihood = -sparse_gp.log_marginal_likelihood
+    regularization = reg_weight * np.sum(hyperparameters ** 2)
+    loss = negative_likelihood + regularization
 
-    print_hyps(hyperparameters, negative_likelihood)
+    print_hyps(hyperparameters, negative_likelihood, regularization)
 
     return negative_likelihood
 
 
-def compute_negative_likelihood_grad(hyperparameters, sparse_gp):
+def compute_negative_likelihood_grad(hyperparameters, sparse_gp, reg_weight):
     """Compute the negative log likelihood and gradient with respect to the
     hyperparameters."""
 
@@ -528,17 +530,27 @@ def compute_negative_likelihood_grad(hyperparameters, sparse_gp):
     negative_likelihood_gradient = -sparse_gp.likelihood_gradient
 
     print_hyps_and_grad(
-        hyperparameters, negative_likelihood_gradient, negative_likelihood
+        hyperparameters,
+        negative_likelihood_gradient,
+        negative_likelihood,
+        regularization,
     )
+
+    regularization = reg_weight * np.sum(hyperparameters ** 2)
+    regularization_grad = 2 * weight * hyperparameters
+
+    loss = negative_likelihood + regularization
+    loss_grad = negative_likelihood_gradient + regularization_grad
 
     return negative_likelihood, negative_likelihood_gradient
 
 
-def print_hyps(hyperparameters, neglike):
+def print_hyps(hyperparameters, neglike, regularization):
     print("Hyperparameters:")
     print(hyperparameters)
-    print("Likelihood:")
-    print(-neglike)
+    print("Likelihood:", -neglike)
+    print("Regularization:", regularization)
+    print("Loss:", neglike + regularization)
     print("\n")
 
 
@@ -547,13 +559,15 @@ def print_hyps_and_grad(hyperparameters, neglike_grad, neglike):
     print(hyperparameters)
     print("Likelihood gradient:")
     print(-neglike_grad)
-    print("Likelihood:")
-    print(-neglike)
+    print("Likelihood:", -neglike)
+    print("Regularization:", regularization)
+    print("Loss:", neglike + regularization)
     print("\n")
 
 
 def optimize_hyperparameters(
     sparse_gp,
+    reg_weight=1.0,
     display_results=True,
     gradient_tolerance=1e-4,
     max_iterations=10,
@@ -563,7 +577,7 @@ def optimize_hyperparameters(
     """Optimize the hyperparameters of a sparse GP model."""
 
     initial_guess = sparse_gp.hyperparameters
-    arguments = sparse_gp
+    arguments = (sparse_gp, reg_weight)
 
     if method == "BFGS":
         optimization_result = minimize(

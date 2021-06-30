@@ -138,7 +138,7 @@ class SGP_Calculator(Calculator):
     def from_file(name):
         with open(name, "r") as f:
             calc = SGP_Calculator.from_dict(json.loads(f.readline()))
-        return calc 
+        return calc
 
 
 def sort_variances(structure_descriptor, variances):
