@@ -1,5 +1,6 @@
 from ase.calculators.calculator import Calculator, all_changes
 from flare_pp._C_flare import SparseGP, Structure
+from flare_pp.sparse_gp import SGP_Wrapper
 import numpy as np
 import time
 
@@ -107,6 +108,37 @@ class SGP_Calculator(Calculator):
 
     def calculation_required(self, atoms, quantities):
         return True
+
+    def as_dict(self):
+        outdict = {
+            "sgp_model": self.sgp_model.as_dict(),
+            "results": self.results,
+        }
+        return outdict
+
+    @staticmethod
+    def from_dict(dct):
+        sgp_model = SGP_Wrapper.from_dict(dct["sgp_model"])
+        calc = SGP_Calculator(sgp_model=sgp_model)
+        res = dct["results"]
+        for key in res:
+            if isinstance(res[key], float):
+                calc.results[key] = res[key]
+            if isinstance(res[key], list):
+                calc.results[key] = np.array(res[key])
+        return calc
+
+    def write_model(self, name):
+        if ".json" != name[-5:]:
+            name += ".json"
+        with open(name, "w") as f:
+            json.dump(self.as_dict(), f, cls=NumpyEncoder)
+
+    @staticmethod
+    def from_file(name):
+        with open(name, "r") as f:
+            calc = SGP_Calculator.from_dict(json.loads(f.readline()))
+        return calc 
 
 
 def sort_variances(structure_descriptor, variances):

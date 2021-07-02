@@ -290,6 +290,9 @@ class SGP_Wrapper:
         update_qr=True,
     ):
 
+        if (len(custom_range) > 0) and (isinstance(custom_range, np.ndarray)):
+            custom_range = custom_range.tolist()
+
         # Convert coded species to 0, 1, 2, etc.
         if isinstance(structure, (struc.Structure, FLARE_Atoms)):
             coded_species = []
