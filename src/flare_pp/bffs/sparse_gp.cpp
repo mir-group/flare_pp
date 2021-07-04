@@ -819,6 +819,7 @@ SparseGP ::compute_likelihood_gradient(const Eigen::VectorXd &hyperparameters) {
   }
 
   // Compute Qff and Qff grads.
+  // TODO: Kuu_inv * Kuf_mat should be stored
   Eigen::MatrixXd Qff_plus_lambda =
       Kuf_mat.transpose() * Kuu_inverse * Kuf_mat +
       noise_vec.asDiagonal() * Eigen::MatrixXd::Identity(n_labels, n_labels);
@@ -828,7 +829,7 @@ SparseGP ::compute_likelihood_gradient(const Eigen::VectorXd &hyperparameters) {
   for (int i = 0; i < n_kernels; i++) {
     n_hyps = kernels[i]->kernel_hyperparameters.size();
     for (int j = 0; j < n_hyps; j++) {
-      Qff_grads.push_back(
+      Qff_grads.push_back( // Can be accelerated by storing Kuu_inv * Kuf_mat, for normalized_inner_prod, can directly use Qff_plus_lambda for the 1st and 3rd terms.
           Kuf_grads[grad_index].transpose() * Kuu_inverse * Kuf_mat -
           Kuf_mat.transpose() * Kuu_inverse * Kuu_grads[grad_index] *
               Kuu_inverse * Kuf_mat +
@@ -846,7 +847,7 @@ SparseGP ::compute_likelihood_gradient(const Eigen::VectorXd &hyperparameters) {
                       Eigen::MatrixXd::Identity(n_labels, n_labels));
 
   // Perform LU decomposition inplace and compute the inverse.
-  Eigen::PartialPivLU<Eigen::Ref<Eigen::MatrixXd>> lu(Qff_plus_lambda);
+  Eigen::PartialPivLU<Eigen::Ref<Eigen::MatrixXd>> lu(Qff_plus_lambda); // Can be simplified using QR?
   Eigen::MatrixXd Qff_inverse = lu.inverse();
 
   // Compute log determinant from the diagonal of U.
@@ -867,7 +868,7 @@ SparseGP ::compute_likelihood_gradient(const Eigen::VectorXd &hyperparameters) {
   Eigen::MatrixXd Qff_inv_grad;
   for (int i = 0; i < n_hyps_total; i++) {
     Qff_inv_grad = Qff_inverse * Qff_grads[i];
-    likelihood_gradient(i) =
+    likelihood_gradient(i) = // Can use (B * C).diagonal() to simplify the 1st term, faster. And the 2nd term uses Q_inv_y.T * Qff_grads * Q_inv_y
         -Qff_inv_grad.trace() + y.transpose() * Qff_inv_grad * Q_inv_y;
     likelihood_gradient(i) /= 2;
   }
