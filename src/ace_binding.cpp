@@ -5,7 +5,7 @@
 #include "b2.h"
 #include "b2_simple.h"
 #include "b2_norm.h"
-#include "b3.h"
+#include "bk.h"
 #include "two_body.h"
 #include "three_body.h"
 #include "three_body_wide.h"

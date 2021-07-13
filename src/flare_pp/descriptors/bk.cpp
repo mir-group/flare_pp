@@ -149,29 +149,9 @@ void compute_Bk(Eigen::MatrixXd &Bk_vals, Eigen::MatrixXd &Bk_force_dervs,
   int n_atoms = single_bond_vals.rows();
   int n_neighbors = cumulative_neighbor_count(n_atoms);
 
-  int n_radial = nos * N;
-  int n_harmonics = (lmax + 1) * (lmax + 1);
-  int n_bond = n_radial * n_harmonics;
-
-  int n_ls;
-  if (lmax == 0)
-    n_ls = 1;
-  else if (lmax == 1)
-    n_ls = 5;
-  else if (lmax == 2)
-    n_ls = 15;
-  else if (lmax == 3)
-    n_ls = 34;
-  else if (lmax == 4)
-    n_ls = 65;
-
-//  int n_d = (n_radial * (n_radial + 1) * (n_radial + 2) / 6) * n_ls;
-
   // The value of last counter is the number of descriptors
   std::vector<int> last_index = nu[nu.size()-1];
   int n_d = last_index[last_index.size()-1] + 1; 
-  std::cout << "n_d = " << n_d << std::endl;
-  std::cout << "n_d should be " << (n_radial * (n_radial + 1) * (n_radial + 2) / 6) * n_ls << std::endl;
 
   // Initialize arrays.
   Bk_vals = Eigen::MatrixXd::Zero(n_atoms, n_d);
@@ -183,62 +163,38 @@ void compute_Bk(Eigen::MatrixXd &Bk_vals, Eigen::MatrixXd &Bk_force_dervs,
   for (int atom = 0; atom < n_atoms; atom++) {
     int n_atom_neighbors = unique_neighbor_count(atom);
     int force_start = cumulative_neighbor_count(atom) * 3;
-    int n1, n2, n3, l1, l2, l3, m1, m2, m3, n1_l, n2_l, n3_l;
-    int counter = 0;
-    for (int n1 = 0; n1 < n_radial; n1++) {
-      for (int n2 = n1; n2 < n_radial; n2++) {
-        for (int n3 = n2; n3 < n_radial; n3++) {
-          for (int l1 = 0; l1 < (lmax + 1); l1++) {
-            int ind_1 = pow(lmax + 1, 4) * l1 * l1;
-            for (int l2 = 0; l2 < (lmax + 1); l2++) {
-              int ind_2 = ind_1 + pow(lmax + 1, 2) * l2 * l2 * (2 * l1 + 1);
-              for (int l3 = 0; l3 < (lmax + 1); l3++) {
-                if ((abs(l1 - l2) > l3) || (l3 > l1 + l2))
-                  continue;
-                int ind_3 = ind_2 + l3 * l3 * (2 * l2 + 1) * (2 * l1 + 1);
-                for (int m1 = 0; m1 < (2 * l1 + 1); m1++) {
-                  n1_l = n1 * n_harmonics + (l1 * l1 + m1);
-                  int ind_4 = ind_3 + m1 * (2 * l3 + 1) * (2 * l2 + 1);
-                  for (int m2 = 0; m2 < (2 * l2 + 1); m2++) {
-                    n2_l = n2 * n_harmonics + (l2 * l2 + m2);
-                    int ind_5 = ind_4 + m2 * (2 * l3 + 1);
-                    for (int m3 = 0; m3 < (2 * l3 + 1); m3++) {
-                      if (m1 + m2 + m3 - l1 - l2 - l3 != 0)
-                        continue;
-                      n3_l = n3 * n_harmonics + (l3 * l3 + m3);
+    for (int i = 0; i < nu.size(); i++) {
+      std::vector<int> nu_list = nu[i];
+      std::vector<int> single_bond_index = std::vector<int>(nu_list.end() - 2 - K, nu_list.end() - 2);
+      // Forward
+      std::complex<double> A_fwd = 1;
+      Eigen::VectorXcd dA = Eigen::VectorXcd::Ones(K);
+      for (int t = 0; t < K - 1; t++) {
+        A_fwd *= single_bond_vals(atom, single_bond_index[t]);
+        dA(t + 1) *= A_fwd;
+      }
+      // Backward
+      std::complex<double> A_bwd = 1;
+      for (int t = K - 1; t > 0; t--) {
+        A_bwd *= single_bond_vals(atom, single_bond_index[t]);
+        dA(t - 1) *= A_bwd;
+      }
+      std::complex<double> A = A_fwd * single_bond_vals(atom, single_bond_index[K - 1]);
 
-                      int m_index = ind_5 + m3;
+      int counter = nu_list[nu_list.size() - 1];
+      int m_index = nu_list[nu_list.size() - 2];
+      Bk_vals(atom, counter) += real(wigner3j_coeffs(m_index) * A); 
 
-                      Bk_vals(atom, counter) +=
-                          real(single_bond_vals(atom, n1_l) *
-                               single_bond_vals(atom, n2_l) *
-                               single_bond_vals(atom, n3_l) *
-                               wigner3j_coeffs(m_index));
-
-                      // Store force derivatives.
-                      for (int n = 0; n < n_atom_neighbors; n++) {
-                        for (int comp = 0; comp < 3; comp++) {
-                          int ind = force_start + n * 3 + comp;
-                          Bk_force_dervs(ind, counter) +=
-                              real(wigner3j_coeffs(m_index) *
-                                   (single_bond_force_dervs(ind, n1_l) *
-                                        single_bond_vals(atom, n2_l) *
-                                        single_bond_vals(atom, n3_l) +
-                                    single_bond_vals(atom, n1_l) *
-                                        single_bond_force_dervs(ind, n2_l) *
-                                        single_bond_vals(atom, n3_l) +
-                                    single_bond_vals(atom, n1_l) *
-                                        single_bond_vals(atom, n2_l) *
-                                        single_bond_force_dervs(ind, n3_l)));
-                        }
-                      }
-                    }
-                  }
-                }
-                counter++;
-              }
-            }
+      // Store force derivatives.
+      for (int n = 0; n < n_atom_neighbors; n++) {
+        for (int comp = 0; comp < 3; comp++) {
+          int ind = force_start + n * 3 + comp;
+          std::complex<double> dA_dr = 1;
+          for (int t = 0; t < K; t++) {
+            dA_dr += dA(t) * single_bond_force_dervs(ind, single_bond_index[t]);
           }
+          Bk_force_dervs(ind, counter) +=
+              real(wigner3j_coeffs(m_index) * dA_dr);
         }
       }
     }

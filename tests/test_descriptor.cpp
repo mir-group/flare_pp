@@ -25,9 +25,35 @@ TEST_F(StructureTest, RotationTest) {
 
   // Define descriptors.
   //descriptor_settings[2] = 2;
-  std::vector<int> descriptor_settings{n_species, 3, N, 2};
+  int lmax = 2;
+  int nos = n_species;
+
+  std::vector<int> descriptor_settings{n_species, 3, N, lmax};
   Bk descriptor = Bk(radial_string, cutoff_string, radial_hyps, cutoff_hyps,
                      descriptor_settings);
+
+  int n_radial = nos * N;
+  int n_harmonics = (lmax + 1) * (lmax + 1);
+  int n_bond = n_radial * n_harmonics;
+
+  int n_ls;
+  if (lmax == 0)
+    n_ls = 1;
+  else if (lmax == 1)
+    n_ls = 5;
+  else if (lmax == 2)
+    n_ls = 15;
+  else if (lmax == 3)
+    n_ls = 34;
+  else if (lmax == 4)
+    n_ls = 65;
+
+  int n_d3 = (n_radial * (n_radial + 1) * (n_radial + 2) / 6) * n_ls;
+
+  std::vector<int> last_index = nu[nu.size()-1];
+  int n_d = last_index[last_index.size()-1] + 1; 
+
+  EXPECT_EQ(n_d3, n_d);
 
   std::vector<Descriptor *> descriptors;
   descriptors.push_back(&descriptor);
@@ -37,14 +63,12 @@ TEST_F(StructureTest, RotationTest) {
       Structure(rotated_cell, species, rotated_pos, cutoff, descriptors);
 
   // Check that B1 is rotationally invariant.
-  double d1, d2, diff;
-  double tol = 1e-10;
+  double d1, d2;
 
   for (int n = 0; n < struc1.descriptors[0].n_descriptors; n++) {
     d1 = struc1.descriptors[0].descriptors[0](0, n);
     d2 = struc2.descriptors[0].descriptors[0](0, n);
-    diff = d1 - d2;
-    EXPECT_LE(abs(diff), tol);
+    EXPECT_NEAR(d1, d2, 1e-10);
   }
 }
 
