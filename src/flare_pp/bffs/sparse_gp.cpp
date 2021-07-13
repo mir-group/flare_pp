@@ -454,7 +454,8 @@ void SparseGP ::update_Kuf(
   }
 }
 
-void SparseGP ::add_training_structure(const Structure &structure) {
+void SparseGP ::add_training_structure(const Structure &structure, 
+        double rel_noise = 1) {
 
   initialize_sparse_descriptors(structure);
 
@@ -493,11 +494,11 @@ void SparseGP ::add_training_structure(const Structure &structure) {
   // Update noise.
   noise_vector.conservativeResize(n_labels + n_struc_labels);
   noise_vector.segment(n_labels, n_energy) =
-      Eigen::VectorXd::Constant(n_energy, 1 / (energy_noise * energy_noise));
+      Eigen::VectorXd::Constant(n_energy, 1 / (energy_noise * energy_noise * rel_noise * rel_noise));
   noise_vector.segment(n_labels + n_energy, n_force) =
-      Eigen::VectorXd::Constant(n_force, 1 / (force_noise * force_noise));
+      Eigen::VectorXd::Constant(n_force, 1 / (force_noise * force_noise * rel_noise * rel_noise));
   noise_vector.segment(n_labels + n_energy + n_force, n_stress) =
-      Eigen::VectorXd::Constant(n_stress, 1 / (stress_noise * stress_noise));
+      Eigen::VectorXd::Constant(n_stress, 1 / (stress_noise * stress_noise * rel_noise * rel_noise));
 
   // Update label count.
   n_energy_labels += n_energy;
