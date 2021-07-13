@@ -6,5 +6,7 @@
 
 std::vector<std::vector<int>> compute_indices(const std::vector<int> &descriptor_settings);
 
+std::vector<std::vector<int>> K1(int n_radial, int lmax);
+std::vector<std::vector<int>> K2(int n_radial, int lmax);
 std::vector<std::vector<int>> K3(int n_radial, int lmax);
 #endif

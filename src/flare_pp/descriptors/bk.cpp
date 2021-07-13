@@ -165,7 +165,7 @@ void compute_Bk(Eigen::MatrixXd &Bk_vals, Eigen::MatrixXd &Bk_force_dervs,
     int force_start = cumulative_neighbor_count(atom) * 3;
     for (int i = 0; i < nu.size(); i++) {
       std::vector<int> nu_list = nu[i];
-      std::vector<int> single_bond_index = std::vector<int>(nu_list.end() - 2 - K, nu_list.end() - 2);
+      std::vector<int> single_bond_index = std::vector<int>(nu_list.end() - 2 - K, nu_list.end() - 2); // Get n1_l, n2_l, n3_l, etc.
       // Forward
       std::complex<double> A_fwd = 1;
       Eigen::VectorXcd dA = Eigen::VectorXcd::Ones(K);
