@@ -19,6 +19,7 @@ public:
   std::vector<double> radial_hyps, cutoff_hyps;
   std::vector<int> descriptor_settings;
   Eigen::VectorXd wigner3j_coeffs;
+  std::vector<std::vector<int>> nu;
 
   std::string descriptor_name = "Bk";
 

@@ -5,6 +5,7 @@
 #include "radial.h"
 #include "structure.h"
 #include "wigner3j.h"
+#include "indices.h"
 #include "y_grad.h"
 #include <iostream>
 
@@ -21,6 +22,7 @@ Bk ::Bk(const std::string &radial_basis, const std::string &cutoff_function,
   this->cutoff_hyps = cutoff_hyps;
   this->descriptor_settings = descriptor_settings;
 
+  nu = compute_indices(descriptor_settings); 
   wigner3j_coeffs = compute_coeffs(descriptor_settings[3]);
 
   set_radial_basis(radial_basis, this->radial_pointer);
@@ -39,6 +41,7 @@ DescriptorValues Bk ::compute_struc(Structure &structure) {
       descriptor_indices;
 
   int nos = descriptor_settings[0];
+  int K = descriptor_settings[1];
   int N = descriptor_settings[2];
   int lmax = descriptor_settings[3];
 

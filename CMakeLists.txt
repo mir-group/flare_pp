@@ -126,6 +126,7 @@ set(FLARE_SOURCES
     src/flare_pp/descriptors/b2_norm.cpp
     src/flare_pp/descriptors/b2_simple.cpp
     src/flare_pp/descriptors/bk.cpp
+    src/flare_pp/descriptors/indices.cpp
     src/flare_pp/descriptors/wigner3j.cpp
     src/flare_pp/descriptors/two_body.cpp
     src/flare_pp/descriptors/three_body.cpp
