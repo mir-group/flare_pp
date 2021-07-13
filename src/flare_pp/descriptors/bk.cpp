@@ -21,7 +21,7 @@ Bk ::Bk(const std::string &radial_basis, const std::string &cutoff_function,
   this->cutoff_hyps = cutoff_hyps;
   this->descriptor_settings = descriptor_settings;
 
-  wigner3j_coeffs = compute_coeffs(descriptor_settings[2]);
+  wigner3j_coeffs = compute_coeffs(descriptor_settings[3]);
 
   set_radial_basis(radial_basis, this->radial_pointer);
   set_cutoff(cutoff_function, this->cutoff_pointer);
@@ -39,8 +39,8 @@ DescriptorValues Bk ::compute_struc(Structure &structure) {
       descriptor_indices;
 
   int nos = descriptor_settings[0];
-  int N = descriptor_settings[1];
-  int lmax = descriptor_settings[2];
+  int N = descriptor_settings[2];
+  int lmax = descriptor_settings[3];
 
   complex_single_bond(single_bond_vals, force_dervs, neighbor_coords,
                       unique_neighbor_count, cumulative_neighbor_count,

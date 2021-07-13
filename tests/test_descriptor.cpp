@@ -24,7 +24,8 @@ TEST_F(StructureTest, RotationTest) {
   Eigen::MatrixXd rotated_cell = cell * R.transpose();
 
   // Define descriptors.
-  descriptor_settings[2] = 2;
+  //descriptor_settings[2] = 2;
+  std::vector<int> descriptor_settings{n_species, 3, N, 2};
   Bk descriptor = Bk(radial_string, cutoff_string, radial_hyps, cutoff_hyps,
                      descriptor_settings);
 
