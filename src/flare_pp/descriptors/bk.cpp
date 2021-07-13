@@ -148,6 +148,7 @@ void compute_Bk(Eigen::MatrixXd &Bk_vals, Eigen::MatrixXd &Bk_force_dervs,
 
   int n_atoms = single_bond_vals.rows();
   int n_neighbors = cumulative_neighbor_count(n_atoms);
+
   int n_radial = nos * N;
   int n_harmonics = (lmax + 1) * (lmax + 1);
   int n_bond = n_radial * n_harmonics;
@@ -164,7 +165,13 @@ void compute_Bk(Eigen::MatrixXd &Bk_vals, Eigen::MatrixXd &Bk_force_dervs,
   else if (lmax == 4)
     n_ls = 65;
 
-  int n_d = (n_radial * (n_radial + 1) * (n_radial + 2) / 6) * n_ls;
+//  int n_d = (n_radial * (n_radial + 1) * (n_radial + 2) / 6) * n_ls;
+
+  // The value of last counter is the number of descriptors
+  std::vector<int> last_index = nu[nu.size()-1];
+  int n_d = last_index[last_index.size()-1] + 1; 
+  std::cout << "n_d = " << n_d << std::endl;
+  std::cout << "n_d should be " << (n_radial * (n_radial + 1) * (n_radial + 2) / 6) * n_ls << std::endl;
 
   // Initialize arrays.
   Bk_vals = Eigen::MatrixXd::Zero(n_atoms, n_d);
