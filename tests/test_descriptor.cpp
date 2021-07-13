@@ -1,10 +1,63 @@
 #include "bk.h"
+#include "b3.h"
 #include "descriptor.h"
 #include "test_structure.h"
 #include "gtest/gtest.h"
 #include <Eigen/Dense>
 #include <cmath>
 #include <iostream>
+
+
+TEST_F(StructureTest, TestB3) {
+  // Choose arbitrary rotation angles.
+  double xrot = 1.28;
+  double yrot = -3.21;
+  double zrot = 0.42;
+
+  // Define descriptors.
+  int lmax = 2;
+  int nos = n_species;
+
+  std::vector<int> descriptor_settings{n_species, 3, N, lmax};
+  Bk desc(radial_string, cutoff_string, radial_hyps, cutoff_hyps,
+          descriptor_settings);
+  std::vector<Descriptor *> descriptors;
+  descriptors.push_back(&desc);
+
+
+  std::vector<int> descriptor_settings_3{n_species, N, lmax};
+  B3 desc_3(radial_string, cutoff_string, radial_hyps, cutoff_hyps,
+            descriptor_settings_3);
+  std::vector<Descriptor *> descriptors_3;
+  descriptors_3.push_back(&desc_3);
+
+  Structure struc1 = Structure(cell, species, positions, cutoff, descriptors);
+  Structure struc2 = Structure(cell, species, positions, cutoff, descriptors_3);
+
+  // Check the descriptor dimensions
+  std::vector<int> last_index = desc.nu[desc.nu.size()-1];
+  int n_d = last_index[last_index.size()-1] + 1; // the size of list nu
+  int n_d1 = struc1.descriptors[0].n_descriptors;
+  int n_d2 = struc2.descriptors[0].n_descriptors;
+  EXPECT_EQ(n_d, n_d1);
+  EXPECT_EQ(n_d1, n_d2);
+
+  // Check that Bk and B3 give the same descriptors.
+  double d1, d2;
+  for (int i = 0; i < struc1.descriptors.size(); i++) {
+    for (int j = 0; j < struc1.descriptors[i].descriptors.size(); j++) {
+      for (int k = 0; k < struc1.descriptors[i].descriptors[j].rows(); k++) {
+        for (int l = 0; l < struc1.descriptors[i].descriptors[j].cols(); l++) {
+          d1 = struc1.descriptors[i].descriptors[j](k, l);
+          d2 = struc2.descriptors[i].descriptors[j](k, l);
+          EXPECT_NEAR(d1, d2, 1e-8);
+        }
+      }
+    }
+  }
+
+}
+
 
 TEST_F(StructureTest, RotationTest) {
 
@@ -29,34 +82,11 @@ TEST_F(StructureTest, RotationTest) {
   int nos = n_species;
 
   std::vector<int> descriptor_settings{n_species, 3, N, lmax};
-  Bk descriptor = Bk(radial_string, cutoff_string, radial_hyps, cutoff_hyps,
-                     descriptor_settings);
-
-  int n_radial = nos * N;
-  int n_harmonics = (lmax + 1) * (lmax + 1);
-  int n_bond = n_radial * n_harmonics;
-
-  int n_ls;
-  if (lmax == 0)
-    n_ls = 1;
-  else if (lmax == 1)
-    n_ls = 5;
-  else if (lmax == 2)
-    n_ls = 15;
-  else if (lmax == 3)
-    n_ls = 34;
-  else if (lmax == 4)
-    n_ls = 65;
-
-  int n_d3 = (n_radial * (n_radial + 1) * (n_radial + 2) / 6) * n_ls;
-
-  std::vector<int> last_index = nu[nu.size()-1];
-  int n_d = last_index[last_index.size()-1] + 1; 
-
-  EXPECT_EQ(n_d3, n_d);
+  Bk desc(radial_string, cutoff_string, radial_hyps, cutoff_hyps,
+          descriptor_settings);
 
   std::vector<Descriptor *> descriptors;
-  descriptors.push_back(&descriptor);
+  descriptors.push_back(&desc);
 
   Structure struc1 = Structure(cell, species, positions, cutoff, descriptors);
   Structure struc2 =
