@@ -1,5 +1,5 @@
-#ifndef B3_H
-#define B3_H
+#ifndef BK_H
+#define BK_H
 
 #include "descriptor.h"
 #include <string>
