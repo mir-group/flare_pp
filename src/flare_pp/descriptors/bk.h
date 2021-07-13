@@ -41,7 +41,8 @@ void compute_Bk(Eigen::MatrixXd &Bk_vals, Eigen::MatrixXd &Bk_force_dervs,
                 const Eigen::MatrixXcd &single_bond_force_dervs,
                 const Eigen::VectorXi &unique_neighbor_count,
                 const Eigen::VectorXi &cumulative_neighbor_count,
-                const Eigen::VectorXi &descriptor_indices, int nos, int N,
+                const Eigen::VectorXi &descriptor_indices, 
+                std::vector<std::vector<int>> nu, int nos, int K, int N,
                 int lmax, const Eigen::VectorXd &wigner3j_coeffs);
 
 void complex_single_bond(

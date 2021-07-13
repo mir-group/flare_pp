@@ -23,6 +23,7 @@ Bk ::Bk(const std::string &radial_basis, const std::string &cutoff_function,
   this->descriptor_settings = descriptor_settings;
 
   nu = compute_indices(descriptor_settings); 
+  std::cout << "nu size: " << nu.size() << std::endl;
   wigner3j_coeffs = compute_coeffs(descriptor_settings[3]);
 
   set_radial_basis(radial_basis, this->radial_pointer);
@@ -56,7 +57,7 @@ DescriptorValues Bk ::compute_struc(Structure &structure) {
 
   compute_Bk(Bk_vals, Bk_force_dervs, Bk_norms, Bk_force_dots, single_bond_vals,
              force_dervs, unique_neighbor_count, cumulative_neighbor_count,
-             descriptor_indices, nos, N, lmax, wigner3j_coeffs);
+             descriptor_indices, nu, nos, K, N, lmax, wigner3j_coeffs);
 
   // Gather species information.
   int noa = structure.noa;
@@ -141,7 +142,8 @@ void compute_Bk(Eigen::MatrixXd &Bk_vals, Eigen::MatrixXd &Bk_force_dervs,
                 const Eigen::MatrixXcd &single_bond_force_dervs,
                 const Eigen::VectorXi &unique_neighbor_count,
                 const Eigen::VectorXi &cumulative_neighbor_count,
-                const Eigen::VectorXi &descriptor_indices, int nos, int N,
+                const Eigen::VectorXi &descriptor_indices, 
+                std::vector<std::vector<int>> nu, int nos, int K, int N,
                 int lmax, const Eigen::VectorXd &wigner3j_coeffs) {
 
   int n_atoms = single_bond_vals.rows();
