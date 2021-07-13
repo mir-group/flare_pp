@@ -127,7 +127,7 @@ PYBIND11_MODULE(_C_flare, m) {
                     const std::vector<double> &, const std::vector<double> &,
                     const std::vector<int> &>());
 
-  py::class_<B3, Descriptor>(m, "B3")
+  py::class_<Bk, Descriptor>(m, "Bk")
       .def(py::init<const std::string &, const std::string &,
                     const std::vector<double> &, const std::vector<double> &,
                     const std::vector<int> &>());

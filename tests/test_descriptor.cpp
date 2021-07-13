@@ -25,7 +25,7 @@ TEST_F(StructureTest, RotationTest) {
 
   // Define descriptors.
   descriptor_settings[2] = 2;
-  B3 descriptor = B3(radial_string, cutoff_string, radial_hyps, cutoff_hyps,
+  Bk descriptor = Bk(radial_string, cutoff_string, radial_hyps, cutoff_hyps,
                      descriptor_settings);
 
   std::vector<Descriptor *> descriptors;

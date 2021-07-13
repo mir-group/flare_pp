@@ -7,7 +7,7 @@
 
 class Structure;
 
-class B3 : public Descriptor {
+class Bk : public Descriptor {
 public:
   std::function<void(std::vector<double> &, std::vector<double> &, double, int,
                      std::vector<double>)>
@@ -20,11 +20,11 @@ public:
   std::vector<int> descriptor_settings;
   Eigen::VectorXd wigner3j_coeffs;
 
-  std::string descriptor_name = "B3";
+  std::string descriptor_name = "Bk";
 
-  B3();
+  Bk();
 
-  B3(const std::string &radial_basis, const std::string &cutoff_function,
+  Bk(const std::string &radial_basis, const std::string &cutoff_function,
      const std::vector<double> &radial_hyps,
      const std::vector<double> &cutoff_hyps,
      const std::vector<int> &descriptor_settings);
@@ -34,8 +34,8 @@ public:
   nlohmann::json return_json();
 };
 
-void compute_B3(Eigen::MatrixXd &B3_vals, Eigen::MatrixXd &B3_force_dervs,
-                Eigen::VectorXd &B3_norms, Eigen::VectorXd &B3_force_dots,
+void compute_Bk(Eigen::MatrixXd &Bk_vals, Eigen::MatrixXd &Bk_force_dervs,
+                Eigen::VectorXd &Bk_norms, Eigen::VectorXd &Bk_force_dots,
                 const Eigen::MatrixXcd &single_bond_vals,
                 const Eigen::MatrixXcd &single_bond_force_dervs,
                 const Eigen::VectorXi &unique_neighbor_count,
