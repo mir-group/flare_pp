@@ -36,6 +36,7 @@ std::vector<std::vector<int>> K2(int n_radial, int lmax) {
       }
     }
   }
+  return index_list;
 }
 
 std::vector<std::vector<int>> K3(int n_radial, int lmax) {

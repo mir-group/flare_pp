@@ -31,9 +31,11 @@ TEST_F(StructureTest, TestB2) {
   B2 desc2(radial_string, cutoff_string, radial_hyps, cutoff_hyps,
             descriptor_settings_2);
   descriptors2.push_back(&desc2);
-    
+  std::cout << "begin computing struc" << std::endl;  
   Structure struc1 = Structure(cell, species, positions, cutoff, descriptors1);
+  std::cout << "done struc1" << std::endl;
   Structure struc2 = Structure(cell, species, positions, cutoff, descriptors2);
+  std::cout << "done struc2" << std::endl;
   
   // Check the descriptor dimensions
   std::vector<int> last_index = desc1.nu[desc1.nu.size()-1];
@@ -133,9 +135,10 @@ TEST_F(StructureTest, RotationTest) {
   // Define descriptors.
   //descriptor_settings[2] = 2;
   int lmax = 2;
+  int K = 2;
   int nos = n_species;
 
-  std::vector<int> descriptor_settings{n_species, 3, N, lmax};
+  std::vector<int> descriptor_settings{n_species, K, N, lmax};
   Bk desc(radial_string, cutoff_string, radial_hyps, cutoff_hyps,
           descriptor_settings);
 
