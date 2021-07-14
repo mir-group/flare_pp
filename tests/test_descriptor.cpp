@@ -1,4 +1,5 @@
 #include "bk.h"
+#include "b2.h"
 #include "b3.h"
 #include "descriptor.h"
 #include "test_structure.h"
@@ -7,41 +8,41 @@
 #include <cmath>
 #include <iostream>
 
-
-TEST_F(StructureTest, TestB3) {
+TEST_F(StructureTest, TestB2) {
+  GTEST_SKIP();
   // Choose arbitrary rotation angles.
   double xrot = 1.28;
   double yrot = -3.21;
   double zrot = 0.42;
 
   // Define descriptors.
+  int K = 2;
   int lmax = 2;
   int nos = n_species;
 
-  std::vector<int> descriptor_settings{n_species, 3, N, lmax};
-  Bk desc(radial_string, cutoff_string, radial_hyps, cutoff_hyps,
-          descriptor_settings);
-  std::vector<Descriptor *> descriptors;
-  descriptors.push_back(&desc);
-
-
-  std::vector<int> descriptor_settings_3{n_species, N, lmax};
-  B3 desc_3(radial_string, cutoff_string, radial_hyps, cutoff_hyps,
-            descriptor_settings_3);
-  std::vector<Descriptor *> descriptors_3;
-  descriptors_3.push_back(&desc_3);
-
-  Structure struc1 = Structure(cell, species, positions, cutoff, descriptors);
-  Structure struc2 = Structure(cell, species, positions, cutoff, descriptors_3);
-
+  std::vector<int> descriptor_settings_1{n_species, K, N, lmax};
+  Bk desc1(radial_string, cutoff_string, radial_hyps, cutoff_hyps,
+           descriptor_settings_1);
+  std::vector<Descriptor *> descriptors1;
+  descriptors1.push_back(&desc1);
+  
+  std::vector<int> descriptor_settings_2{n_species, N, lmax};
+  std::vector<Descriptor *> descriptors2;
+  B2 desc2(radial_string, cutoff_string, radial_hyps, cutoff_hyps,
+            descriptor_settings_2);
+  descriptors2.push_back(&desc2);
+    
+  Structure struc1 = Structure(cell, species, positions, cutoff, descriptors1);
+  Structure struc2 = Structure(cell, species, positions, cutoff, descriptors2);
+  
   // Check the descriptor dimensions
-  std::vector<int> last_index = desc.nu[desc.nu.size()-1];
+  std::vector<int> last_index = desc1.nu[desc1.nu.size()-1];
   int n_d = last_index[last_index.size()-1] + 1; // the size of list nu
   int n_d1 = struc1.descriptors[0].n_descriptors;
   int n_d2 = struc2.descriptors[0].n_descriptors;
   EXPECT_EQ(n_d, n_d1);
   EXPECT_EQ(n_d1, n_d2);
-
+  
   // Check that Bk and B3 give the same descriptors.
   double d1, d2;
   for (int i = 0; i < struc1.descriptors.size(); i++) {
@@ -55,6 +56,59 @@ TEST_F(StructureTest, TestB3) {
       }
     }
   }
+
+}
+
+
+
+TEST_F(StructureTest, TestB3) {
+  // Choose arbitrary rotation angles.
+  double xrot = 1.28;
+  double yrot = -3.21;
+  double zrot = 0.42;
+
+  // Define descriptors.
+  int K = 3;
+  int lmax = 2;
+  int nos = n_species;
+
+  std::vector<int> descriptor_settings_1{n_species, K, N, lmax};
+  Bk desc1(radial_string, cutoff_string, radial_hyps, cutoff_hyps,
+           descriptor_settings_1);
+  std::vector<Descriptor *> descriptors1;
+  descriptors1.push_back(&desc1);
+  
+  std::vector<int> descriptor_settings_2{n_species, N, lmax};
+  std::vector<Descriptor *> descriptors2;
+  B3 desc2(radial_string, cutoff_string, radial_hyps, cutoff_hyps,
+            descriptor_settings_2);
+  descriptors2.push_back(&desc2);
+  
+  Structure struc1 = Structure(cell, species, positions, cutoff, descriptors1);
+  Structure struc2 = Structure(cell, species, positions, cutoff, descriptors2);
+  
+  // Check the descriptor dimensions
+  std::vector<int> last_index = desc1.nu[desc1.nu.size()-1];
+  int n_d = last_index[last_index.size()-1] + 1; // the size of list nu
+  int n_d1 = struc1.descriptors[0].n_descriptors;
+  int n_d2 = struc2.descriptors[0].n_descriptors;
+  EXPECT_EQ(n_d, n_d1);
+  EXPECT_EQ(n_d1, n_d2);
+  
+  // Check that Bk and B3 give the same descriptors.
+  double d1, d2;
+  for (int i = 0; i < struc1.descriptors.size(); i++) {
+    for (int j = 0; j < struc1.descriptors[i].descriptors.size(); j++) {
+      for (int k = 0; k < struc1.descriptors[i].descriptors[j].rows(); k++) {
+        for (int l = 0; l < struc1.descriptors[i].descriptors[j].cols(); l++) {
+          d1 = struc1.descriptors[i].descriptors[j](k, l);
+          d2 = struc2.descriptors[i].descriptors[j](k, l);
+          EXPECT_NEAR(d1, d2, 1e-8);
+        }
+      }
+    }
+  }
+
 
 }
 

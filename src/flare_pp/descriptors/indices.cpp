@@ -29,7 +29,7 @@ std::vector<std::vector<int>> K2(int n_radial, int lmax) {
         for (int m = 0; m < (2 * l + 1); m++) {
           n1_l = n1 * n_harmonics + (l * l + m);
           n2_l = n2 * n_harmonics + (l * l + m);
-          int m_index;
+          int m_index = (m - l) % 2;
           index_list.push_back({n1, n2, l, m, n1_l, n2_l, m_index, counter});
         }
         counter++;

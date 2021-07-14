@@ -18,7 +18,7 @@ public:
   std::string radial_basis, cutoff_function;
   std::vector<double> radial_hyps, cutoff_hyps;
   std::vector<int> descriptor_settings;
-  Eigen::VectorXd wigner3j_coeffs;
+  Eigen::VectorXd coeffs;
   std::vector<std::vector<int>> nu;
 
   std::string descriptor_name = "Bk";
@@ -43,7 +43,7 @@ void compute_Bk(Eigen::MatrixXd &Bk_vals, Eigen::MatrixXd &Bk_force_dervs,
                 const Eigen::VectorXi &cumulative_neighbor_count,
                 const Eigen::VectorXi &descriptor_indices, 
                 std::vector<std::vector<int>> nu, int nos, int K, int N,
-                int lmax, const Eigen::VectorXd &wigner3j_coeffs);
+                int lmax, const Eigen::VectorXd &coeffs);
 
 void complex_single_bond(
     Eigen::MatrixXcd &single_bond_vals, Eigen::MatrixXcd &force_dervs,

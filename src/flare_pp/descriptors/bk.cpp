@@ -4,7 +4,7 @@
 #include "omp.h"
 #include "radial.h"
 #include "structure.h"
-#include "wigner3j.h"
+#include "coeffs.h"
 #include "indices.h"
 #include "y_grad.h"
 #include <iostream>
@@ -20,11 +20,12 @@ Bk ::Bk(const std::string &radial_basis, const std::string &cutoff_function,
   this->cutoff_function = cutoff_function;
   this->radial_hyps = radial_hyps;
   this->cutoff_hyps = cutoff_hyps;
-  this->descriptor_settings = descriptor_settings;
+  this->descriptor_settings = descriptor_settings; // nos, K, nmax, lmax
 
   nu = compute_indices(descriptor_settings); 
   std::cout << "nu size: " << nu.size() << std::endl;
-  wigner3j_coeffs = compute_coeffs(descriptor_settings[3]);
+  coeffs = compute_coeffs(descriptor_settings[1], descriptor_settings[3]);
+  std::cout << "computed coeffs" << std::endl;
 
   set_radial_basis(radial_basis, this->radial_pointer);
   set_cutoff(cutoff_function, this->cutoff_pointer);
@@ -57,7 +58,7 @@ DescriptorValues Bk ::compute_struc(Structure &structure) {
 
   compute_Bk(Bk_vals, Bk_force_dervs, Bk_norms, Bk_force_dots, single_bond_vals,
              force_dervs, unique_neighbor_count, cumulative_neighbor_count,
-             descriptor_indices, nu, nos, K, N, lmax, wigner3j_coeffs);
+             descriptor_indices, nu, nos, K, N, lmax, coeffs);
 
   // Gather species information.
   int noa = structure.noa;
@@ -144,7 +145,7 @@ void compute_Bk(Eigen::MatrixXd &Bk_vals, Eigen::MatrixXd &Bk_force_dervs,
                 const Eigen::VectorXi &cumulative_neighbor_count,
                 const Eigen::VectorXi &descriptor_indices, 
                 std::vector<std::vector<int>> nu, int nos, int K, int N,
-                int lmax, const Eigen::VectorXd &wigner3j_coeffs) {
+                int lmax, const Eigen::VectorXd &coeffs) {
 
   int n_atoms = single_bond_vals.rows();
   int n_neighbors = cumulative_neighbor_count(n_atoms);
@@ -183,7 +184,7 @@ void compute_Bk(Eigen::MatrixXd &Bk_vals, Eigen::MatrixXd &Bk_force_dervs,
 
       int counter = nu_list[nu_list.size() - 1];
       int m_index = nu_list[nu_list.size() - 2];
-      Bk_vals(atom, counter) += real(wigner3j_coeffs(m_index) * A); 
+      Bk_vals(atom, counter) += real(coeffs(m_index) * A); 
 
       // Store force derivatives.
       for (int n = 0; n < n_atom_neighbors; n++) {
@@ -194,7 +195,7 @@ void compute_Bk(Eigen::MatrixXd &Bk_vals, Eigen::MatrixXd &Bk_force_dervs,
             dA_dr += dA(t) * single_bond_force_dervs(ind, single_bond_index[t]);
           }
           Bk_force_dervs(ind, counter) +=
-              real(wigner3j_coeffs(m_index) * dA_dr);
+              real(coeffs(m_index) * dA_dr);
         }
       }
     }
