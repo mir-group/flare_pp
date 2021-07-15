@@ -139,6 +139,7 @@ TEST_F(StructureTest, RotationTest) {
   int nos = n_species;
 
   std::vector<int> descriptor_settings{n_species, K, N, lmax};
+  //std::vector<int> descriptor_settings{n_species, N, lmax};
   Bk desc(radial_string, cutoff_string, radial_hyps, cutoff_hyps,
           descriptor_settings);
 

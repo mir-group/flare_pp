@@ -24,11 +24,11 @@ std::vector<std::vector<int>> K2(int n_radial, int lmax) {
   std::vector<std::vector<int>> index_list;
   int counter = 0;
   for (int n1 = 0; n1 < n_radial; n1++) {
-    for (int n2 = n1; n2 < n_radial; n2++) { // can be simplified
+    for (int n2 = n1; n2 < n_radial; n2++) { // can be simplified?
       for (int l = 0; l < (lmax + 1); l++) {
         for (int m = 0; m < (2 * l + 1); m++) {
           n1_l = n1 * n_harmonics + (l * l + m);
-          n2_l = n2 * n_harmonics + (l * l + m);
+          n2_l = n2 * n_harmonics + (l * l + (2 * l - m));
           int m_index = (m - l) % 2;
           index_list.push_back({n1, n2, l, m, n1_l, n2_l, m_index, counter});
         }
