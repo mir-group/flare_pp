@@ -3,15 +3,22 @@
 
 Eigen::VectorXd compute_coeffs(int K, int lmax) {
   std::cout << "computing K=" << K << std::endl;
-  if (K == 2) { 
+  if (K == 1) { 
+    return coeffs_K1(lmax);
+  } else if (K == 2) { 
     return coeffs_K2(lmax);
   } else if (K == 3) {
     std::cout << "computing K=" << K << std::endl;
     return coeffs_K3(lmax);
   } else {
-    return coeffs_K3(lmax);
+    std::cout << "Not implemented." << std::endl;
   }
 
+}
+
+Eigen::VectorXd coeffs_K1(int lmax){ 
+  Eigen::VectorXd k1_coef = Eigen::VectorXd::Ones(1);
+  return k1_coef;
 }
 
 Eigen::VectorXd coeffs_K2(int lmax){ 
@@ -21,8 +28,8 @@ Eigen::VectorXd coeffs_K2(int lmax){
   return k2_coef;
 }
 
-// See compute_wigner.py for the calculation of these coefficients.
 Eigen::VectorXd coeffs_K3(int lmax) {
+  // See compute_wigner.py for the calculation of these coefficients.
   Eigen::VectorXd wigner3j_coeffs = Eigen::VectorXd::Zero(pow((lmax + 1), 6));
   if (lmax == 0) {
     wigner3j_coeffs(0) = 1;

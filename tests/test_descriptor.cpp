@@ -134,8 +134,8 @@ TEST_F(StructureTest, RotationTest) {
 
   // Define descriptors.
   //descriptor_settings[2] = 2;
-  int lmax = 2;
-  int K = 2;
+  int lmax = 0;
+  int K = 1;
   int nos = n_species;
 
   std::vector<int> descriptor_settings{n_species, K, N, lmax};

@@ -1,6 +1,7 @@
 #include "indices.h"
 #include <iostream>
 #include <cmath>
+#include <cassert>
 
 std::vector<std::vector<int>> compute_indices(const std::vector<int> &descriptor_settings) {
   int nos = descriptor_settings[0];
@@ -9,13 +10,29 @@ std::vector<std::vector<int>> compute_indices(const std::vector<int> &descriptor
   int lmax = descriptor_settings[3];
 
   int n_radial = nos * nmax;
-  if (K == 2) { 
+  if (K == 1) { 
+    assert(lmax == 0);
+    return K1(n_radial);
+  } else if (K == 2) { 
     return K2(n_radial, lmax);
   } else if (K == 3) {
     return K3(n_radial, lmax);
   } else {
     return K3(n_radial, lmax);
   }
+}
+
+std::vector<std::vector<int>> K1(int n_radial) {
+  int n1, n1_l;
+  std::vector<std::vector<int>> index_list;
+  int counter = 0;
+  for (int n1 = 0; n1 < n_radial; n1++) {
+    n1_l = n1;
+    int m_index = 0;
+    index_list.push_back({n1, n1_l, m_index, counter});
+    counter++;
+  }
+  return index_list;
 }
 
 std::vector<std::vector<int>> K2(int n_radial, int lmax) {
