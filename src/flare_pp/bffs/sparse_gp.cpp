@@ -132,6 +132,8 @@ SparseGP ::compute_cluster_uncertainties(const Structure &structure) {
 void SparseGP ::add_specific_environments(const Structure &structure,
                                           const std::vector<int> atoms) {
 
+  initialize_sparse_descriptors(structure);
+
   // Gather clusters with central atom in the given list.
   std::vector<std::vector<std::vector<int>>> indices_1;
   for (int i = 0; i < n_kernels; i++){
@@ -179,6 +181,8 @@ void SparseGP ::add_specific_environments(const Structure &structure,
 
 void SparseGP ::add_uncertain_environments(const Structure &structure,
                                            const std::vector<int> &n_added) {
+
+  initialize_sparse_descriptors(structure);
 
   // Compute cluster uncertainties.
   std::vector<std::vector<int>> sorted_indices =
@@ -239,6 +243,8 @@ void SparseGP ::add_uncertain_environments(const Structure &structure,
 
 void SparseGP ::add_random_environments(const Structure &structure,
                                         const std::vector<int> &n_added) {
+
+  initialize_sparse_descriptors(structure);
 
   // Randomly select environments without replacement.
   std::vector<std::vector<int>> envs1;
@@ -411,6 +417,9 @@ void SparseGP ::update_Kuf(
           cluster_descriptors[i], training_structures[j].descriptors[i],
           kernels[i]->kernel_hyperparameters);
 
+      std::cout << "update_Kuf" << std::endl;
+      std::cout << envs_struc_kernels << std::endl;
+
       int n1 = 0; // Sparse descriptor count
       int n2 = 0; // Cluster descriptor count
       for (int k = 0; k < n_types; k++) {
@@ -420,6 +429,8 @@ void SparseGP ::update_Kuf(
         int n4 = cluster_descriptors[i].n_clusters_by_type[k];
 
         if (training_structures[j].energy.size() != 0) {
+          std::cout << "adding energy" << std::endl;
+          std::cout << u_ind << " " << label_count(j) << std::endl;
           kern_mat.block(u_ind, label_count(j), n3, 1) =
               Kuf_kernels[i].block(n1, label_count(j), n3, 1);
           kern_mat.block(u_ind + n3, label_count(j), n4, 1) =
@@ -427,17 +438,21 @@ void SparseGP ::update_Kuf(
 
           current_count += 1;
         }
+        std::cout << "after energy" << std::endl;
+        std::cout << kern_mat << std::endl;
 
         if (training_structures[j].forces.size() != 0) {
-          kern_mat.block(u_ind, label_count(j) + current_count, n3,
-                         n_atoms * 3) =
-              Kuf_kernels[i].block(n1, label_count(j) + current_count, n3,
-                                   n_atoms * 3);
-          kern_mat.block(u_ind + n3, label_count(j) + current_count, n4,
-                         n_atoms * 3) =
-              envs_struc_kernels.block(n2, 1, n4, n_atoms * 3);
-          current_count += n_atoms * 3;
+          std::vector<int> atom_indices = training_atom_indices[j];
+          for (int a = 0; a < atom_indices.size(); a++) {
+            kern_mat.block(u_ind, label_count(j) + current_count, n3, 3) =
+                Kuf_kernels[i].block(n1, label_count(j) + current_count, n3, 3);
+            kern_mat.block(u_ind + n3, label_count(j) + current_count, n4, 3) =
+                envs_struc_kernels.block(n2, 1 + atom_indices[a] * 3, n4, 3);
+            current_count += 3;
+          }
         }
+        std::cout << "after forces" << std::endl;
+        std::cout << kern_mat << std::endl;
 
         if (training_structures[j].stresses.size() != 0) {
           kern_mat.block(u_ind, label_count(j) + current_count, n3, 6) =
@@ -445,6 +460,9 @@ void SparseGP ::update_Kuf(
           kern_mat.block(u_ind + n3, label_count(j) + current_count, n4, 6) =
               envs_struc_kernels.block(n2, 1 + n_atoms * 3, n4, 6);
         }
+        std::cout << "after stress" << std::endl;
+        std::cout << kern_mat << std::endl;
+
 
         n1 += n3;
         n2 += n4;
@@ -454,32 +472,48 @@ void SparseGP ::update_Kuf(
   }
 }
 
-void SparseGP ::add_training_structure(const Structure &structure) {
-
+void SparseGP ::add_training_structure(const Structure &structure,
+                                       const std::vector<int> atom_indices) {
   initialize_sparse_descriptors(structure);
 
+  int n_atoms = structure.noa;
   int n_energy = structure.energy.size();
-  int n_force = structure.forces.size();
+  int n_force = 0;
+  std::vector<int> atoms;
+  if (atom_indices[0] == -1) { // add all atoms
+    n_force = structure.forces.size();
+    for (int i = 0; i < n_atoms; i++) {
+      atoms.push_back(i);
+    }
+  } else {
+    atoms = atom_indices;
+    n_force = atoms.size() * 3;
+  }
+  training_atom_indices.push_back(atoms);
   int n_stress = structure.stresses.size();
   int n_struc_labels = n_energy + n_force + n_stress;
-  int n_atoms = structure.noa;
 
   // Update Kuf kernels.
   Eigen::MatrixXd envs_struc_kernels;
   for (int i = 0; i < n_kernels; i++) {
     int n_sparse = sparse_descriptors[i].n_clusters;
 
-    envs_struc_kernels =
+    envs_struc_kernels = // contain all atoms
         kernels[i]->envs_struc(sparse_descriptors[i], structure.descriptors[i],
                                kernels[i]->kernel_hyperparameters);
 
+    std::cout << envs_struc_kernels << std::endl;
     Kuf_kernels[i].conservativeResize(n_sparse, n_labels + n_struc_labels);
     Kuf_kernels[i].block(0, n_labels, n_sparse, n_energy) =
         envs_struc_kernels.block(0, 0, n_sparse, n_energy);
-    Kuf_kernels[i].block(0, n_labels + n_energy, n_sparse, n_force) =
-        envs_struc_kernels.block(0, 1, n_sparse, n_force);
     Kuf_kernels[i].block(0, n_labels + n_energy + n_force, n_sparse, n_stress) =
-        envs_struc_kernels.block(0, 1 + n_atoms * 3, n_sparse, n_sparse);
+        envs_struc_kernels.block(0, n_energy + n_atoms * 3, n_sparse, n_stress);
+
+    // Only add forces from `atoms`
+    for (int a = 0; a < atoms.size(); a++) {
+      Kuf_kernels[i].block(0, n_labels + n_energy + a * 3, n_sparse, 3) =
+          envs_struc_kernels.block(0, n_energy + atoms[a] * 3, n_sparse, 3);
+    }
   }
 
   // Update labels.
@@ -487,8 +521,10 @@ void SparseGP ::add_training_structure(const Structure &structure) {
   label_count(training_structures.size() + 1) = n_labels + n_struc_labels;
   y.conservativeResize(n_labels + n_struc_labels);
   y.segment(n_labels, n_energy) = structure.energy;
-  y.segment(n_labels + n_energy, n_force) = structure.forces;
   y.segment(n_labels + n_energy + n_force, n_stress) = structure.stresses;
+  for (int a = 0; a < atoms.size(); a++) {
+    y.segment(n_labels + n_energy + a * 3, 3) = structure.forces.segment(atoms[a] * 3, 3);
+  }
 
   // Update noise.
   noise_vector.conservativeResize(n_labels + n_struc_labels);
