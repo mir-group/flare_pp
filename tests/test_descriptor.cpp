@@ -9,7 +9,6 @@
 #include <iostream>
 
 TEST_F(StructureTest, TestB2) {
-  GTEST_SKIP();
   // Choose arbitrary rotation angles.
   double xrot = 1.28;
   double yrot = -3.21;
@@ -17,7 +16,8 @@ TEST_F(StructureTest, TestB2) {
 
   // Define descriptors.
   int K = 2;
-  int lmax = 2;
+  int N = 1;
+  int lmax = 1;
   int nos = n_species;
 
   std::vector<int> descriptor_settings_1{n_species, K, N, lmax};
@@ -47,17 +47,26 @@ TEST_F(StructureTest, TestB2) {
   
   // Check that Bk and B3 give the same descriptors.
   double d1, d2;
+  int nu_ind;
   for (int i = 0; i < struc1.descriptors.size(); i++) {
     for (int j = 0; j < struc1.descriptors[i].descriptors.size(); j++) {
       for (int k = 0; k < struc1.descriptors[i].descriptors[j].rows(); k++) {
+        nu_ind = 0;
         for (int l = 0; l < struc1.descriptors[i].descriptors[j].cols(); l++) {
           d1 = struc1.descriptors[i].descriptors[j](k, l);
           d2 = struc2.descriptors[i].descriptors[j](k, l);
           EXPECT_NEAR(d1, d2, 1e-8);
+
+          int n1 = desc1.nu[nu_ind][0];
+          int n2 = desc1.nu[nu_ind][1];
+          int li = desc1.nu[nu_ind][2];
+          nu_ind += 2 * li + 1;
+          std::cout << n1 << " " << n2 << " " << li << " d1 d2 " << d1 << " " << d2 << std::endl; 
         }
       }
     }
   }
+  EXPECT_EQ(nu_ind, desc1.nu.size());
 
 }
 
@@ -134,8 +143,8 @@ TEST_F(StructureTest, RotationTest) {
 
   // Define descriptors.
   //descriptor_settings[2] = 2;
-  int lmax = 0;
-  int K = 1;
+  int lmax = 5;
+  int K = 2;
   int nos = n_species;
 
   std::vector<int> descriptor_settings{n_species, K, N, lmax};
@@ -153,6 +162,7 @@ TEST_F(StructureTest, RotationTest) {
   // Check that B1 is rotationally invariant.
   double d1, d2;
 
+  std::cout << "n_descriptors=" << struc1.descriptors[0].n_descriptors << std::endl;
   for (int n = 0; n < struc1.descriptors[0].n_descriptors; n++) {
     d1 = struc1.descriptors[0].descriptors[0](0, n);
     d2 = struc2.descriptors[0].descriptors[0](0, n);
