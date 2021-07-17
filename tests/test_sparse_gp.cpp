@@ -311,3 +311,57 @@ TEST_F(StructureTest, AddOrder) {
     }
   }
 }
+
+TEST_F(StructureTest, AtomIndices) {
+  double sigma_e = 1;
+  double sigma_f = 2;
+  double sigma_s = 3;
+
+  std::vector<Kernel *> kernels;
+  kernels.push_back(&kernel_3);
+  SparseGP sparse_gp_1 = SparseGP(kernels, sigma_e, sigma_f, sigma_s);
+  SparseGP sparse_gp_2 = SparseGP(kernels, sigma_e, sigma_f, sigma_s);
+
+  Eigen::VectorXd energy = Eigen::VectorXd::Random(1);
+  Eigen::VectorXd forces = Eigen::VectorXd::Random(n_atoms * 3);
+  Eigen::VectorXd stresses = Eigen::VectorXd::Random(6);
+  test_struc.energy = energy;
+  test_struc.forces = forces;
+  test_struc.stresses = stresses;
+
+  // Add structure first.
+  sparse_gp_1.add_training_structure(test_struc, {-1});
+  sparse_gp_1.add_all_environments(test_struc);
+  sparse_gp_1.update_matrices_QR();
+
+  // Add environments first.
+  std::vector<int> atom_indices;
+  for (int i = 0; i < n_atoms; i++) {
+    atom_indices.push_back(i);
+  }
+  sparse_gp_2.add_training_structure(test_struc, atom_indices);
+  sparse_gp_2.add_all_environments(test_struc);
+  sparse_gp_2.update_matrices_QR();
+
+  // Check that matrices match.
+  EXPECT_EQ(sparse_gp_1.y.size(), sparse_gp_2.y.size());
+  for (int i = 0; i < sparse_gp_1.y.size(); i++) {
+    EXPECT_NEAR(sparse_gp_1.y(i), sparse_gp_2.y(i), 1e-8);
+  }
+
+  EXPECT_EQ(sparse_gp_1.Kuf.rows(), sparse_gp_2.Kuf.rows());
+  EXPECT_EQ(sparse_gp_1.Kuf.cols(), sparse_gp_2.Kuf.cols());
+  for (int i = 0; i < sparse_gp_1.Kuf.rows(); i++) {
+    for (int j = 0; j < sparse_gp_1.Kuf.cols(); j++) {
+      EXPECT_NEAR(sparse_gp_1.Kuf(i, j), sparse_gp_2.Kuf(i, j), 1e-8);
+    }
+  }
+
+  EXPECT_EQ(sparse_gp_1.Kuu.rows(), sparse_gp_2.Kuu.rows());
+  EXPECT_EQ(sparse_gp_1.Kuu.cols(), sparse_gp_2.Kuu.cols());
+  for (int i = 0; i < sparse_gp_1.Kuu.rows(); i++) {
+    for (int j = 0; j < sparse_gp_1.Kuu.cols(); j++) {
+      EXPECT_NEAR(sparse_gp_1.Kuu(i, j), sparse_gp_2.Kuu(i, j), 1e-8);
+    }
+  }
+}
