@@ -9,25 +9,11 @@
 #include <list>
 #include <iostream>
 
+// Test different types
 template <typename T>
-class DescTest : public ::testing::Test {
+class DescTest : public StructureTest {
 public:
   using List = std::list<T>;
-  int N = 2;
-  int lmax = 2;
-  int n_species = 2;
-  int nos = n_species;
-  int n_atoms = 10;
-  double cell_size = 10;
-  double cutoff = cell_size / 2;
-  std::string radial_string = "chebyshev";
-  std::string cutoff_string = "cosine";
-  std::vector<double> radial_hyps{0, cutoff};
-  std::vector<double> cutoff_hyps;
-
-  std::vector<int> descriptor_settings_2{n_species, N, lmax};
-  std::vector<Descriptor *> descriptors2;
-
 };
 
 using DescTypes = ::testing::Types<B2, B3>;
@@ -35,32 +21,26 @@ TYPED_TEST_SUITE(DescTest, DescTypes);
 
 TYPED_TEST(DescTest, TestBk) {
   // Set up B1/2/3 descriptors
-  std::vector<Descriptor *> descriptors2;
-  TypeParam desc2(this->radial_string, this->cutoff_string, this->radial_hyps, 
-                  this->cutoff_hyps, this->descriptor_settings_2);
-  descriptors2.push_back(&desc2);
+  std::vector<int> descriptor_settings_1{this->n_species, this->N, this->L};
+  std::vector<Descriptor *> descriptors1;
+
+  TypeParam desc1(this->radial_string, this->cutoff_string, this->radial_hyps, 
+                  this->cutoff_hyps, descriptor_settings_1);
+  descriptors1.push_back(&desc1);
 
   // Set up Bk descriptors
-  int K = desc2.K;
-  std::vector<int> descriptor_settings_1{this->n_species, K, this->N, this->lmax};
-  Bk desc1(this->radial_string, this->cutoff_string, this->radial_hyps, 
-           this->cutoff_hyps, descriptor_settings_1);
-  std::vector<Descriptor *> descriptors1;
-  descriptors1.push_back(&desc1);
+  int K = desc1.K;
+  std::vector<int> descriptor_settings_2{this->n_species, K, this->N, this->L};
+  Bk desc2(this->radial_string, this->cutoff_string, this->radial_hyps, 
+           this->cutoff_hyps, descriptor_settings_2);
+  std::vector<Descriptor *> descriptors2;
+  descriptors2.push_back(&desc2);
  
-  Eigen::MatrixXd cell = Eigen::MatrixXd::Identity(3, 3) * this->cell_size;
-  Eigen::MatrixXd positions = Eigen::MatrixXd::Random(this->n_atoms, 3) * this->cell_size / 2;
-  // Make random species.
-  std::vector<int> species;
-  for (int i = 0; i < this->n_atoms; i++) {
-    species.push_back(rand() % this->n_species);
-  }
-
-  Structure struc1 = Structure(cell, species, positions, this->cutoff, descriptors1);
-  Structure struc2 = Structure(cell, species, positions, this->cutoff, descriptors2);
+  Structure struc1 = Structure(this->cell, this->species, this->positions, this->cutoff, descriptors1);
+  Structure struc2 = Structure(this->cell, this->species, this->positions, this->cutoff, descriptors2);
   
   // Check the descriptor dimensions
-  std::vector<int> last_index = desc1.nu[desc1.nu.size()-1];
+  std::vector<int> last_index = desc2.nu[desc2.nu.size()-1];
   int n_d = last_index[last_index.size()-1] + 1; // the size of list nu
   int n_d1 = struc1.descriptors[0].n_descriptors;
   int n_d2 = struc2.descriptors[0].n_descriptors;
@@ -83,115 +63,6 @@ TYPED_TEST(DescTest, TestBk) {
   }
 
 }
-
-TEST_F(StructureTest, TestB2) {
-  // Define descriptors.
-  int K = 2;
-  int N = 1;
-  int lmax = 1;
-  int nos = n_species;
-
-  std::vector<int> descriptor_settings_1{n_species, K, N, lmax};
-  Bk desc1(radial_string, cutoff_string, radial_hyps, cutoff_hyps,
-           descriptor_settings_1);
-  std::vector<Descriptor *> descriptors1;
-  descriptors1.push_back(&desc1);
-  
-  std::vector<int> descriptor_settings_2{n_species, N, lmax};
-  std::vector<Descriptor *> descriptors2;
-  B2 desc2(radial_string, cutoff_string, radial_hyps, cutoff_hyps,
-            descriptor_settings_2);
-  descriptors2.push_back(&desc2);
-
-  Structure struc1 = Structure(cell, species, positions, cutoff, descriptors1);
-  Structure struc2 = Structure(cell, species, positions, cutoff, descriptors2);
-  
-  // Check the descriptor dimensions
-  std::vector<int> last_index = desc1.nu[desc1.nu.size()-1];
-  int n_d = last_index[last_index.size()-1] + 1; // the size of list nu
-  int n_d1 = struc1.descriptors[0].n_descriptors;
-  int n_d2 = struc2.descriptors[0].n_descriptors;
-  EXPECT_EQ(n_d, n_d1);
-  EXPECT_EQ(n_d1, n_d2);
-  
-  // Check that Bk and B3 give the same descriptors.
-  double d1, d2;
-  int nu_ind;
-  for (int i = 0; i < struc1.descriptors.size(); i++) {
-    for (int j = 0; j < struc1.descriptors[i].descriptors.size(); j++) {
-      for (int k = 0; k < struc1.descriptors[i].descriptors[j].rows(); k++) {
-        nu_ind = 0;
-        for (int l = 0; l < struc1.descriptors[i].descriptors[j].cols(); l++) {
-          d1 = struc1.descriptors[i].descriptors[j](k, l);
-          d2 = struc2.descriptors[i].descriptors[j](k, l);
-          EXPECT_NEAR(d1, d2, 1e-8);
-
-          int n1 = desc1.nu[nu_ind][0];
-          int n2 = desc1.nu[nu_ind][1];
-          int li = desc1.nu[nu_ind][2];
-          nu_ind += 2 * li + 1;
-          std::cout << n1 << " " << n2 << " " << li << " d1 d2 " << d1 << " " << d2 << std::endl; 
-        }
-      }
-    }
-  }
-  EXPECT_EQ(nu_ind, desc1.nu.size());
-
-}
-
-
-
-TEST_F(StructureTest, TestB3) {
-  // Choose arbitrary rotation angles.
-  double xrot = 1.28;
-  double yrot = -3.21;
-  double zrot = 0.42;
-
-  // Define descriptors.
-  int K = 3;
-  int lmax = 2;
-  int nos = n_species;
-
-  std::vector<int> descriptor_settings_1{n_species, K, N, lmax};
-  Bk desc1(radial_string, cutoff_string, radial_hyps, cutoff_hyps,
-           descriptor_settings_1);
-  std::vector<Descriptor *> descriptors1;
-  descriptors1.push_back(&desc1);
-  
-  std::vector<int> descriptor_settings_2{n_species, N, lmax};
-  std::vector<Descriptor *> descriptors2;
-  B3 desc2(radial_string, cutoff_string, radial_hyps, cutoff_hyps,
-            descriptor_settings_2);
-  descriptors2.push_back(&desc2);
-  
-  Structure struc1 = Structure(cell, species, positions, cutoff, descriptors1);
-  Structure struc2 = Structure(cell, species, positions, cutoff, descriptors2);
-  
-  // Check the descriptor dimensions
-  std::vector<int> last_index = desc1.nu[desc1.nu.size()-1];
-  int n_d = last_index[last_index.size()-1] + 1; // the size of list nu
-  int n_d1 = struc1.descriptors[0].n_descriptors;
-  int n_d2 = struc2.descriptors[0].n_descriptors;
-  EXPECT_EQ(n_d, n_d1);
-  EXPECT_EQ(n_d1, n_d2);
-  
-  // Check that Bk and B3 give the same descriptors.
-  double d1, d2;
-  for (int i = 0; i < struc1.descriptors.size(); i++) {
-    for (int j = 0; j < struc1.descriptors[i].descriptors.size(); j++) {
-      for (int k = 0; k < struc1.descriptors[i].descriptors[j].rows(); k++) {
-        for (int l = 0; l < struc1.descriptors[i].descriptors[j].cols(); l++) {
-          d1 = struc1.descriptors[i].descriptors[j](k, l);
-          d2 = struc2.descriptors[i].descriptors[j](k, l);
-          EXPECT_NEAR(d1, d2, 1e-8);
-        }
-      }
-    }
-  }
-
-
-}
-
 
 TEST_F(StructureTest, RotationTest) {
 

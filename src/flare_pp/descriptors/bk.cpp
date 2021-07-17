@@ -25,14 +25,12 @@ Bk ::Bk(const std::string &radial_basis, const std::string &cutoff_function,
   nu = compute_indices(descriptor_settings); 
   std::cout << "nu size: " << nu.size() << std::endl;
   coeffs = compute_coeffs(descriptor_settings[1], descriptor_settings[3]);
-  std::cout << "computed coeffs" << std::endl;
 
   set_radial_basis(radial_basis, this->radial_pointer);
   set_cutoff(cutoff_function, this->cutoff_pointer);
 }
 
 DescriptorValues Bk ::compute_struc(Structure &structure) {
-
   // Initialize descriptor values.
   DescriptorValues desc = DescriptorValues();
 
@@ -345,6 +343,7 @@ void complex_single_bond(
 
           descriptor_counter++;
         }
+
       }
       neighbor_index++;
     }

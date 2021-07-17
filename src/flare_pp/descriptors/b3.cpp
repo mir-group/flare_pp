@@ -23,7 +23,6 @@ B3 ::B3(const std::string &radial_basis, const std::string &cutoff_function,
   this->descriptor_settings = descriptor_settings;
 
   wigner3j_coeffs = compute_coeffs(3, descriptor_settings[2]);
-  std::cout << "computed coeffs for B3" << std::endl;
 
   set_radial_basis(radial_basis, this->radial_pointer);
   set_cutoff(cutoff_function, this->cutoff_pointer);
@@ -31,7 +30,6 @@ B3 ::B3(const std::string &radial_basis, const std::string &cutoff_function,
 
 DescriptorValues B3 ::compute_struc(Structure &structure) {
 
-  std::cout << "begin computing struc" << std::endl;
   // Initialize descriptor values.
   DescriptorValues desc = DescriptorValues();
 
@@ -45,22 +43,18 @@ DescriptorValues B3 ::compute_struc(Structure &structure) {
   int N = descriptor_settings[1];
   int lmax = descriptor_settings[2];
 
-  std::cout << "begin computing single bond" << std::endl;
   complex_single_bond(single_bond_vals, force_dervs, neighbor_coords,
                       unique_neighbor_count, cumulative_neighbor_count,
                       descriptor_indices, radial_pointer, cutoff_pointer, nos,
                       N, lmax, radial_hyps, cutoff_hyps, structure);
-  std::cout << "done computing single bond" << std::endl;
 
   // Compute descriptor values.
   Eigen::MatrixXd B3_vals, B3_force_dervs;
   Eigen::VectorXd B3_norms, B3_force_dots;
 
-  std::cout << "begin computing b3" << std::endl;
   compute_B3(B3_vals, B3_force_dervs, B3_norms, B3_force_dots, single_bond_vals,
              force_dervs, unique_neighbor_count, cumulative_neighbor_count,
              descriptor_indices, nos, N, lmax, wigner3j_coeffs);
-  std::cout << "done computing b3" << std::endl;
 
   // Gather species information.
   int noa = structure.noa;
