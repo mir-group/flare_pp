@@ -813,11 +813,13 @@ SparseGP ::compute_likelihood_gradient(const Eigen::VectorXd &hyperparameters) {
     }
 
     if (training_structures[i].forces.size() != 0) {
-      noise_vec.segment(current_count, n_atoms * 3) =
-          Eigen::VectorXd::Constant(n_atoms * 3, sigma_f * sigma_f);
-      f_noise_grad.segment(current_count, n_atoms * 3) =
-          Eigen::VectorXd::Constant(n_atoms * 3, 2 * sigma_f);
-      current_count += n_atoms * 3;
+      for (int a = 0; a < training_atom_indices[i].size(); a++) {
+        noise_vec.segment(current_count, 3) =
+            Eigen::VectorXd::Constant(3, sigma_f * sigma_f);
+        f_noise_grad.segment(current_count, 3) =
+            Eigen::VectorXd::Constant(3, 2 * sigma_f);
+        current_count += 3;
+      }
     }
 
     if (training_structures[i].stresses.size() != 0) {
@@ -925,10 +927,11 @@ void SparseGP ::set_hyperparameters(Eigen::VectorXd hyps) {
     }
 
     if (training_structures[i].forces.size() != 0) {
-      noise_vector.segment(current_count, n_atoms * 3) =
-          Eigen::VectorXd::Constant(n_atoms * 3,
-                                    1 / (force_noise * force_noise));
-      current_count += n_atoms * 3;
+      for (int a = 0; a < training_atom_indices[i].size(); a++) {
+        noise_vector.segment(current_count, 3) =
+            Eigen::VectorXd::Constant(3, 1 / (force_noise * force_noise));
+        current_count += 3;
+      }
     }
 
     if (training_structures[i].stresses.size() != 0) {

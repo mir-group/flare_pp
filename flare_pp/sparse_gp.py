@@ -283,6 +283,7 @@ class SGP_Wrapper:
         structure,
         forces,
         custom_range=(),
+        atom_indices=[-1],
         energy: float = None,
         stress: "ndarray" = None,
         mode: str = "specific",
@@ -331,7 +332,7 @@ class SGP_Wrapper:
         if sgp is None:
             sgp = self.sparse_gp
 
-        sgp.add_training_structure(structure_descriptor)
+        sgp.add_training_structure(structure_descriptor, atom_indices)
         if mode == "all":
             if not custom_range:
                 sgp.add_all_environments(structure_descriptor)

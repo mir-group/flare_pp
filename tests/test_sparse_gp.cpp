@@ -164,8 +164,8 @@ TEST_F(StructureTest, LikeGrad) {
   test_struc.forces = forces;
   test_struc.stresses = stresses;
 
-  sparse_gp.add_training_structure(test_struc);
-  sparse_gp.add_all_environments(test_struc);
+  sparse_gp.add_training_structure(test_struc, {0, 1, 3, 5});
+  sparse_gp.add_specific_environments(test_struc, {0, 1, 3}); 
 
   EXPECT_EQ(sparse_gp.Sigma.rows(), 0);
   EXPECT_EQ(sparse_gp.Kuu_inverse.rows(), 0);
