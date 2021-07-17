@@ -21,6 +21,7 @@ public:
   Eigen::VectorXd wigner3j_coeffs;
 
   std::string descriptor_name = "B3";
+  int K = 3; // Body order
 
   B3();
 

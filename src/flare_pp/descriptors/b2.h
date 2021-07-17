@@ -22,6 +22,7 @@ public:
   std::vector<int> descriptor_settings;
 
   std::string descriptor_name = "B2";
+  int K = 2; // Body order
 
   /** Matrix of cutoff values, with element (i, j) corresponding to the cutoff
    * assigned to the species pair (i, j), where i is the central species
