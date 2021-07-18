@@ -157,6 +157,19 @@ TEST_F(StructureTest, LikeGrad) {
   kernels.push_back(&kernel_3);
   SparseGP sparse_gp = SparseGP(kernels, sigma_e, sigma_f, sigma_s);
 
+  std::vector<Descriptor *> dc;
+
+  descriptor_settings = {n_species, 1, N, 0};
+  Bk b1(radial_string, cutoff_string, radial_hyps, cutoff_hyps,
+          descriptor_settings);
+  dc.push_back(&b1);
+  descriptor_settings = {n_species, 2, N, L};
+  Bk b2(radial_string, cutoff_string, radial_hyps, cutoff_hyps,
+          descriptor_settings);
+  dc.push_back(&b2);
+
+  test_struc = Structure(cell, species, positions, cutoff, dc);
+
   Eigen::VectorXd energy = Eigen::VectorXd::Random(1);
   Eigen::VectorXd forces = Eigen::VectorXd::Random(n_atoms * 3);
   Eigen::VectorXd stresses = Eigen::VectorXd::Random(6);
