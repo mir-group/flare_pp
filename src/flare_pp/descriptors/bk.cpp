@@ -22,6 +22,12 @@ Bk ::Bk(const std::string &radial_basis, const std::string &cutoff_function,
   this->cutoff_hyps = cutoff_hyps;
   this->descriptor_settings = descriptor_settings; // nos, K, nmax, lmax
 
+  // check if lmax = 0 when K = 1
+  if (this->descriptor_settings[1] == 1 && this->descriptor_settings[3] != 0) {
+    std::cout << "Warning: change lmax to 0 because K = 1" << std::endl;
+    this->descriptor_settings[3] = 0;
+  }
+
   nu = compute_indices(descriptor_settings); 
   std::cout << "nu size: " << nu.size() << std::endl;
   coeffs = compute_coeffs(descriptor_settings[1], descriptor_settings[3]);

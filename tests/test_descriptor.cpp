@@ -9,7 +9,7 @@
 #include <list>
 #include <iostream>
 
-// Test different types
+// Test different types B1, B2, B3 to match with Bk
 template <typename T>
 class DescTest : public StructureTest {
 public:
@@ -61,34 +61,35 @@ TYPED_TEST(DescTest, TestBk) {
       }
     }
   }
-
 }
 
-TEST_F(StructureTest, RotationTest) {
-
+// Test Bk with K=1,2,3 for rotational invariance 
+class DescRotTest : public StructureTest,
+                    public testing::WithParamInterface<int> {
+public:
   // Choose arbitrary rotation angles.
   double xrot = 1.28;
   double yrot = -3.21;
   double zrot = 0.42;
 
+  Eigen::MatrixXd rotated_pos;
+  Eigen::MatrixXd rotated_cell;
+
   // Define rotation matrices.
   Eigen::MatrixXd Rx{3, 3}, Ry{3, 3}, Rz{3, 3}, R{3, 3};
-  Rx << 1, 0, 0, 0, cos(xrot), -sin(xrot), 0, sin(xrot), cos(xrot);
-  Ry << cos(yrot), 0, sin(yrot), 0, 1, 0, -sin(yrot), 0, cos(yrot);
-  Rz << cos(zrot), -sin(zrot), 0, sin(zrot), cos(zrot), 0, 0, 0, 1;
-  R = Rx * Ry * Rz;
+  DescRotTest() {
+    Rx << 1, 0, 0, 0, cos(xrot), -sin(xrot), 0, sin(xrot), cos(xrot);
+    Ry << cos(yrot), 0, sin(yrot), 0, 1, 0, -sin(yrot), 0, cos(yrot);
+    Rz << cos(zrot), -sin(zrot), 0, sin(zrot), cos(zrot), 0, 0, 0, 1;
+    R = Rx * Ry * Rz;
+    rotated_pos = positions * R.transpose();
+    rotated_cell = cell * R.transpose();
+  }
+};
 
-  Eigen::MatrixXd rotated_pos = positions * R.transpose();
-  Eigen::MatrixXd rotated_cell = cell * R.transpose();
-
-  // Define descriptors.
-  //descriptor_settings[2] = 2;
-  int lmax = 5;
-  int K = 2;
-  int nos = n_species;
-
-  std::vector<int> descriptor_settings{n_species, K, N, lmax};
-  //std::vector<int> descriptor_settings{n_species, N, lmax};
+TEST_P(DescRotTest, RotationTest) {
+  int K = GetParam();
+  std::vector<int> descriptor_settings{n_species, K, N, L};
   Bk desc(radial_string, cutoff_string, radial_hyps, cutoff_hyps,
           descriptor_settings);
 
@@ -97,7 +98,7 @@ TEST_F(StructureTest, RotationTest) {
 
   Structure struc1 = Structure(cell, species, positions, cutoff, descriptors);
   Structure struc2 =
-      Structure(rotated_cell, species, rotated_pos, cutoff, descriptors);
+      Structure(this->rotated_cell, species, this->rotated_pos, cutoff, descriptors);
 
   // Check that B1 is rotationally invariant.
   double d1, d2;
@@ -109,6 +110,8 @@ TEST_F(StructureTest, RotationTest) {
     EXPECT_NEAR(d1, d2, 1e-10);
   }
 }
+
+INSTANTIATE_TEST_SUITE_P(DescBodies, DescRotTest, testing::Values(1, 2, 3));
 
   // TEST_F(DescriptorTest, SingleBond) {
   //   // Check that B1 descriptors match the corresponding elements of the
