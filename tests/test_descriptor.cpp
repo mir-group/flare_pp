@@ -1,4 +1,5 @@
 #include "bk.h"
+#include "b1.h"
 #include "b2.h"
 #include "b3.h"
 #include "descriptor.h"
@@ -16,7 +17,7 @@ public:
   using List = std::list<T>;
 };
 
-using DescTypes = ::testing::Types<B2, B3>;
+using DescTypes = ::testing::Types<B1, B2, B3>;
 TYPED_TEST_SUITE(DescTest, DescTypes);
 
 TYPED_TEST(DescTest, TestBk) {
