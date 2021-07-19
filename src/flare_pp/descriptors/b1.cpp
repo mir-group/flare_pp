@@ -345,3 +345,9 @@ void b1_single_bond(
     }
   }
 }
+
+// TODO: Implement.
+nlohmann::json B1 ::return_json(){
+  nlohmann::json j;
+  return j;
+}
