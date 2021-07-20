@@ -7,6 +7,8 @@
 #include "coeffs.h"
 #include "indices.h"
 #include "y_grad.h"
+#include <fstream> // File operations
+#include <iomanip> // setprecision
 #include <iostream>
 
 Bk ::Bk() {}
@@ -34,9 +36,72 @@ Bk ::Bk(const std::string &radial_basis, const std::string &cutoff_function,
 
   set_radial_basis(radial_basis, this->radial_pointer);
   set_cutoff(cutoff_function, this->cutoff_pointer);
+
+  // Create cutoff matrix.
+  int n_species = descriptor_settings[0];
+  double cutoff_val = radial_hyps[1];
+  cutoffs = Eigen::MatrixXd::Constant(n_species, n_species, cutoff_val);
+}
+
+Bk ::Bk(const std::string &radial_basis, const std::string &cutoff_function,
+        const std::vector<double> &radial_hyps,
+        const std::vector<double> &cutoff_hyps,
+        const std::vector<int> &descriptor_settings,
+        const Eigen::MatrixXd &cutoffs) {
+
+  this->radial_basis = radial_basis;
+  this->cutoff_function = cutoff_function;
+  this->radial_hyps = radial_hyps;
+  this->cutoff_hyps = cutoff_hyps;
+  this->descriptor_settings = descriptor_settings; // nos, K, nmax, lmax
+
+  // check if lmax = 0 when K = 1
+  if (this->descriptor_settings[1] == 1 && this->descriptor_settings[3] != 0) {
+    std::cout << "Warning: change lmax to 0 because K = 1" << std::endl;
+    this->descriptor_settings[3] = 0;
+  }
+
+  nu = compute_indices(descriptor_settings); 
+  std::cout << "nu size: " << nu.size() << std::endl;
+  coeffs = compute_coeffs(descriptor_settings[1], descriptor_settings[3]);
+
+  set_radial_basis(radial_basis, this->radial_pointer);
+  set_cutoff(cutoff_function, this->cutoff_pointer);
+
+  // Assign cutoff matrix.
+  this->cutoffs = cutoffs;
+}
+
+void Bk ::write_to_file(std::ofstream &coeff_file, int coeff_size) {
+  int n_species = descriptor_settings[0];
+  int K = descriptor_settings[1];
+  int n_max = descriptor_settings[2];
+  int l_max = descriptor_settings[3];
+
+  coeff_file << "\n" << "B" << K << "\n";
+
+  // Report radial basis set.
+  coeff_file << radial_basis << "\n";
+
+  // Record number of species, nmax, lmax, and the cutoff.
+  double cutoff = radial_hyps[1];
+
+  coeff_file << n_species << " " << n_max << " " << l_max << " ";
+  coeff_file << coeff_size << "\n";
+  coeff_file << cutoff_function << "\n";
+
+  // Report cutoffs to 2 decimal places.
+  coeff_file << std::fixed << std::setprecision(2);
+  for (int i = 0; i < n_species; i ++){
+    for (int j = 0; j < n_species; j ++){
+      coeff_file << cutoffs(i, j) << " ";
+    }
+  }
+  coeff_file << "\n";
 }
 
 DescriptorValues Bk ::compute_struc(Structure &structure) {
+
   // Initialize descriptor values.
   DescriptorValues desc = DescriptorValues();
 
@@ -349,15 +414,37 @@ void complex_single_bond(
 
           descriptor_counter++;
         }
-
       }
       neighbor_index++;
     }
   }
 }
 
-// TODO: Implement.
+void to_json(nlohmann::json& j, const Bk & p){
+  j = nlohmann::json{
+    {"radial_basis", p.radial_basis},
+    {"cutoff_function", p.cutoff_function},
+    {"radial_hyps", p.radial_hyps},
+    {"cutoff_hyps", p.cutoff_hyps},
+    {"descriptor_settings", p.descriptor_settings},
+    {"cutoffs", p.cutoffs},
+    {"descriptor_name", p.descriptor_name}
+  };
+}
+
+void from_json(const nlohmann::json& j, Bk & p){
+  p = Bk(
+    j.at("radial_basis"),
+    j.at("cutoff_function"),
+    j.at("radial_hyps"),
+    j.at("radial_hyps"),
+    j.at("descriptor_settings"),
+    j.at("cutoffs")
+  );
+}
+
 nlohmann::json Bk ::return_json(){
   nlohmann::json j;
+  to_json(j, *this);
   return j;
 }

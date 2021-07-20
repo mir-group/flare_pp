@@ -445,7 +445,7 @@ class SGP_Wrapper:
         new_kernels = self.sgp_var.kernels
         print("Map with current sgp_var")
        
-        self.sparse_gp.write_mapping_coefficients(filename, contributor, kernel_idx, "uncertainty")
+        self.sgp_var.write_mapping_coefficients(filename, contributor, kernel_idx, "uncertainty")
         
         return new_kernels
 

@@ -8,7 +8,7 @@ from flare import struc
 from flare.lammps import lammps_calculator
 
 from flare_pp.sparse_gp import SGP_Wrapper
-from flare_pp._C_flare import NormalizedDotProduct, B2, SparseGP, Structure
+from flare_pp._C_flare import NormalizedDotProduct, Bk, SparseGP, Structure
 
 import flare_pp
 
@@ -49,8 +49,8 @@ many_body_cutoffs = [cutoff]
 radial_basis = "chebyshev"
 radial_hyps = [0.0, cutoff]
 cutoff_hyps = []
-settings = [len(atom_types), 4, 3] 
-calc = B2(radial_basis, cutoff_function, radial_hyps, cutoff_hyps, settings)
+settings = [len(atom_types), 2, 4, 3] 
+calc = Bk(radial_basis, cutoff_function, radial_hyps, cutoff_hyps, settings)
 sigma_e = 1.0
 sigma_f = 1.0
 sigma_s = 1.0
@@ -181,7 +181,7 @@ def test_lammps():
 
     # set up input and data files
     data_file_name = "tmp.data"
-    lammps_location = "beta.txt"
+    lammps_location = "lmp.flare"
     style_string = "flare"
     coeff_string = "* * {}".format(lammps_location)
     lammps_executable = os.environ.get("lmp")
