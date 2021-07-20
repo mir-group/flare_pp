@@ -211,27 +211,31 @@ class SGP_Wrapper:
 
         # recover descriptors from checkpoint
         desc_calc = in_dict["descriptor_calculators"]
-        assert len(desc_calc) == 1
-        b2_dict = desc_calc[0]
-        assert b2_dict["type"] == "B2"
-        calc = _C_flare.B2(
-            b2_dict["radial_basis"],
-            b2_dict["cutoff_function"],
-            b2_dict["radial_hyps"],
-            b2_dict["cutoff_hyps"],
-            b2_dict["descriptor_settings"],
-        )
+        desc_calc_list = []
+
+        for dc_dict in desc_calc:
+            if dc_dict["type"] == "Bk":
+                calc = _C_flare.Bk(
+                    dc_dict["radial_basis"],
+                    dc_dict["cutoff_function"],
+                    dc_dict["radial_hyps"],
+                    dc_dict["cutoff_hyps"],
+                    dc_dict["descriptor_settings"],
+                )
+            else:
+                raise NotImplementedError
+            desc_calc_list.append(calc)
 
         # change the keys of single_atom_energies and species_map to int
         if in_dict["single_atom_energies"] is not None:
-             sae_dict = {int(k): v for k, v in in_dict["single_atom_energies"].items()}
+            sae_dict = {int(k): v for k, v in in_dict["single_atom_energies"].items()}
         else:
-             sae_dict = None
+            sae_dict = None
         species_map = {int(k): v for k, v in in_dict["species_map"].items()}
 
         gp = SGP_Wrapper(
             kernels=kernels,
-            descriptor_calculators=[calc],
+            descriptor_calculators=desc_calc_list,
             cutoff=in_dict["cutoff"],
             sigma_e=in_dict["hyps"][-3],
             sigma_f=in_dict["hyps"][-2],
@@ -283,12 +287,12 @@ class SGP_Wrapper:
         structure,
         forces,
         custom_range=(),
-        atom_indices=[-1],
         energy: float = None,
         stress: "ndarray" = None,
         mode: str = "specific",
         sgp: SparseGP = None,  # for creating sgp_var
         update_qr=True,
+        atom_indices=[-1],
     ):
 
         # Convert coded species to 0, 1, 2, etc.
@@ -380,17 +384,15 @@ class SGP_Wrapper:
         )
 
     def write_mapping_coefficients(self, filename, contributor, kernel_idx):
-        self.sparse_gp.write_mapping_coefficients(filename, contributor, kernel_idx)
+        self.sparse_gp.write_mapping_coefficients(filename, contributor, kernel_idx, "potential")
 
     def write_varmap_coefficients(self, filename, contributor, kernel_idx):
         old_kernels = self.sparse_gp.kernels
-        assert (len(old_kernels) == 1) and (
-            kernel_idx == 0
-        ), "Not support multiple kernels"
-        assert isinstance(old_kernels[0], NormalizedDotProduct)
-
         power = 1
-        new_kernels = [NormalizedDotProduct(old_kernels[0].sigma, power)]
+        new_kernels = []
+        for kern in old_kernels:
+            assert isinstance(kern, NormalizedDotProduct)
+            new_kernels.append(NormalizedDotProduct(kern.sigma, power))
 
         # Build a power=1 SGP from scratch
         if self.sgp_var is None:
@@ -399,8 +401,8 @@ class SGP_Wrapper:
             self.sgp_var_kernels = new_kernels
 
         # Check hyperparameters and training data, if not match, construct a new SGP
-        assert len(self.sgp_var.kernels) == 1
-        assert np.allclose(self.sgp_var.kernels[0].power, 1.0)
+        for kern in self.sgp_var.kernels:
+            assert np.allclose(kern.power, 1.0)
         is_same_hyps = np.allclose(
             self.sgp_var.hyperparameters, self.sparse_gp.hyperparameters
         )
@@ -443,7 +445,7 @@ class SGP_Wrapper:
         new_kernels = self.sgp_var.kernels
         print("Map with current sgp_var")
        
-        self.sgp_var.write_varmap_coefficients(filename, contributor, kernel_idx)
+        self.sparse_gp.write_mapping_coefficients(filename, contributor, kernel_idx, "uncertainty")
         
         return new_kernels
 

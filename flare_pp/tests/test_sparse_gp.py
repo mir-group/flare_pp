@@ -10,6 +10,7 @@ from flare.lammps import lammps_calculator
 from flare_pp.sparse_gp import SGP_Wrapper
 from flare_pp._C_flare import NormalizedDotProduct, B2, SparseGP, Structure
 
+import flare_pp
 
 np.random.seed(10)
 
@@ -78,7 +79,7 @@ def test_update_db():
 #    )
 
     sgp_py.update_db(
-        train_structure, forces, [3], energy, stress, mode="uncertain"
+        train_structure, forces, custom_range=[3], energy=energy, stress=stress, mode="uncertain"
     )
 
     n_envs = len(custom_range)
@@ -109,7 +110,7 @@ def test_train():
     ),
 )
 def test_lammps():
-    sgp_py.write_mapping_coefficients("lmp.flare", "A", 0)
+    sgp_py.write_mapping_coefficients("lmp.flare", "A", [0])
     from fln.utils import get_ase_lmp_calc
     lmp_calc = get_ase_lmp_calc(
         ff_preset="flare_pp", 
@@ -123,8 +124,8 @@ def test_lammps():
     lmp_e = test_atoms.get_potential_energy()
     lmp_s = test_atoms.get_stress()
 
-
-    new_kern = sgp_py.write_varmap_coefficients("beta_var.txt", "B", 0) # here the new kernel needs to be returned, otherwise the kernel won't be found in the current module
+    # here the new kernel needs to be returned, otherwise the kernel won't be found in the current module
+    new_kern = sgp_py.write_varmap_coefficients("beta_var.txt", "B", [0])
 
     assert sgp_py.sparse_gp.sparse_indices[0] == sgp_py.sgp_var.sparse_indices[0], \
             "the sparse_gp and sgp_var don't have the same training data"
