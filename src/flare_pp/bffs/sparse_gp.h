@@ -81,13 +81,8 @@ public:
   void set_hyperparameters(Eigen::VectorXd hyps);
 
   void write_mapping_coefficients(std::string file_name,
-                                  std::string contributor,
-                                  int kernel_index);
-
-  Eigen::MatrixXd varmap_coeffs; // for debugging. TODO: remove this line 
-  void write_varmap_coefficients(std::string file_name,
-                                  std::string contributor,
-                                  int kernel_index);
+      std::string contributor, std::vector<int> kernel_indices, 
+      std::string map_type = std::string("potential"));
 
   // TODO: Make kernels jsonable.
   NLOHMANN_DEFINE_TYPE_INTRUSIVE(SparseGP, hyperparameters, kernels,    
