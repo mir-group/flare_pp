@@ -42,11 +42,13 @@ DescriptorValues B3 ::compute_struc(Structure &structure) {
   int nos = descriptor_settings[0];
   int N = descriptor_settings[1];
   int lmax = descriptor_settings[2];
+  double cutoff = radial_hyps[1];
+  Eigen::MatrixXd cutoffs = Eigen::MatrixXd::Constant(nos, nos, cutoff);
 
   complex_single_bond(single_bond_vals, force_dervs, neighbor_coords,
                       unique_neighbor_count, cumulative_neighbor_count,
                       descriptor_indices, radial_pointer, cutoff_pointer, nos,
-                      N, lmax, radial_hyps, cutoff_hyps, structure);
+                      N, lmax, radial_hyps, cutoff_hyps, structure, cutoffs);
 
   // Compute descriptor values.
   Eigen::MatrixXd B3_vals, B3_force_dervs;
