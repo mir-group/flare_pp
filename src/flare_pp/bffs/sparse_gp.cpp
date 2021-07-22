@@ -512,6 +512,12 @@ void SparseGP ::add_training_structure(const Structure &structure,
   for (int a = 0; a < atoms.size(); a++) {
     y.segment(n_labels + n_energy + a * 3, 3) = structure.forces.segment(atoms[a] * 3, 3);
   }
+  e_noise_one.conservativeResize(n_labels + n_struc_labels);
+  e_noise_one.segment(n_labels, n_energy) = Eigen::VectorXd::Ones(n_energy);
+  f_noise_one.conservativeResize(n_labels + n_struc_labels);
+  f_noise_one.segment(n_labels + n_energy, n_force) = Eigen::VectorXd::Ones(n_force);
+  s_noise_one.conservativeResize(n_labels + n_struc_labels);
+  s_noise_one.segment(n_labels + n_energy + n_force, n_stress) = Eigen::VectorXd::Ones(n_stress);
 
   // Update noise.
   noise_vector.conservativeResize(n_labels + n_struc_labels);
@@ -534,6 +540,7 @@ void SparseGP ::add_training_structure(const Structure &structure,
 
   // Update Kuf.
   stack_Kuf();
+
 }
 
 void SparseGP ::stack_Kuu() {
