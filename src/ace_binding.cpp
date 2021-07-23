@@ -172,6 +172,8 @@ PYBIND11_MODULE(_C_flare, m) {
       .def("compute_likelihood_stable", &SparseGP::compute_likelihood_stable)
       .def("compute_likelihood_gradient",
            &SparseGP::compute_likelihood_gradient)
+      .def("compute_likelihood_gradient_stable",
+           &SparseGP::compute_likelihood_gradient_stable)
       .def("write_mapping_coefficients", &SparseGP::write_mapping_coefficients)
       .def("compute_cluster_uncertainties", &SparseGP::compute_cluster_uncertainties) // for debugging and unit test
       .def_readwrite("Kuu_jitter", &SparseGP::Kuu_jitter)
