@@ -17,7 +17,9 @@ class ParallelSGP : public SparseGP {
 public:
   // Training and sparse points.
   std::vector<ClusterDescriptor> global_sparse_descriptors;
-  std::vector<std::vector<ClusterDescriptor>> local_sparse_descriptors;
+  std::vector<std::vector<ClusterDescriptor>> local_sparse_descriptors_A, 
+      local_sparse_descriptors_Kuu_row, local_sparse_descriptors_Kuu_col,
+      local_sparse_descriptors;
   std::vector<std::vector<std::vector<int>>> global_sparse_indices;
 
   // Parallel parameters
@@ -26,6 +28,9 @@ public:
   int nmin_struc, nmax_struc, nmin_envs, nmax_envs;
   std::vector<Eigen::VectorXi> n_struc_clusters_by_type;
   int global_n_labels;
+  std::vector<int> f_count;
+  std::vector<std::vector<int>> u_count;
+  Eigen::VectorXi n_clusters_by_type;
 
   // Constructors.
   ParallelSGP();
@@ -54,7 +59,9 @@ public:
   void add_training_structure(const Structure &structure);
   
   Eigen::VectorXi sparse_indices_by_type(int n_types, std::vector<int> species, const std::vector<int> atoms);    
-  void add_specific_environments(const Structure&, std::vector<int>);
+  void add_specific_environments(const Structure &structure, const std::vector<int> atoms, 
+    std::vector<std::vector<ClusterDescriptor>> local_sparse_desc);
+
   void add_local_specific_environments(const Structure &structure, const std::vector<int> atoms);
   void add_global_specific_environments(const Structure &structure, const std::vector<int> atoms);
   void predict_local_uncertainties(Structure &structure);
@@ -71,6 +78,11 @@ public:
    */
   void build(const std::vector<Structure> &training_strucs,
         double cutoff, std::vector<Descriptor *> descriptor_calculators,
+        const std::vector<std::vector<std::vector<int>>> &training_sparse_indices,
+        int n_types);
+
+
+  void preprocess_training_data(const std::vector<Structure> &training_strucs, 
         const std::vector<std::vector<std::vector<int>>> &training_sparse_indices,
         int n_types);
 
