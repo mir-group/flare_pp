@@ -20,6 +20,7 @@ public:
   std::vector<std::vector<ClusterDescriptor>> local_sparse_descriptors_A, 
       local_sparse_descriptors_Kuu_row, local_sparse_descriptors_Kuu_col,
       local_sparse_descriptors;
+  std::vector<int> local_sparse_struc;
   std::vector<std::vector<std::vector<int>>> global_sparse_indices;
 
   // Parallel parameters
@@ -102,8 +103,7 @@ public:
         const std::vector<std::vector<std::vector<int>>> &training_sparse_indices,
         int n_types);
 
-  void gather_sparse_descriptors(std::vector<int> n_clusters_by_type,
-        const std::vector<Structure> &training_strucs,
+  void gather_sparse_descriptors(const std::vector<Structure> &training_strucs,
         const std::vector<std::vector<std::vector<int>>> &training_sparse_indices);
 
   /**
