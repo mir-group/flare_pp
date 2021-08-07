@@ -56,21 +56,6 @@ ParallelSGP ::ParallelSGP(std::vector<Kernel *> kernels, double energy_noise,
   }
 }
 
-//void ParallelSGP ::initialize_local_sparse_descriptors(const Structure &structure) {
-//  if (local_sparse_descriptors.size() != 0)
-//    return;
-//
-//  for (int i = 0; i < structure.descriptors.size(); i++) {
-//    ClusterDescriptor empty_descriptor;
-//    empty_descriptor.initialize_cluster(structure.descriptors[i].n_types,
-//                                        structure.descriptors[i].n_descriptors);
-//    local_sparse_descriptors.push_back(empty_descriptor);
-//    std::vector<std::vector<int>> empty_indices;
-//    sparse_indices.push_back(empty_indices); // NOTE: the sparse_indices should be of size n_kernels
-//  }
-//};
-
-
 void ParallelSGP ::initialize_global_sparse_descriptors(const Structure &structure) {
   if (global_sparse_descriptors.size() != 0)
     return;
@@ -172,27 +157,6 @@ void ParallelSGP ::add_specific_environments(const Structure &structure,
   local_sparse_desc->push_back(cluster_descriptors);
 
 }
-
-//void ParallelSGP ::add_global_specific_environments(const Structure &structure,
-//                                          const std::vector<int> atoms) {
-//
-//  std::vector<std::vector<std::vector<int>>> indices_1 = 
-//      sparse_indices_by_type(structure, atoms);
-//
-//  // Create cluster descriptors.
-//  std::vector<ClusterDescriptor> cluster_descriptors;
-//  for (int i = 0; i < n_kernels; i++) {
-//    ClusterDescriptor cluster_descriptor =
-//        ClusterDescriptor(structure.descriptors[i], indices_1[i]);
-//    cluster_descriptors.push_back(cluster_descriptor);
-//  }
-//
-//  // Store sparse environments.
-//  for (int i = 0; i < n_kernels; i++) {
-//    global_sparse_descriptors[i].add_clusters_by_type(structure.descriptors[i],
-//                                               indices_1[i]);
-//  }
-//}
 
 void ParallelSGP ::add_global_noise(int n_energy, int n_force, int n_stress) {
 
