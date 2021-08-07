@@ -178,7 +178,7 @@ find_package(MPI REQUIRED)
 target_link_libraries(flare PUBLIC MPI::MPI_CXX)
 
 # Link to distmatrix
-target_link_libraries(flare PUBLIC distmatrix)
+target_link_libraries(flare PUBLIC distmatrix -lgfortran)
 
 # Link to json.
 target_link_libraries(flare PUBLIC nlohmann_json::nlohmann_json)
