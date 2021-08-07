@@ -138,7 +138,7 @@ Eigen::VectorXi ParallelSGP ::sparse_indices_by_type(int n_types,
 
 void ParallelSGP ::add_specific_environments(const Structure &structure,
     const std::vector<int> atoms, 
-    std::vector<std::vector<ClusterDescriptor>> local_sparse_desc) {
+    std::vector<std::vector<ClusterDescriptor>>* local_sparse_desc) {
 
   // Gather clusters with central atom in the given list.
   std::vector<std::vector<std::vector<int>>> indices_1;
@@ -169,7 +169,7 @@ void ParallelSGP ::add_specific_environments(const Structure &structure,
         ClusterDescriptor(structure.descriptors[i], indices_1[i]);
     cluster_descriptors.push_back(cluster_descriptor);
   }
-  local_sparse_desc.push_back(cluster_descriptors);
+  local_sparse_desc->push_back(cluster_descriptors);
 
 }
 
@@ -369,7 +369,8 @@ void ParallelSGP::load_local_training_data(const std::vector<Structure> &trainin
       add_training_structure(struc);
       if (nmin_struc <= cum_f && cum_f < nmax_struc) {
         // avoid multiple procs add the same sparse envs
-        add_specific_environments(struc, training_sparse_indices[0][t], local_sparse_descriptors);
+        add_specific_environments(struc, training_sparse_indices[0][t], &local_sparse_descriptors);
+        std::cout << "added to local_sparse_desc " << local_sparse_descriptors.size() << std::endl;
       }
     }
 
@@ -418,6 +419,7 @@ void ParallelSGP::gather_sparse_descriptors(std::vector<int> n_clusters_by_type,
     for (int t = 0; t < training_strucs.size(); t++) {
       if (nmin_struc <= cum_f && cum_f < nmax_struc) {
         ClusterDescriptor cluster_descriptor = local_sparse_descriptors[local_u][kernel_ind];
+        std::cout << "compute dist_descriptors" << std::endl;
         for (int j = 0; j < n_struc_clusters_by_type[t](s); j++) {
           for (int d = 0; d < n_descriptors; d++) {
             dist_descriptors.set(cum_u + j, d, 
