@@ -586,35 +586,71 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
 
   cum_f = 0;
   int local_f = 0;
-  for (int t = 0; t < training_strucs.size(); t++) { // training_structures is local subset
-    int label_size = training_strucs[t].n_labels();
-    int n_energy = training_strucs[t].n_energy();
-    int n_forces = training_strucs[t].n_forces();
-    int n_stresses = training_strucs[t].n_stresses();
-    if (nmin_struc < cum_f + label_size && cum_f < nmax_struc) {
-      Eigen::VectorXd labels = Eigen::VectorXd::Zero(label_size);
-      labels.segment(0, n_energy) = training_strucs[t].energy;
-      labels.segment(n_energy, n_forces) = training_strucs[t].forces;
-      labels.segment(n_energy + n_forces, n_stresses) = training_strucs[t].stresses;
-      for (int l = 0; l < label_size; l++) {
-        if (cum_f + l >= nmin_struc && cum_f + l < nmax_struc) {
-          for (int i = 0; i < n_kernels; i++) { 
-            // Assign a column of kuf to a row of A
-            int u_size_single_kernel = sparse_descriptors[i].n_clusters;
-            for (int c = 0; c < u_size_single_kernel; c++) { 
-              A.set(cum_f + l, c + i * u_size_single_kernel, kuf[i](c, local_f + l) * noise_vector_sqrt(local_f + l), lock);
+  for (int t = 0; t < training_strucs.size(); t++) {
+    int f_min = f_count[t];
+    int f_max = f_count[t + 1];
+    bool flag_uncomputed = true;
+
+    for (int ilocal = 0; ilocal < A.nlocalrows; ilocal++) {
+      for (int jlocal = 0; jlocal < A.nlocalcols; jlocal++) {
+        std::pair<int, int> ind_global = A.l2g(ilocal, jlocal);
+        int iglobal = std::get<0>(ind_global); 
+        int jglobal = std::get<1>(ind_global); 
+
+        if (iglobal >= f_min && iglobal < f_max) {
+          // Find the kernel index of the current A(iglobal,jglobal)
+          int u_size_cum_kern = 0;
+          int ind_kern = 0;
+          int u_ind = jglobal;
+          for (int i = 0; i < n_kernels; i++) {
+            u_size_cum_kern += sparse_descriptors[i].n_clusters;
+            if (jglobal < u_size_cum_kern) {
+              ind_kern = i;
+              break;
             }
+            u_ind = jglobal - u_size_cum_kern;
           }
-    
-          // Assign training label to y 
-          b.set(cum_f + l, 0, labels(l) * global_noise_vector_sqrt(cum_f + l), lock); 
+          int f_ind = local_f + iglobal - fmin;
+          A.set(iglobal, jglobal, kuf[ind_kern](u_ind, f_ind) * noise_vector_sqrt(f_ind), lock);
+
+          if (flag_uncomputed) {
+            local_f += training_strucs[t].n_labels();
+            flag_uncomputed = false;
+          }
         }
       }
-      local_f += label_size;
     }
-
-    cum_f += label_size;
   }
+
+//  for (int t = 0; t < training_strucs.size(); t++) { // training_structures is local subset
+//    int label_size = training_strucs[t].n_labels();
+//    int n_energy = training_strucs[t].n_energy();
+//    int n_forces = training_strucs[t].n_forces();
+//    int n_stresses = training_strucs[t].n_stresses();
+//    if (nmin_struc < cum_f + label_size && cum_f < nmax_struc) {
+//      Eigen::VectorXd labels = Eigen::VectorXd::Zero(label_size);
+//      labels.segment(0, n_energy) = training_strucs[t].energy;
+//      labels.segment(n_energy, n_forces) = training_strucs[t].forces;
+//      labels.segment(n_energy + n_forces, n_stresses) = training_strucs[t].stresses;
+//      for (int l = 0; l < label_size; l++) {
+//        if (cum_f + l >= nmin_struc && cum_f + l < nmax_struc) {
+//          for (int i = 0; i < n_kernels; i++) { 
+//            // Assign a column of kuf to a row of A
+//            int u_size_single_kernel = sparse_descriptors[i].n_clusters;
+//            for (int c = 0; c < u_size_single_kernel; c++) { 
+//              A.set(cum_f + l, c + i * u_size_single_kernel, kuf[i](c, local_f + l) * noise_vector_sqrt(local_f + l), lock);
+//            }
+//          }
+//    
+//          // Assign training label to y 
+//          b.set(cum_f + l, 0, labels(l) * global_noise_vector_sqrt(cum_f + l), lock); 
+//        }
+//      }
+//      local_f += label_size;
+//    }
+//
+//    cum_f += label_size;
+//  }
 
   // Wait until the communication is done
   A.fence();
