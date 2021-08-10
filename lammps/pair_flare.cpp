@@ -14,7 +14,6 @@
 #include <cstring>
 #include <iostream>
 #include <vector>
-#include <sys/time.h>
 
 // flare++ modules
 #include "cutoffs.h"
@@ -25,18 +24,6 @@
 using namespace LAMMPS_NS;
 
 #define MAXLINE 1024
-
-typedef unsigned long long timestamp_t;
-
-static timestamp_t
-get_timestamp ()
-{
-  struct timeval now;
-  gettimeofday (&now, NULL);
-  return  now.tv_usec + (timestamp_t)now.tv_sec * 1000000;
-}
-
-
 
 /* ---------------------------------------------------------------------- */
 
@@ -87,9 +74,9 @@ void PairFLARE::compute(int eflag, int vflag) {
   firstneigh = list->firstneigh;
 
   int beta_init, beta_counter;
-  double B2_norm_squared, B2_val_1, B2_val_2;
-  Eigen::VectorXd single_bond_vals, B2_vals, B2_env_dot, u;
-  Eigen::MatrixXd single_bond_env_dervs, B2_env_dervs;
+  double Bk_norm_squared, Bk_val_1, Bk_val_2;
+  Eigen::VectorXd single_bond_vals, Bk_vals, Bk_env_dot, beta_p, partial_forces;
+  Eigen::MatrixXd single_bond_env_dervs, Bk_env_dervs;
   double empty_thresh = 1e-8;
 
   for (ii = 0; ii < inum; ii++) {
@@ -117,21 +104,27 @@ void PairFLARE::compute(int eflag, int vflag) {
     }
 
     // Compute covariant descriptors.
-    double secs;
-    single_bond_multiple_cutoffs(x, type, jnum, n_inner, i, xtmp, ytmp, ztmp,
-                                 jlist, basis_function, cutoff_function,
-                                 n_species, n_max, l_max, radial_hyps,
-                                 cutoff_hyps, single_bond_vals,
-                                 single_bond_env_dervs, cutoff_matrix);
+    complex_single_bond(x, type, jnum, n_inner, i, xtmp, ytmp, ztmp,
+                        jlist, basis_function, cutoff_function,
+                        n_species, n_max, l_max, radial_hyps,
+                        cutoff_hyps, single_bond_vals,
+                        single_bond_env_dervs, cutoff_matrix);
 
     // Compute invariant descriptors.
-    B2_descriptor(B2_vals, B2_env_dervs, B2_norm_squared, B2_env_dot,
-                  single_bond_vals, single_bond_env_dervs, n_species, n_max,
-                  l_max, beta_matrices[itype - 1], u, &evdwl);
+    compute_Bk(Bk_vals, Bk_env_dervs, Bk_norm_squared, Bk_env_dot,
+               single_bond_vals, single_bond_env_dervs, 
+               descriptor_indices, nu, n_species, K, n_max,
+               l_max, coeffs);
 
     // Continue if the environment is empty.
-    if (B2_norm_squared < empty_thresh)
+    if (Bk_norm_squared < empty_thresh)
       continue;
+
+    // Compute local energy and partial forces.
+    beta_p = beta_matrices[itype - 1] * Bk_vals;
+    evdwl = Bk_vals.dot(beta_p) / Bk_norm_squared;
+    partial_forces =
+        2 * (-Bk_env_dervs * beta_p + evdwl * Bk_env_dot) / Bk_norm_squared;
 
     // Update energy, force and stress arrays.
     n_count = 0;
@@ -145,12 +138,9 @@ void PairFLARE::compute(int eflag, int vflag) {
       rsq = delx * delx + dely * dely + delz * delz;
 
       if (rsq < (cutoff_val * cutoff_val)) {
-        // Compute partial force f_ij = u * dA/dr_ij
-        double fx = single_bond_env_dervs.row(n_count * 3).dot(u);
-        double fy = single_bond_env_dervs.row(n_count * 3 + 1).dot(u);
-        double fz = single_bond_env_dervs.row(n_count * 3 + 2).dot(u);
-        // Compute local energy and partial forces.
-
+        double fx = -partial_forces(n_count * 3);
+        double fy = -partial_forces(n_count * 3 + 1);
+        double fz = -partial_forces(n_count * 3 + 2);
         f[i][0] += fx;
         f[i][1] += fy;
         f[i][2] += fz;
@@ -275,13 +265,14 @@ void PairFLARE::read_file(char *filename) {
     sscanf(line, "%s", radial_string); // Radial basis set
     radial_string_length = strlen(radial_string);
     fgets(line, MAXLINE, fptr);
-    sscanf(line, "%i %i %i %i", &n_species, &n_max, &l_max, &beta_size);
+    sscanf(line, "%i %i %i %i %i", &n_species, &K, &n_max, &l_max, &beta_size);
     fgets(line, MAXLINE, fptr);
     sscanf(line, "%s", cutoff_string); // Cutoff function
     cutoff_string_length = strlen(cutoff_string);
   }
 
   MPI_Bcast(&n_species, 1, MPI_INT, 0, world);
+  MPI_Bcast(&K, 1, MPI_INT, 0, world);
   MPI_Bcast(&n_max, 1, MPI_INT, 0, world);
   MPI_Bcast(&l_max, 1, MPI_INT, 0, world);
   MPI_Bcast(&beta_size, 1, MPI_INT, 0, world);

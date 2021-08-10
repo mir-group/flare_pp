@@ -111,14 +111,10 @@ void compute_Bk(Eigen::VectorXd &Bk_vals, Eigen::MatrixXd &Bk_force_dervs,
                 double &norm_squared, Eigen::VectorXd &Bk_force_dots,
                 const Eigen::VectorXcd &single_bond_vals,
                 const Eigen::MatrixXcd &single_bond_force_dervs,
-//                const Eigen::VectorXi &unique_neighbor_count,
-//                const Eigen::VectorXi &cumulative_neighbor_count,
                 const Eigen::VectorXi &descriptor_indices, 
                 std::vector<std::vector<int>> nu, int nos, int K, int N,
                 int lmax, const Eigen::VectorXd &coeffs) {
 
-//  int n_atoms = single_bond_vals.rows();
-//  int n_neighbors = cumulative_neighbor_count(n_atoms);
   int env_derv_size = single_bond_env_dervs.rows();
   int n_neighbors = env_derv_size / 3;
 
@@ -129,13 +125,9 @@ void compute_Bk(Eigen::VectorXd &Bk_vals, Eigen::MatrixXd &Bk_force_dervs,
   // Initialize arrays.
   Bk_vals = Eigen::VectorXd::Zero(n_d);
   Bk_force_dervs = Eigen::MatrixXd::Zero(env_derv_size, n_d);
-  norm_squared = 0.0;
   Bk_force_dots = Eigen::VectorXd::Zero(env_derv_size);
+  norm_squared = 0.0;
 
-//#pragma omp parallel for
-//  for (int atom = 0; atom < n_atoms; atom++) {
-//    int n_atom_neighbors = unique_neighbor_count(atom);
-//    int force_start = cumulative_neighbor_count(atom) * 3;
   for (int i = 0; i < nu.size(); i++) {
     std::vector<int> nu_list = nu[i];
     std::vector<int> single_bond_index = std::vector<int>(nu_list.end() - 2 - K, nu_list.end() - 2); // Get n1_l, n2_l, n3_l, etc.
@@ -161,7 +153,7 @@ void compute_Bk(Eigen::VectorXd &Bk_vals, Eigen::MatrixXd &Bk_force_dervs,
     // Store force derivatives.
     for (int n = 0; n < n_neighbors; n++) {
       for (int comp = 0; comp < 3; comp++) {
-        int ind = force_start + n * 3 + comp;
+        int ind = n * 3 + comp;
         std::complex<double> dA_dr = 1;
         for (int t = 0; t < K; t++) {
           dA_dr += dA(t) * single_bond_force_dervs(ind, single_bond_index[t]);
@@ -174,5 +166,4 @@ void compute_Bk(Eigen::VectorXd &Bk_vals, Eigen::MatrixXd &Bk_force_dervs,
   // Compute descriptor norm and force dot products.
   norm_squared = Bk_vals.dot(Bk_vals);
   Bk_force_dot = Bk_force_dervs * Bk_vals.transpose();
-//  }
 }
