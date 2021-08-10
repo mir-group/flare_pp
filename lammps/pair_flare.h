@@ -40,7 +40,6 @@ protected:
   std::vector<std::function<void(std::vector<double> &, double, double,
                      std::vector<double>)>>
       cutoff_function;
-  int *descriptor_code;
 
   std::vector<std::vector<double>> radial_hyps, cutoff_hyps;
 

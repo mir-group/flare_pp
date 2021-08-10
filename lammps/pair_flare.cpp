@@ -113,11 +113,11 @@ void PairFLARE::compute(int eflag, int vflag) {
                   single_bond_env_dervs);
 
       // Compute invariant descriptors.
-      if (descriptor_code[kern] == 1){
+      if (K[kern] == 1){
         B1_descriptor(vals, env_dervs, norm_squared, env_dot,
                       single_bond_vals, single_bond_env_dervs, n_species, n_max[kern],
                       l_max[kern]);
-      } else if (descriptor_code[kern] == 2){
+      } else if (K[kern] == 2){
         B2_descriptor(vals, env_dervs, norm_squared, env_dot,
                       single_bond_vals, single_bond_env_dervs, n_species, n_max[kern],
                       l_max[kern]);
@@ -268,9 +268,9 @@ void PairFLARE::read_file(char *filename) {
   fgets(line, MAXLINE, fptr);
   sscanf(line, "%i", &num_kern); // number of descriptors/kernels
 
-  memory->create(descriptor_code, num_kern, "pair:descriptor_code");
   memory->create(radial_code, num_kern, "pair:radial_code");
   memory->create(cutoff_code, num_kern, "pair:cutoff_code");
+  memory->create(K, num_kern, "pair:K");
   memory->create(n_max, num_kern, "pair:n_max");
   memory->create(l_max, num_kern, "pair:l_max");
   memory->create(beta_size, num_kern, "pair:beta_size");
@@ -281,15 +281,15 @@ void PairFLARE::read_file(char *filename) {
     char desc_str[MAXLINE];
     fgets(line, MAXLINE, fptr);
     sscanf(line, "%s", desc_str); // Descriptor name
-    if (!strcmp(desc_str, "B1")) {
-      descriptor_code[k] = 1;
-    } else if (!strcmp(desc_str, "B2")) {
-      descriptor_code[k] = 2;
-    } else {
-      char str[128]; 
-      snprintf(str, 128, "Descriptor %s is not supported\n.", desc_str);
-      error->all(FLERR, str);
-    }
+//    if (!strcmp(desc_str, "B1")) {
+//      descriptor_code[k] = 1;
+//    } else if (!strcmp(desc_str, "B2")) {
+//      descriptor_code[k] = 2;
+//    } else {
+//      char str[128]; 
+//      snprintf(str, 128, "Descriptor %s is not supported\n.", desc_str);
+//      error->all(FLERR, str);
+//    }
 
     char radial_str[MAXLINE], cutoff_str[MAXLINE];
     fgets(line, MAXLINE, fptr);
@@ -336,9 +336,9 @@ void PairFLARE::read_file(char *filename) {
     // Set number of descriptors.
     int n_radial = n_max[k] * n_species;
 
-    if (descriptor_code[k] == 1)
+    if (K[k] == 1)
       n_descriptors = n_radial;
-    else if (descriptor_code[k] == 2)
+    else if (K[k] == 2)
       n_descriptors = (n_radial * (n_radial + 1) / 2) * (l_max[k] + 1);
   
     // Check the relationship between the power spectrum and beta.
@@ -363,7 +363,7 @@ void PairFLARE::read_file(char *filename) {
 
     // Parse the beta vectors.
     // TODO: check this memory creation
-    if (descriptor_code[k] == 1) {
+    if (K[k] == 1) {
       memory->create(beta1, beta_size[k] * n_species, "pair:beta1");
       grab(fptr, beta_size[k] * n_species, beta1);
       //MPI_Bcast(beta1, beta_size[k] * n_species, MPI_DOUBLE, 0, world);
@@ -392,7 +392,7 @@ void PairFLARE::read_file(char *filename) {
       }
       beta_matrices.push_back(beta_matrix_kern);
 
-    } else if (descriptor_code[k] == 2) {
+    } else if (K[k] == 2) {
       memory->create(beta2, beta_size[k] * n_species, "pair:beta2");
       grab(fptr, beta_size[k] * n_species, beta2);
       //MPI_Bcast(beta2, beta_size[k] * n_species, MPI_DOUBLE, 0, world);
