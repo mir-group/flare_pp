@@ -98,7 +98,16 @@ def test_train():
     assert hyps_init != hyps_post
     assert sgp_py.likelihood != 0.0
 
+def test_dict():
+    """
+    Check the method from_dict and as_dict
+    """
 
+    out_dict = sgp_py.as_dict()
+    new_sgp = SGP_Wrapper.from_dict(out_dict)
+    assert len(sgp_py) == len(new_sgp)
+    assert len(sgp_py.sparse_gp.kernels) == len(new_sgp.sparse_gp.kernels)
+    assert np.allclose(sgp_py.hyps, new_sgp.hyps)
 
 @pytest.mark.skipif(
     not os.environ.get("lmp", False),
