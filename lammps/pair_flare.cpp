@@ -20,6 +20,8 @@
 #include "lammps_descriptor.h"
 #include "radial.h"
 #include "y_grad.h"
+#include "indices.h"
+#include "coeffs.h"
 
 using namespace LAMMPS_NS;
 
@@ -43,6 +45,7 @@ PairFLARE::~PairFLARE() {
     return;
 
   memory->destroy(beta);
+  memory->destroy(cutoffs);
 
   if (allocated) {
     memory->destroy(setflag);
@@ -281,6 +284,10 @@ void PairFLARE::read_file(char *filename) {
   MPI_Bcast(&cutoff_string_length, 1, MPI_INT, 0, world);
   MPI_Bcast(radial_string, radial_string_length + 1, MPI_CHAR, 0, world);
   MPI_Bcast(cutoff_string, cutoff_string_length + 1, MPI_CHAR, 0, world);
+
+  // Compute index list nu
+  std::vector<int> descriptor_settings = {n_species, K, n_max, l_max};
+  nu = compute_indices(descriptor_settings);
 
   // Parse the cutoffs.
   int n_cutoffs = n_species * n_species;
