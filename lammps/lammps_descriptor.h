@@ -21,11 +21,13 @@ void complex_single_bond(
     Eigen::MatrixXd &single_bond_env_dervs,
     const Eigen::MatrixXd &cutoff_matrix); 
 
-void Bk_descriptor(Eigen::VectorXd &Bk_vals, Eigen::MatrixXd &Bk_env_dervs,
-                   double &norm_squared, Eigen::VectorXd &Bk_env_dot,
-                   const Eigen::VectorXd &single_bond_vals,
-                   const Eigen::MatrixXd &single_bond_env_dervs, int n_species,
-                   int N, int lmax, const Eigen::MatrixXd &beta_matrix,
-                   Eigen::VectorXd &u, double *evdwl);
+void compute_Bk(Eigen::VectorXd &Bk_vals, Eigen::MatrixXd &Bk_env_dervs,
+                double &norm_squared, Eigen::VectorXd &Bk_env_dot,
+                const Eigen::VectorXd &single_bond_vals,
+                const Eigen::MatrixXd &single_bond_env_dervs, 
+                std::vector<std::vector<int>> nu,
+                int n_species, int K, int N, int lmax, 
+                const Eigen::MatrixXd &beta_matrix,
+                Eigen::VectorXd &u, double *evdwl);
 
 #endif

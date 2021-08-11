@@ -111,10 +111,12 @@ void compute_Bk(Eigen::VectorXd &Bk_vals, Eigen::MatrixXd &Bk_force_dervs,
                 double &norm_squared, Eigen::VectorXd &Bk_force_dots,
                 const Eigen::VectorXcd &single_bond_vals,
                 const Eigen::MatrixXcd &single_bond_force_dervs,
-                const Eigen::VectorXi &descriptor_indices, 
                 std::vector<std::vector<int>> nu, int nos, int K, int N,
-                int lmax, const Eigen::VectorXd &coeffs) {
+                int lmax, const Eigen::VectorXd &coeffs,
+                const Eigen::MatrixXd &beta_matrix, Eigen::VectorXd &u, 
+                double *evdwl) {
 
+  int env_derv_cols = single_bond_env_dervs.cols();
   int env_derv_size = single_bond_env_dervs.rows();
   int n_neighbors = env_derv_size / 3;
 
@@ -128,6 +130,7 @@ void compute_Bk(Eigen::VectorXd &Bk_vals, Eigen::MatrixXd &Bk_force_dervs,
   Bk_force_dots = Eigen::VectorXd::Zero(env_derv_size);
   norm_squared = 0.0;
 
+  Eigen::MatrixXd dA_matr = Eigen::MatrixXd::Zero(n_d, env_derv_cols);
   for (int i = 0; i < nu.size(); i++) {
     std::vector<int> nu_list = nu[i];
     std::vector<int> single_bond_index = std::vector<int>(nu_list.end() - 2 - K, nu_list.end() - 2); // Get n1_l, n2_l, n3_l, etc.
@@ -148,22 +151,37 @@ void compute_Bk(Eigen::VectorXd &Bk_vals, Eigen::MatrixXd &Bk_force_dervs,
 
     int counter = nu_list[nu_list.size() - 1];
     int m_index = nu_list[nu_list.size() - 2];
-    Bk_vals(counter) += real(coeffs(m_index) * A); 
+    Bk_vals(counter) += real(coeffs(m_index) * A);
 
-    // Store force derivatives.
-    for (int n = 0; n < n_neighbors; n++) {
-      for (int comp = 0; comp < 3; comp++) {
-        int ind = n * 3 + comp;
-        std::complex<double> dA_dr = 1;
-        for (int t = 0; t < K; t++) {
-          dA_dr += dA(t) * single_bond_force_dervs(ind, single_bond_index[t]);
-        }
-        Bk_force_dervs(ind, counter) +=
-            real(coeffs(m_index) * dA_dr);
-      }
+    // Prepare for partial force calculation
+    for (int t = 0; t < K; t++) {
+      dA_matr(counter, single_bond_index[t]) = dA(t);
     }
+
+//    // Store force derivatives.
+//    for (int n = 0; n < n_neighbors; n++) {
+//      for (int comp = 0; comp < 3; comp++) {
+//        int ind = n * 3 + comp;
+//        std::complex<double> dA_dr = 1;
+//        for (int t = 0; t < K; t++) {
+//          dA_dr += dA(t) * single_bond_force_dervs(ind, single_bond_index[t]);
+//        }
+//        Bk_force_dervs(ind, counter) +=
+//            real(coeffs(m_index) * dA_dr);
+//      }
+//    }
   }
-  // Compute descriptor norm and force dot products.
+
+  // Compute descriptor norm and energy.
+  //Bk_force_dot = Bk_force_dervs * Bk_vals.transpose();
   norm_squared = Bk_vals.dot(Bk_vals);
-  Bk_force_dot = Bk_force_dervs * Bk_vals.transpose();
+  Eigen::VectorXd beta_p = beta_matrix * Bk_vals;
+  *evdwl = Bk_vals.dot(beta_p) / norm_squared; 
+  Eigen::VectorXd w = 2 * (beta_p - *evdwl * Bk_vals) / norm_squared; // same size as Bk_vals 
+
+  // Compute u(n1, l, m), where f_ik = u * dA/dr_ik
+  //double factor;
+  //u = Eigen::VectorXd::Zero(single_bond_vals.size());
+  u = w * dA_matr;
+   
 }

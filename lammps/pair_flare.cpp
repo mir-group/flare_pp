@@ -103,8 +103,8 @@ void PairFLARE::compute(int eflag, int vflag) {
           n_inner++;
       }
 
-      double norm_squared, val_1, val_2;
-      Eigen::VectorXd single_bond_vals, vals, env_dot, beta_p, partial_forces;
+      double norm_squared;
+      Eigen::VectorXd single_bond_vals, vals, env_dot, u;
       Eigen::MatrixXd single_bond_env_dervs, env_dervs;
 
       // Compute covariant descriptors.
@@ -117,32 +117,30 @@ void PairFLARE::compute(int eflag, int vflag) {
       // Compute invariant descriptors.
       compute_Bk(vals, env_dervs, norm_squared, env_dot,
                  single_bond_vals, single_bond_env_dervs, nu[kern],
-                 n_species, K[kern], n_max[kern], lmax[kern], coeffs[kern]);
+                 n_species, K[kern], n_max[kern], lmax[kern], coeffs[kern],
+                 beta_matrices[kern][itype - 1], u, &evdwl);
 
       // Continue if the environment is empty.
       if (norm_squared < empty_thresh)
         continue;
   
-      // Compute local energy and partial forces.
-      beta_p = beta_matrices[kern][itype - 1] * vals;
-      evdwl = vals.dot(beta_p) / norm_squared;
- 
-      partial_forces =
-          2 * (- env_dervs * beta_p + evdwl * env_dot) / norm_squared;
-
       // Update energy, force and stress arrays.
       n_count = 0;
       for (int jj = 0; jj < jnum; jj++) {
         j = jlist[jj];
+        int s = type[j] - 1;
+        double cutoff_val = cutoff_matrix(itype-1, s);
         delx = xtmp - x[j][0];
         dely = ytmp - x[j][1];
         delz = ztmp - x[j][2];
         rsq = delx * delx + dely * dely + delz * delz;
   
-        if (rsq < (cutoff * cutoff)) {
-          double fx = -partial_forces(n_count * 3);
-          double fy = -partial_forces(n_count * 3 + 1);
-          double fz = -partial_forces(n_count * 3 + 2);
+        if (rsq < (cutoff_val * cutoff_val)) {
+          // Compute partial force f_ij = u * dA/dr_ij
+          double fx = single_bond_env_dervs.row(n_count * 3 + 0).dot(u);
+          double fy = single_bond_env_dervs.row(n_count * 3 + 1).dot(u);
+          double fz = single_bond_env_dervs.row(n_count * 3 + 2).dot(u);
+
           f[i][0] += fx;
           f[i][1] += fy;
           f[i][2] += fz;
@@ -157,10 +155,10 @@ void PairFLARE::compute(int eflag, int vflag) {
           n_count++;
         }
       }
+
       // Compute local energy.
       if (eflag)
         ev_tally_full(i, 2.0 * evdwl, 0.0, 0.0, 0.0, 0.0, 0.0);
-
     }
 
   }
