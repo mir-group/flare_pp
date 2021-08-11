@@ -85,39 +85,39 @@ void PairFLARE::compute(int eflag, int vflag) {
     ztmp = x[i][2];
     jlist = firstneigh[i];
 
-    // Count the atoms inside the cutoff.
-    n_inner = 0;
-    for (int jj = 0; jj < jnum; jj++) {
-      j = jlist[jj];
-      delx = x[j][0] - xtmp;
-      dely = x[j][1] - ytmp;
-      delz = x[j][2] - ztmp;
-      rsq = delx * delx + dely * dely + delz * delz;
-      if (rsq < (cutoff * cutoff))
-        n_inner++;
-    }
-
     for (int kern = 0; kern < num_kern; kern++) {
+      cutoff_matrix = cutoff_matrices[kern];
+
+      // Count the atoms inside the cutoff. 
+      // TODO: this might be duplicated when multiple kernels share the same cutoff
+      n_inner = 0;
+      for (int jj = 0; jj < jnum; jj++) {
+        j = jlist[jj];
+        int s = type[j] - 1;
+        double cutoff_val = cutoff_matrix(itype-1, s);
+        delx = x[j][0] - xtmp;
+        dely = x[j][1] - ytmp;
+        delz = x[j][2] - ztmp;
+        rsq = delx * delx + dely * dely + delz * delz;
+        if (rsq < (cutoff_val * cutoff_val))
+          n_inner++;
+      }
+
       double norm_squared, val_1, val_2;
       Eigen::VectorXd single_bond_vals, vals, env_dot, beta_p, partial_forces;
       Eigen::MatrixXd single_bond_env_dervs, env_dervs;
 
       // Compute covariant descriptors.
-      single_bond(x, type, jnum, n_inner, i, xtmp, ytmp, ztmp, jlist,
-                  basis_function[kern], cutoff_function[kern], cutoffs[kern], n_species, n_max[kern],
-                  l_max[kern], radial_hyps[kern], cutoff_hyps[kern], single_bond_vals,
-                  single_bond_env_dervs);
+      complex_single_bond(x, type, jnum, n_inner, i, xtmp, ytmp, ztmp, jlist,
+                          basis_function[kern], cutoff_function[kern], cutoffs[kern], 
+                          n_species, n_max[kern], l_max[kern], 
+                          radial_hyps[kern], cutoff_hyps[kern], 
+                          single_bond_vals, single_bond_env_dervs, cutoff_matrix);
 
       // Compute invariant descriptors.
-      if (K[kern] == 1){
-        B1_descriptor(vals, env_dervs, norm_squared, env_dot,
-                      single_bond_vals, single_bond_env_dervs, n_species, n_max[kern],
-                      l_max[kern]);
-      } else if (K[kern] == 2){
-        B2_descriptor(vals, env_dervs, norm_squared, env_dot,
-                      single_bond_vals, single_bond_env_dervs, n_species, n_max[kern],
-                      l_max[kern]);
-      }
+      compute_Bk(vals, env_dervs, norm_squared, env_dot,
+                 single_bond_vals, single_bond_env_dervs, nu[kern],
+                 n_species, K[kern], n_max[kern], lmax[kern], coeffs[kern]);
 
       // Continue if the environment is empty.
       if (norm_squared < empty_thresh)
@@ -314,12 +314,34 @@ void PairFLARE::read_file(char *filename) {
       error->all(FLERR, str);
     }
 
-    fgets(line, MAXLINE, fptr);
-    sscanf(line, "%lg", &cutoffs[k]); // Cutoffs
-    cutoff = 0;
-    for (int i = 0; i < sizeof(cutoffs) / sizeof(cutoffs[0]); i++) { // Use max cut as cutoff
-      if (cutoffs[i] > cutoff) cutoff = cutoffs[i];
+//    // Parse the cutoffs
+//    fgets(line, MAXLINE, fptr);
+//    sscanf(line, "%lg", &cutoffs[k]); // Cutoffs
+//    cutoff = 0;
+//    for (int i = 0; i < sizeof(cutoffs) / sizeof(cutoffs[0]); i++) { // Use max cut as cutoff
+//      if (cutoffs[i] > cutoff) cutoff = cutoffs[i];
+//    }
+
+    // Parse the cutoffs.
+    int n_cutoffs = n_species * n_species;
+    memory->create(cutoffs, n_cutoffs, "pair:cutoffs");
+    if (me == 0)
+      grab(fptr, n_cutoffs, cutoffs);
+    MPI_Bcast(cutoffs, n_cutoffs, MPI_DOUBLE, 0, world);
+  
+    // Fill in the cutoff matrix.
+    cutoff = -1;
+    cutoff_matrix = Eigen::MatrixXd::Zero(n_species, n_species);
+    int cutoff_count = 0;
+    for (int i = 0; i < n_species; i++){
+      for (int j = 0; j < n_species; j++){
+        double cutoff_val = cutoffs[cutoff_count];
+        cutoff_matrix(i, j) = cutoff_val;
+        if (cutoff_val > cutoff) cutoff = cutoff_val;
+        cutoff_count ++;
+      }
     }
+    cutoff_matrices.push_back(cutoff_matrix);
 
     //MPI_Bcast(&n_species, 1, MPI_INT, 0, world);
     //MPI_Bcast(&cutoff, 1, MPI_DOUBLE, 0, world);

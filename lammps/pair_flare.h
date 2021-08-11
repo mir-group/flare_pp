@@ -47,6 +47,7 @@ protected:
   double cutoff;
   double *beta;
   Eigen::MatrixXd beta_matrix, cutoff_matrix;
+  std::vector<Eigen::MatrixXd> cutoff_matrices;
   std::vector<std::vector<Eigen::MatrixXd>> beta_matrices;
 
   virtual void allocate();
