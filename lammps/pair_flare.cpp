@@ -33,9 +33,7 @@ PairFLARE::PairFLARE(LAMMPS *lmp) : Pair(lmp) {
   restartinfo = 0;
   manybody_flag = 1;
 
-  //beta = NULL;
-  beta1 = NULL;
-  beta2 = NULL;
+  beta = NULL;
 }
 
 /* ----------------------------------------------------------------------
@@ -46,8 +44,6 @@ PairFLARE::~PairFLARE() {
   if (copymode)
     return;
 
-  memory->destroy(beta1);
-  memory->destroy(beta2);
 
   if (allocated) {
     memory->destroy(setflag);
@@ -291,6 +287,7 @@ void PairFLARE::read_file(char *filename) {
 //      error->all(FLERR, str);
 //    }
 
+
     char radial_str[MAXLINE], cutoff_str[MAXLINE];
     fgets(line, MAXLINE, fptr);
     sscanf(line, "%s", radial_str); // Radial basis set
@@ -333,14 +330,17 @@ void PairFLARE::read_file(char *filename) {
     //MPI_Bcast(radial_code, num_kern, MPI_INT, 0, world);
     //MPI_Bcast(cutoff_code, num_kern, MPI_INT, 0, world);
 
-    // Set number of descriptors.
-    int n_radial = n_max[k] * n_species;
+    // Compute indices and coefficients
+    std::vector<int> descriptor_settings = {n_species, K[k], n_max[k], l_max[k]};
+    std::vector<std::vector<int>> nu_kern = compute_indices(descriptor_settings);
+    Eigen::VectorXd coeffs_kern = compute_coeffs(K[k], l_max[k]);
+    nu.push_back(nu_kern);
+    coeffs.push_back(coeffs_kern);
 
-    if (K[k] == 1)
-      n_descriptors = n_radial;
-    else if (K[k] == 2)
-      n_descriptors = (n_radial * (n_radial + 1) / 2) * (l_max[k] + 1);
-  
+    // Set number of descriptors.
+    std::vector<int> last_index = nu_kern[nu_kern.size()-1];
+    int n_descriptors = last_index[last_index.size()-1] + 1; 
+
     // Check the relationship between the power spectrum and beta.
     int beta_check = n_descriptors * (n_descriptors + 1) / 2;
     if (beta_check != beta_size[k])
@@ -363,64 +363,37 @@ void PairFLARE::read_file(char *filename) {
 
     // Parse the beta vectors.
     // TODO: check this memory creation
-    if (K[k] == 1) {
-      memory->create(beta1, beta_size[k] * n_species, "pair:beta1");
-      grab(fptr, beta_size[k] * n_species, beta1);
-      //MPI_Bcast(beta1, beta_size[k] * n_species, MPI_DOUBLE, 0, world);
-     
-      // Fill in the beta matrix.
-      // TODO: Remove factor of 2 from beta.
-      Eigen::MatrixXd beta_matrix;
-      std::vector<Eigen::MatrixXd> beta_matrix_kern;
-      int beta_count = 0;
-      double beta_val;
-      for (int s = 0; s < n_species; s++) {
-        beta_matrix = Eigen::MatrixXd::Zero(n_descriptors, n_descriptors);
-        for (int i = 0; i < n_descriptors; i++) {
-          for (int j = i; j < n_descriptors; j++) {
-            if (i == j)
-              beta_matrix(i, j) = beta1[beta_count];
-            else if (i != j) {
-              beta_val = beta1[beta_count] / 2;
-              beta_matrix(i, j) = beta_val;
-              beta_matrix(j, i) = beta_val;
-            }
-            beta_count++;
+    memory->create(beta, beta_size[k] * n_species, "pair:beta");
+    grab(fptr, beta_size[k] * n_species, beta);
+    //MPI_Bcast(beta1, beta_size[k] * n_species, MPI_DOUBLE, 0, world);
+    
+    // Fill in the beta matrix.
+    // TODO: Remove factor of 2 from beta.
+    Eigen::MatrixXd beta_matrix;
+    std::vector<Eigen::MatrixXd> beta_matrix_kern;
+    int beta_count = 0;
+    double beta_val;
+    for (int s = 0; s < n_species; s++) {
+      beta_matrix = Eigen::MatrixXd::Zero(n_descriptors, n_descriptors);
+      for (int i = 0; i < n_descriptors; i++) {
+        for (int j = i; j < n_descriptors; j++) {
+          if (i == j)
+            beta_matrix(i, j) = beta[beta_count];
+          else if (i != j) {
+            beta_val = beta[beta_count] / 2;
+            beta_matrix(i, j) = beta_val;
+            beta_matrix(j, i) = beta_val;
           }
+          beta_count++;
         }
-        beta_matrix_kern.push_back(beta_matrix);
       }
-      beta_matrices.push_back(beta_matrix_kern);
-
-    } else if (K[k] == 2) {
-      memory->create(beta2, beta_size[k] * n_species, "pair:beta2");
-      grab(fptr, beta_size[k] * n_species, beta2);
-      //MPI_Bcast(beta2, beta_size[k] * n_species, MPI_DOUBLE, 0, world);
-     
-      // Fill in the beta matrix.
-      // TODO: Remove factor of 2 from beta.
-      Eigen::MatrixXd beta_matrix;
-      std::vector<Eigen::MatrixXd> beta_matrix_kern;
-      int beta_count = 0;
-      double beta_val;
-      for (int s = 0; s < n_species; s++) {
-        beta_matrix = Eigen::MatrixXd::Zero(n_descriptors, n_descriptors);
-        for (int i = 0; i < n_descriptors; i++) {
-          for (int j = i; j < n_descriptors; j++) {
-            if (i == j)
-              beta_matrix(i, j) = beta2[beta_count];
-            else if (i != j) {
-              beta_val = beta2[beta_count] / 2;
-              beta_matrix(i, j) = beta_val;
-              beta_matrix(j, i) = beta_val;
-            }
-            beta_count++;
-          }
-        }
-        beta_matrix_kern.push_back(beta_matrix);
-      }
-      beta_matrices.push_back(beta_matrix_kern);
+      beta_matrix_kern.push_back(beta_matrix);
     }
+    beta_matrices.push_back(beta_matrix_kern);
+
+    // TODO: check this memory destroy
+    memory->destroy(beta);
+
   }
 }
 

@@ -45,7 +45,7 @@ protected:
 
   double *cutoffs;
   double cutoff;
-  double *beta1, *beta2;
+  double *beta;
   Eigen::MatrixXd beta_matrix, cutoff_matrix;
   std::vector<std::vector<Eigen::MatrixXd>> beta_matrices;
 
