@@ -86,7 +86,7 @@ void Bk ::write_to_file(std::ofstream &coeff_file, int coeff_size) {
   // Record number of species, nmax, lmax, and the cutoff.
   double cutoff = radial_hyps[1];
 
-  coeff_file << n_species << " " << n_max << " " << l_max << " ";
+  coeff_file << n_species << " " << K << " " << n_max << " " << l_max << " ";
   coeff_file << coeff_size << "\n";
   coeff_file << cutoff_function << "\n";
 
