@@ -130,18 +130,19 @@ class SGP_Wrapper:
                 out_dict[key] = getattr(self, key, None)
 
         # save descriptor_settings
+        out_dict["descriptor_calculators"] = []
         desc_calc = self.descriptor_calculators
-        assert (len(desc_calc) == 1) and (isinstance(desc_calc[0], _C_flare.B2))
-        b2_calc = desc_calc[0]
-        b2_dict = {
-            "type": "B2",
-            "radial_basis": b2_calc.radial_basis,
-            "cutoff_function": b2_calc.cutoff_function,
-            "radial_hyps": b2_calc.radial_hyps,
-            "cutoff_hyps": b2_calc.cutoff_hyps,
-            "descriptor_settings": b2_calc.descriptor_settings,
-        }
-        out_dict["descriptor_calculators"] = [b2_dict]
+        for dc in self.descriptor_calculators:
+            assert isinstance(dc, _C_flare.Bk)
+            dc_dict = {
+                "type": "Bk",
+                "radial_basis": dc.radial_basis,
+                "cutoff_function": dc.cutoff_function,
+                "radial_hyps": dc.radial_hyps,
+                "cutoff_hyps": dc.cutoff_hyps,
+                "descriptor_settings": dc.descriptor_settings,
+            }
+            out_dict["descriptor_calculators"].append(dc_dict)
 
         # save hyps
         out_dict["hyps"], out_dict["hyp_labels"] = self.hyps_and_labels
