@@ -4,6 +4,7 @@ import pytest
 import sys
 
 from ase.io import read
+from ase.calculators import lammpsrun
 from flare import struc
 from flare.lammps import lammps_calculator
 
@@ -104,7 +105,8 @@ def test_dict():
     """
 
     out_dict = sgp_py.as_dict()
-    new_sgp = SGP_Wrapper.from_dict(out_dict)
+    assert len(sgp_py) == len(out_dict["training_structures"])
+    new_sgp, _ = SGP_Wrapper.from_dict(out_dict)
     assert len(sgp_py) == len(new_sgp)
     assert len(sgp_py.sparse_gp.kernels) == len(new_sgp.sparse_gp.kernels)
     assert np.allclose(sgp_py.hyps, new_sgp.hyps)
@@ -120,13 +122,26 @@ def test_dict():
 )
 def test_lammps():
     sgp_py.write_mapping_coefficients("lmp.flare", "A", [0])
-    from fln.utils import get_ase_lmp_calc
-    lmp_calc = get_ase_lmp_calc(
-        ff_preset="flare_pp", 
-        specorder=["H", "He"], 
-        coeff_dir="./", 
-        lmp_command=os.environ.get("lmp"),
-    ) 
+
+    # create ASE calc
+    lmp_command = os.environ.get("lmp")
+    specorder=["H", "He"] 
+    pot_file = "lmp.flare"
+    params = {
+        "command": lmp_command,
+        "pair_style": "flare",
+        "pair_coeff": [f"* * {pot_file}"],
+    }
+    files = [pot_file]
+    lmp_calc = lammpsrun.LAMMPS(
+        label=f"tmp",
+        keep_tmp_files=True,
+        tmp_dir="./tmp/",
+        parameters=params,
+        files=files,
+        specorder=specorder,
+    )
+
     test_atoms = test_structure.to_ase_atoms()
     test_atoms.calc = lmp_calc
     lmp_f = test_atoms.get_forces()
