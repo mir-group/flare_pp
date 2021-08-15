@@ -301,63 +301,63 @@ TEST_F(StructureTest, EnergyStressKernel) {
   }
 }
 
-//TEST_F(StructureTest, StressEnergyKernel) {
-//  test_struc = Structure(cell, species, positions, cutoff, dc);
-//  test_struc_2 = Structure(cell_2, species_2, positions_2, cutoff, dc);
-//  struc_desc = test_struc.descriptors[0];
-//
-//  // Compute full kernel matrix.
-//  Eigen::MatrixXd kernel_matrix = kernel.struc_struc(
-//      struc_desc, test_struc_2.descriptors[0], kernel.kernel_hyperparameters);
-//
-//  double delta = 1e-4;
-//  double thresh = 1e-4;
-//
-//  Eigen::MatrixXd positions_3, positions_4, positions_5, positions_6, cell_3,
-//      cell_4, cell_5, cell_6, kern_pert, kern_pert_2, kern_pert_3, kern_pert_4;
-//  Structure test_struc_3, test_struc_4, test_struc_5, test_struc_6;
-//  double fin_val, exact_val, abs_diff;
-// 
-//  // Check stress/energy.
-//  int stress_ind_1 = 0;
-//  for (int m = 0; m < 3; m++) {
-//    for (int n = m; n < 3; n++) {
-//      cell_3 = cell_4 = cell;
-//      positions_3 = positions_4 = positions;
-//
-//      // Perform strain.
-//      cell_3(0, m) += cell(0, n) * delta;
-//      cell_3(1, m) += cell(1, n) * delta;
-//      cell_3(2, m) += cell(2, n) * delta;
-//
-//      cell_4(0, m) -= cell(0, n) * delta;
-//      cell_4(1, m) -= cell(1, n) * delta;
-//      cell_4(2, m) -= cell(2, n) * delta;
-//
-//      for (int k = 0; k < test_struc.noa; k++) {
-//        positions_3(k, m) += positions(k, n) * delta;
-//        positions_4(k, m) -= positions(k, n) * delta;
-//      }
-//
-//      test_struc_3 = Structure(cell_3, species, positions_3, cutoff, dc);
-//      test_struc_4 = Structure(cell_4, species, positions_4, cutoff, dc);
-//
-//      kern_pert = kernel.struc_struc(test_struc_2.descriptors[0],
-//                                     test_struc_3.descriptors[0],
-//                                     kernel.kernel_hyperparameters);
-//      kern_pert_2 = kernel.struc_struc(test_struc_2.descriptors[0],
-//                                       test_struc_4.descriptors[0],
-//                                       kernel.kernel_hyperparameters);
-//      fin_val = -(kern_pert(0, 0) - kern_pert_2(0, 0)) / (2 * delta);
-//      exact_val = kernel_matrix(1 + 3 * test_struc.noa + stress_ind_1, 0) *
-//                  test_struc.volume;
-//
-//      EXPECT_NEAR(fin_val, exact_val, thresh);
-//
-//      stress_ind_1++;
-//    }
-//  }
-//}
+TEST_F(StructureTest, StressEnergyKernel) {
+  test_struc = Structure(cell, species, positions, cutoff, dc);
+  test_struc_2 = Structure(cell_2, species_2, positions_2, cutoff, dc);
+  struc_desc = test_struc.descriptors[0];
+
+  // Compute full kernel matrix.
+  Eigen::MatrixXd kernel_matrix = kernel.struc_struc(
+      struc_desc, test_struc_2.descriptors[0], kernel.kernel_hyperparameters);
+
+  double delta = 1e-4;
+  double thresh = 1e-4;
+
+  Eigen::MatrixXd positions_3, positions_4, positions_5, positions_6, cell_3,
+      cell_4, cell_5, cell_6, kern_pert, kern_pert_2, kern_pert_3, kern_pert_4;
+  Structure test_struc_3, test_struc_4, test_struc_5, test_struc_6;
+  double fin_val, exact_val, abs_diff;
+ 
+  // Check stress/energy.
+  int stress_ind_1 = 0;
+  for (int m = 0; m < 3; m++) {
+    for (int n = m; n < 3; n++) {
+      cell_3 = cell_4 = cell;
+      positions_3 = positions_4 = positions;
+
+      // Perform strain.
+      cell_3(0, m) += cell(0, n) * delta;
+      cell_3(1, m) += cell(1, n) * delta;
+      cell_3(2, m) += cell(2, n) * delta;
+
+      cell_4(0, m) -= cell(0, n) * delta;
+      cell_4(1, m) -= cell(1, n) * delta;
+      cell_4(2, m) -= cell(2, n) * delta;
+
+      for (int k = 0; k < test_struc.noa; k++) {
+        positions_3(k, m) += positions(k, n) * delta;
+        positions_4(k, m) -= positions(k, n) * delta;
+      }
+
+      test_struc_3 = Structure(cell_3, species, positions_3, cutoff, dc);
+      test_struc_4 = Structure(cell_4, species, positions_4, cutoff, dc);
+
+      kern_pert = kernel.struc_struc(test_struc_2.descriptors[0],
+                                     test_struc_3.descriptors[0],
+                                     kernel.kernel_hyperparameters);
+      kern_pert_2 = kernel.struc_struc(test_struc_2.descriptors[0],
+                                       test_struc_4.descriptors[0],
+                                       kernel.kernel_hyperparameters);
+      fin_val = -(kern_pert(0, 0) - kern_pert_2(0, 0)) / (2 * delta);
+      exact_val = kernel_matrix(1 + 3 * test_struc.noa + stress_ind_1, 0) *
+                  test_struc.volume;
+
+      EXPECT_NEAR(fin_val, exact_val, thresh);
+
+      stress_ind_1++;
+    }
+  }
+}
 
 //  // Check force/force kernel.
 //  for (int m = 0; m < test_struc.noa; m++) {
