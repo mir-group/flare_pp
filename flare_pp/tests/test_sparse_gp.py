@@ -203,111 +203,111 @@ def test_lammps():
     print(lmp_e, sgp_efs[0])
     assert np.allclose(lmp_e, sgp_efs[0])
 
-    # set up input and data files
-    data_file_name = "tmp.data"
-    lammps_location = "lmp.flare"
-    style_string = "flare"
-    coeff_string = "* * {}".format(lammps_location)
-    lammps_executable = os.environ.get("lmp")
-    dump_file_name = "tmp.dump"
-    input_file_name = "tmp.in"
-    output_file_name = "tmp.out"
-    newton = True
-
-    # write data file
-    data_text = lammps_calculator.lammps_dat(
-        test_structure, atom_types, atom_masses, species
-    )
-    lammps_calculator.write_text(data_file_name, data_text)
-
-    # write input file
-    input_text = lammps_calculator.generic_lammps_input(
-        data_file_name, style_string, coeff_string, dump_file_name, newton=newton,
-        std_string="beta_var.txt", std_style="flare_pp",
-    )
-    lammps_calculator.write_text(input_file_name, input_text)
-
-    # run lammps
-    lammps_calculator.run_lammps(lammps_executable, input_file_name, output_file_name)
-
-    # read output
-    lmp_dump = read(dump_file_name, format="lammps-dump-text")
-    lmp_forces = lmp_dump.get_forces()
-#    lmp_std = lmp_dump.get_array("c_std")
-#    lmp_var = lmp_std ** 2
-#    print(lmp_var)
-
-    sgp_py.sgp_var.predict_DTC(test_cpp_struc)
-    #sgp_var = np.reshape(test_cpp_struc_pow1.variance_efs[1:len(sgp_efs)-6], (test_structure.nat, 3))
-    sgp_var = sgp_py.sgp_var.compute_cluster_uncertainties(test_cpp_struc)
-#    sgp_var = test_cpp_struc.variance_efs[0]
-    print(sgp_var)
-
-    n_descriptors = np.shape(test_cpp_struc.descriptors[0].descriptors[0])[1]
-    n_species = len(atom_types)
-    desc_en = np.zeros((n_species, n_descriptors))
-    py_var = 0.0
+#    # set up input and data files
+#    data_file_name = "tmp.data"
+#    lammps_location = "lmp.flare"
+#    style_string = "flare"
+#    coeff_string = "* * {}".format(lammps_location)
+#    lammps_executable = os.environ.get("lmp")
+#    dump_file_name = "tmp.dump"
+#    input_file_name = "tmp.in"
+#    output_file_name = "tmp.out"
+#    newton = True
+#
+#    # write data file
+#    data_text = lammps_calculator.lammps_dat(
+#        test_structure, atom_types, atom_masses, species
+#    )
+#    lammps_calculator.write_text(data_file_name, data_text)
+#
+#    # write input file
+#    input_text = lammps_calculator.generic_lammps_input(
+#        data_file_name, style_string, coeff_string, dump_file_name, newton=newton,
+#        std_string="beta_var.txt", std_style="flare_pp",
+#    )
+#    lammps_calculator.write_text(input_file_name, input_text)
+#
+#    # run lammps
+#    lammps_calculator.run_lammps(lammps_executable, input_file_name, output_file_name)
+#
+#    # read output
+#    lmp_dump = read(dump_file_name, format="lammps-dump-text")
+#    lmp_forces = lmp_dump.get_forces()
+##    lmp_std = lmp_dump.get_array("c_std")
+##    lmp_var = lmp_std ** 2
+##    print(lmp_var)
+#
+#    sgp_py.sgp_var.predict_DTC(test_cpp_struc)
+#    #sgp_var = np.reshape(test_cpp_struc_pow1.variance_efs[1:len(sgp_efs)-6], (test_structure.nat, 3))
+#    sgp_var = sgp_py.sgp_var.compute_cluster_uncertainties(test_cpp_struc)
+##    sgp_var = test_cpp_struc.variance_efs[0]
+#    print(sgp_var)
+#
+#    n_descriptors = np.shape(test_cpp_struc.descriptors[0].descriptors[0])[1]
+#    n_species = len(atom_types)
+#    desc_en = np.zeros((n_species, n_descriptors))
+#    py_var = 0.0
+##    for s in range(n_species):
+##        n_struc_s = test_cpp_struc_pow1.descriptors[0].n_clusters_by_type[s];
+##        assert np.shape(test_cpp_struc_pow1.descriptors[0].descriptors[s])[0] == n_struc_s
+##        for i in range(n_descriptors):
+##            desc_en[s, i] = np.sum(test_cpp_struc_pow1.descriptors[0].descriptors[s][:, i] / test_cpp_struc_pow1.descriptors[0].descriptor_norms[s], axis=0)
+##
+#    print("len(varmap_coeffs)", len(sgp_py.sgp_var.varmap_coeffs))
+#    beta_matrices = []
+#    for s1 in range(n_species):
+#    #    for s2 in range(n_species):
+#        beta_matr = np.reshape(sgp_py.sgp_var.varmap_coeffs[s1, :], (n_descriptors, n_descriptors))
+#        print(s1, s1, "max", np.max(np.abs(beta_matr)), beta_matr.shape)
+#        beta_matrices.append(beta_matr)
+##        py_var += desc_en[s1, :].dot(desc_en[s1, :].dot(beta_matr))
+##    print(py_var)
+#
+#    struc_desc = test_cpp_struc.descriptors[0]
+#    n_descriptors = np.shape(struc_desc.descriptors[0])[1]
+#    n_species = len(atom_types)
+##    desc = np.zeros((n_atoms, 3, n_species, n_descriptors))
+#
+#    print("len(varmap_coeffs)", len(sgp_py.sgp_var.varmap_coeffs))
+#    py_var = np.zeros(n_atoms)
 #    for s in range(n_species):
-#        n_struc_s = test_cpp_struc_pow1.descriptors[0].n_clusters_by_type[s];
-#        assert np.shape(test_cpp_struc_pow1.descriptors[0].descriptors[s])[0] == n_struc_s
-#        for i in range(n_descriptors):
-#            desc_en[s, i] = np.sum(test_cpp_struc_pow1.descriptors[0].descriptors[s][:, i] / test_cpp_struc_pow1.descriptors[0].descriptor_norms[s], axis=0)
-#
-    print("len(varmap_coeffs)", len(sgp_py.sgp_var.varmap_coeffs))
-    beta_matrices = []
-    for s1 in range(n_species):
-    #    for s2 in range(n_species):
-        beta_matr = np.reshape(sgp_py.sgp_var.varmap_coeffs[s1, :], (n_descriptors, n_descriptors))
-        print(s1, s1, "max", np.max(np.abs(beta_matr)), beta_matr.shape)
-        beta_matrices.append(beta_matr)
-#        py_var += desc_en[s1, :].dot(desc_en[s1, :].dot(beta_matr))
+#        n_struc = struc_desc.n_clusters_by_type[s];
+#        beta_matr = beta_matrices[s]
+#        for j in range(n_struc):
+#            norm = struc_desc.descriptor_norms[s][j]
+#            n_neigh = struc_desc.neighbor_counts[s][j]
+#            c_neigh = struc_desc.cumulative_neighbor_counts[s][j]
+#            atom_index = struc_desc.atom_indices[s][j]
+#            print("atom", atom_index, "n_neigh", n_neigh)
+#            desc = struc_desc.descriptors[s][j]
+#            py_var[atom_index] = desc.dot(desc.dot(beta_matr)) / norm ** 2
+#            #py_var[atom_index] = desc.dot(desc) / norm ** 2 * sgp_py.sgp_var.kernels[0].sigma ** 2 
+##            for k in range(n_neigh):
+##                ind = c_neigh + k
+##                neighbor_index = struc_desc.neighbor_indices[s][ind];
+##
+##                neighbor_coord = struc_desc.neighbor_coordinates[s][ind];
+##                neigh_dist = np.sum((neighbor_coord - test_positions[atom_index]) ** 2) 
+##                #print("neighbor", neighbor_index, "dist", neigh_dist)
+##                for comp in range(3):
+##                    f1 = struc_desc.descriptor_force_dervs[s][3 * ind + comp] / norm
+##                    f2 = struc_desc.descriptors[s][j] * struc_desc.descriptor_force_dots[s][3 * ind + comp] / norm ** 3
+##                    f3 = f1 - f2
+##                    desc[atom_index, comp, s, :] += norm #f3
+##                    desc[neighbor_index, comp, s, :] -= norm #f3
+##
+##
+##    for i in range(n_atoms):
+##        for comp in range(3):
+##            for s1 in range(n_species):
+##                for s2 in range(n_species):
+##                    beta_matr = np.reshape(sgp_py.sgp_var.varmap_coeffs[s1 * n_species + s2, :], (n_descriptors, n_descriptors))
+###                    print(s1, s2, "max", np.max(np.abs(beta_matr)))
+##                    py_var[i, comp] += desc[i, comp, s1].dot(desc[i, comp, s2].dot(beta_matr))
+###                    py_var[i, comp] += np.sum(desc[i, comp, s1]) #np.sum(beta_matr[:, comp]) #np.sum(desc[i, comp, s1])
 #    print(py_var)
-
-    struc_desc = test_cpp_struc.descriptors[0]
-    n_descriptors = np.shape(struc_desc.descriptors[0])[1]
-    n_species = len(atom_types)
-#    desc = np.zeros((n_atoms, 3, n_species, n_descriptors))
-
-    print("len(varmap_coeffs)", len(sgp_py.sgp_var.varmap_coeffs))
-    py_var = np.zeros(n_atoms)
-    for s in range(n_species):
-        n_struc = struc_desc.n_clusters_by_type[s];
-        beta_matr = beta_matrices[s]
-        for j in range(n_struc):
-            norm = struc_desc.descriptor_norms[s][j]
-            n_neigh = struc_desc.neighbor_counts[s][j]
-            c_neigh = struc_desc.cumulative_neighbor_counts[s][j]
-            atom_index = struc_desc.atom_indices[s][j]
-            print("atom", atom_index, "n_neigh", n_neigh)
-            desc = struc_desc.descriptors[s][j]
-            py_var[atom_index] = desc.dot(desc.dot(beta_matr)) / norm ** 2
-            #py_var[atom_index] = desc.dot(desc) / norm ** 2 * sgp_py.sgp_var.kernels[0].sigma ** 2 
-#            for k in range(n_neigh):
-#                ind = c_neigh + k
-#                neighbor_index = struc_desc.neighbor_indices[s][ind];
 #
-#                neighbor_coord = struc_desc.neighbor_coordinates[s][ind];
-#                neigh_dist = np.sum((neighbor_coord - test_positions[atom_index]) ** 2) 
-#                #print("neighbor", neighbor_index, "dist", neigh_dist)
-#                for comp in range(3):
-#                    f1 = struc_desc.descriptor_force_dervs[s][3 * ind + comp] / norm
-#                    f2 = struc_desc.descriptors[s][j] * struc_desc.descriptor_force_dots[s][3 * ind + comp] / norm ** 3
-#                    f3 = f1 - f2
-#                    desc[atom_index, comp, s, :] += norm #f3
-#                    desc[neighbor_index, comp, s, :] -= norm #f3
-#
-#
-#    for i in range(n_atoms):
-#        for comp in range(3):
-#            for s1 in range(n_species):
-#                for s2 in range(n_species):
-#                    beta_matr = np.reshape(sgp_py.sgp_var.varmap_coeffs[s1 * n_species + s2, :], (n_descriptors, n_descriptors))
-##                    print(s1, s2, "max", np.max(np.abs(beta_matr)))
-#                    py_var[i, comp] += desc[i, comp, s1].dot(desc[i, comp, s2].dot(beta_matr))
-##                    py_var[i, comp] += np.sum(desc[i, comp, s1]) #np.sum(beta_matr[:, comp]) #np.sum(desc[i, comp, s1])
-    print(py_var)
-
-    #for i in range(4):
-    #    print([sgp_py.sparse_gp.varmap_coeffs[0, n_descriptors * i + j] for j in range(3)])
-    #for i in range(3):
-    #    print(np.sum(test_cpp_struc_pow1.descriptors[0].descriptors[0][:, i] / test_cpp_struc_pow1.descriptors[0].descriptor_norms[0], axis=0))
+#    #for i in range(4):
+#    #    print([sgp_py.sparse_gp.varmap_coeffs[0, n_descriptors * i + j] for j in range(3)])
+#    #for i in range(3):
+#    #    print(np.sum(test_cpp_struc_pow1.descriptors[0].descriptors[0][:, i] / test_cpp_struc_pow1.descriptors[0].descriptor_norms[0], axis=0))

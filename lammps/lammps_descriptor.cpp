@@ -177,12 +177,15 @@ void compute_Bk(Eigen::VectorXd &Bk_vals, Eigen::MatrixXd &Bk_force_dervs,
   //Bk_force_dot = Bk_force_dervs * Bk_vals.transpose();
   norm_squared = Bk_vals.dot(Bk_vals);
   Eigen::VectorXd beta_p = beta_matrix * Bk_vals;
+  std::cout << "computing evdwl" << std::endl;
   *evdwl = Bk_vals.dot(beta_p) / norm_squared; 
   Eigen::VectorXd w = 2 * (beta_p - *evdwl * Bk_vals) / norm_squared; // same size as Bk_vals 
 
   // Compute u(n1, l, m), where f_ik = u * dA/dr_ik
   //double factor;
   //u = Eigen::VectorXd::Zero(single_bond_vals.size());
-  u = w * dA_matr;
+  std::cout << "getting u" << std::endl;
+  u = w.transpose() * dA_matr;
+  std::cout << "done u" << std::endl;
    
 }
