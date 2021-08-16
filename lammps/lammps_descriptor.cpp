@@ -15,8 +15,8 @@ void complex_single_bond(
         cutoff_function,
     int n_species, int N, int lmax,
     const std::vector<double> &radial_hyps,
-    const std::vector<double> &cutoff_hyps, Eigen::VectorXd &single_bond_vals,
-    Eigen::MatrixXd &single_bond_env_dervs,
+    const std::vector<double> &cutoff_hyps, Eigen::VectorXcd &single_bond_vals,
+    Eigen::MatrixXcd &single_bond_env_dervs,
     const Eigen::MatrixXd &cutoff_matrix) {
 
   // Initialize basis vectors and spherical harmonics.
@@ -26,23 +26,24 @@ void complex_single_bond(
   std::vector<double> gz = std::vector<double>(N, 0);
 
   int n_harmonics = (lmax + 1) * (lmax + 1);
-  std::vector<double> h = std::vector<double>(n_harmonics, 0);
-  std::vector<double> hx = std::vector<double>(n_harmonics, 0);
-  std::vector<double> hy = std::vector<double>(n_harmonics, 0);
-  std::vector<double> hz = std::vector<double>(n_harmonics, 0);
+  Eigen::VectorXcd h, hx, hy, hz;
+//  std::vector<double> h = std::vector<double>(n_harmonics, 0);
+//  std::vector<double> hx = std::vector<double>(n_harmonics, 0);
+//  std::vector<double> hy = std::vector<double>(n_harmonics, 0);
+//  std::vector<double> hz = std::vector<double>(n_harmonics, 0);
 
   // Prepare LAMMPS variables.
   int central_species = type[i] - 1;
   double delx, dely, delz, rsq, r;
-  double g_val, gx_val, gy_val, gz_val, h_val;
-  std::complex<double> bond, bond_x, bond_y, bond_z;
+  double g_val, gx_val, gy_val, gz_val;
+  std::complex<double> bond, bond_x, bond_y, bond_z, h_val;
   int j, s, descriptor_counter;
 
   // Initialize vectors.
   int n_radial = n_species * N;
   int n_bond = n_radial * n_harmonics;
-  single_bond_vals = Eigen::VectorXd::Zero(n_bond);
-  single_bond_env_dervs = Eigen::MatrixXd::Zero(n_inner * 3, n_bond);
+  single_bond_vals = Eigen::VectorXcd::Zero(n_bond);
+  single_bond_env_dervs = Eigen::MatrixXcd::Zero(n_inner * 3, n_bond);
 
   // Initialize radial hyperparameters.
   std::vector<double> new_radial_hyps = radial_hyps;
@@ -113,11 +114,11 @@ void compute_Bk(Eigen::VectorXd &Bk_vals, Eigen::MatrixXd &Bk_force_dervs,
                 const Eigen::MatrixXcd &single_bond_force_dervs,
                 std::vector<std::vector<int>> nu, int nos, int K, int N,
                 int lmax, const Eigen::VectorXd &coeffs,
-                const Eigen::MatrixXd &beta_matrix, Eigen::VectorXd &u, 
+                const Eigen::MatrixXd &beta_matrix, Eigen::VectorXcd &u, 
                 double *evdwl) {
 
-  int env_derv_cols = single_bond_env_dervs.cols();
-  int env_derv_size = single_bond_env_dervs.rows();
+  int env_derv_cols = single_bond_force_dervs.cols();
+  int env_derv_size = single_bond_force_dervs.rows();
   int n_neighbors = env_derv_size / 3;
 
   // The value of last counter is the number of descriptors
@@ -130,7 +131,7 @@ void compute_Bk(Eigen::VectorXd &Bk_vals, Eigen::MatrixXd &Bk_force_dervs,
   Bk_force_dots = Eigen::VectorXd::Zero(env_derv_size);
   norm_squared = 0.0;
 
-  Eigen::MatrixXd dA_matr = Eigen::MatrixXd::Zero(n_d, env_derv_cols);
+  Eigen::MatrixXcd dA_matr = Eigen::MatrixXd::Zero(n_d, env_derv_cols);
   for (int i = 0; i < nu.size(); i++) {
     std::vector<int> nu_list = nu[i];
     std::vector<int> single_bond_index = std::vector<int>(nu_list.end() - 2 - K, nu_list.end() - 2); // Get n1_l, n2_l, n3_l, etc.
@@ -155,7 +156,7 @@ void compute_Bk(Eigen::VectorXd &Bk_vals, Eigen::MatrixXd &Bk_force_dervs,
 
     // Prepare for partial force calculation
     for (int t = 0; t < K; t++) {
-      dA_matr(counter, single_bond_index[t]) = dA(t);
+      dA_matr(counter, single_bond_index[t]) = coeffs(m_index) * dA(t);
     }
 
 //    // Store force derivatives.

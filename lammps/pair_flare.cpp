@@ -104,12 +104,14 @@ void PairFLARE::compute(int eflag, int vflag) {
       }
 
       double norm_squared;
-      Eigen::VectorXd single_bond_vals, vals, env_dot, u;
-      Eigen::MatrixXd single_bond_env_dervs, env_dervs;
+      Eigen::VectorXcd single_bond_vals, u;
+      Eigen::VectorXd vals, env_dot;
+      Eigen::MatrixXcd single_bond_env_dervs;
+      Eigen::MatrixXd env_dervs;
 
       // Compute covariant descriptors.
       complex_single_bond(x, type, jnum, n_inner, i, xtmp, ytmp, ztmp, jlist,
-                          basis_function[kern], cutoff_function[kern], cutoffs[kern], 
+                          basis_function[kern], cutoff_function[kern], 
                           n_species, n_max[kern], l_max[kern], 
                           radial_hyps[kern], cutoff_hyps[kern], 
                           single_bond_vals, single_bond_env_dervs, cutoff_matrix);
@@ -117,7 +119,7 @@ void PairFLARE::compute(int eflag, int vflag) {
       // Compute invariant descriptors.
       compute_Bk(vals, env_dervs, norm_squared, env_dot,
                  single_bond_vals, single_bond_env_dervs, nu[kern],
-                 n_species, K[kern], n_max[kern], lmax[kern], coeffs[kern],
+                 n_species, K[kern], n_max[kern], l_max[kern], coeffs[kern],
                  beta_matrices[kern][itype - 1], u, &evdwl);
 
       // Continue if the environment is empty.
@@ -137,9 +139,9 @@ void PairFLARE::compute(int eflag, int vflag) {
   
         if (rsq < (cutoff_val * cutoff_val)) {
           // Compute partial force f_ij = u * dA/dr_ij
-          double fx = single_bond_env_dervs.row(n_count * 3 + 0).dot(u);
-          double fy = single_bond_env_dervs.row(n_count * 3 + 1).dot(u);
-          double fz = single_bond_env_dervs.row(n_count * 3 + 2).dot(u);
+          double fx = real(single_bond_env_dervs.row(n_count * 3 + 0).dot(u));
+          double fy = real(single_bond_env_dervs.row(n_count * 3 + 1).dot(u));
+          double fz = real(single_bond_env_dervs.row(n_count * 3 + 2).dot(u));
 
           f[i][0] += fx;
           f[i][1] += fy;
