@@ -19,7 +19,8 @@ np.random.seed(10)
 n_atoms = 4
 cell = np.eye(3)
 train_positions = np.random.rand(n_atoms, 3)
-test_positions = np.random.rand(n_atoms, 3)
+#test_positions = np.random.rand(n_atoms, 3)
+test_positions = train_positions 
 atom_types = [1, 2]
 atom_masses = [2, 4]
 species = [1, 2, 1, 2]
@@ -43,25 +44,45 @@ np.savez(
 # Create sparse GP model.
 sigma = 1.0
 power = 2
-kernel = NormalizedDotProduct(sigma, power)
+kernel1 = NormalizedDotProduct(sigma, power)
+
+sigma = 2.0
+power = 2
+kernel2 = NormalizedDotProduct(sigma, power)
+
+sigma = 3.0
+power = 2
+kernel3 = NormalizedDotProduct(sigma, power)
+
+kernel_list = [kernel1] #, kernel2, kernel3]
+
 cutoff_function = "quadratic"
 cutoff = 1.5
 many_body_cutoffs = [cutoff]
 radial_basis = "chebyshev"
 radial_hyps = [0.0, cutoff]
 cutoff_hyps = []
-settings = [len(atom_types), 2, 4, 3] 
-calc = Bk(radial_basis, cutoff_function, radial_hyps, cutoff_hyps, settings)
+
+settings = [len(atom_types), 1, 4, 0] 
+calc1 = Bk(radial_basis, cutoff_function, radial_hyps, cutoff_hyps, settings)
+
+settings = [len(atom_types), 2, 4, 3]
+calc2 = Bk(radial_basis, cutoff_function, radial_hyps, cutoff_hyps, settings)
+
+settings = [len(atom_types), 3, 2, 2] 
+calc3 = Bk(radial_basis, cutoff_function, radial_hyps, cutoff_hyps, settings)
+
+calc_list = [calc1] #, calc2, calc3]
+
 sigma_e = 1.0
 sigma_f = 1.0
 sigma_s = 1.0
 species_map = {1: 0, 2: 1}
 max_iterations = 20
 
-sgp_cpp = SparseGP([kernel], sigma_e, sigma_f, sigma_s)
 sgp_py = SGP_Wrapper(
-    [kernel],
-    [calc],
+    kernel_list,
+    calc_list,
     cutoff,
     sigma_e,
     sigma_f,
@@ -84,7 +105,7 @@ def test_update_db():
     )
 
     n_envs = len(custom_range)
-    assert sgp_py.sparse_gp.Kuu.shape[0] == n_envs
+    assert sgp_py.sparse_gp.Kuu.shape[0] == sgp_py.sparse_gp.Kuf.shape[0]
     assert sgp_py.sparse_gp.Kuf.shape[1] == 1 + n_atoms * 3 + 6
 
 
@@ -187,6 +208,10 @@ def test_lammps():
     sgp_py.sparse_gp.predict_DTC(test_cpp_struc)
     sgp_efs = test_cpp_struc.mean_efs
 
+    print("Energy")
+    print(lmp_e, sgp_efs[0])
+    assert np.allclose(lmp_e, sgp_efs[0])
+
     print("Forces")
     sgp_forces = np.reshape(sgp_efs[1 : len(sgp_efs) - 6], (test_structure.nat, 3))
     print(np.concatenate([lmp_f, sgp_forces], axis=1))
@@ -198,10 +223,6 @@ def test_lammps():
     print(lmp_s[[0, 5, 4, 1, 3, 2]])
     print(sgp_efs[-6:])
     assert np.allclose(lmp_s_ordered, sgp_efs[-6:])
-
-    print("Energy")
-    print(lmp_e, sgp_efs[0])
-    assert np.allclose(lmp_e, sgp_efs[0])
 
 #    # set up input and data files
 #    data_file_name = "tmp.data"
