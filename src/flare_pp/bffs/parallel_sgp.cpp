@@ -596,15 +596,12 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
   duration = 0;
   t1 = std::chrono::high_resolution_clock::now();
 
-  cum_f = f_size;
-  for (int r = 0; r < u_size; r++) {
-    for (int c = 0; c < u_size; c++) {
-      if (A.islocal(cum_f, c)) {
-        A.set(cum_f, c, L(c, r), lock); // the local_f is actually a global index of L.T
-      }
-    }
-    cum_f += 1;
+  // Copy L.T to A using scatter function
+  Eigen::MatrixXd L_T;
+  if (blacs::mpirank == 0) {
+    L_T = L.transpose();
   }
+  A.scatter(&L_T(0,0), f_size, 0, u_size, u_size);
 
   A.fence();
 
