@@ -344,12 +344,12 @@ class SGP_Wrapper:
             else:
                 raise Exception("Set mode='specific' for a user-defined custom_range")
         elif mode == "uncertain":
-            if len(custom_range) == 1:  # custom_range gives n_added
+            if len(custom_range) == len(sgp.kernels):  # custom_range gives n_added
                 n_added = custom_range
                 sgp.add_uncertain_environments(structure_descriptor, n_added)
             else:
                 raise Exception(
-                    "The custom_range should be set as [n_added] if mode='uncertain'"
+                    "The custom_range should length equal to the number of descriptors/kernels if mode='uncertain'"
                 )
         elif mode == "specific":
             if not custom_range:
@@ -359,12 +359,12 @@ class SGP_Wrapper:
             else:
                 sgp.add_specific_environments(structure_descriptor, custom_range)
         elif mode == "random":
-            if len(custom_range) == 1:  # custom_range gives n_added
+            if len(custom_range) == len(sgp.kernels):  # custom_range gives n_added
                 n_added = custom_range
                 sgp.add_random_environments(structure_descriptor, n_added)
             else:
                 raise Exception(
-                    "The custom_range should be set as [n_added] if mode='random'"
+                    "The custom_range should length equal to the number of descriptors/kernels if mode='random'"
                 )
         else:
             raise NotImplementedError
