@@ -212,7 +212,7 @@ void ParallelSGP::build(const std::vector<Structure> &training_strucs,
   for (int i = 0; i < training_strucs.size(); i++) {
      f_size += training_strucs[i].energy.size() + training_strucs[i].forces.size() + training_strucs[i].stresses.size();
   }
-  f_size_per_proc = f_size / world_size;
+  f_size_per_proc = f_size / world_size; // TODO!! change to +1
 
   u_size = 0;
   for (int k = 0; k < n_kernels; k++) {
@@ -291,8 +291,8 @@ void ParallelSGP::load_local_training_data(const std::vector<Structure> &trainin
     n_struc_clusters_by_type.push_back(n_envs_by_type);
     for (int s = 0; s < n_types; s++) n_clusters_by_type[s] += n_envs_by_type(s);
 
+    // Collect local training structures for A, Kuf
     if (nmin_struc < cum_f + label_size && cum_f < nmax_struc) {
-      // Collect local training structures for A
       struc = Structure(training_strucs[t].cell, training_strucs[t].species, 
               training_strucs[t].positions, cutoff, descriptor_calculators);
 
@@ -301,6 +301,15 @@ void ParallelSGP::load_local_training_data(const std::vector<Structure> &trainin
       struc.stresses = training_strucs[t].stresses;
  
       add_training_structure(struc);
+
+      std::vector<int> label_inds;
+      for (int l = 0; l < label_size; l++) {
+        if (cum_f + l >= nmin_struc && cum_f + l < nmax_struc) {
+          label_inds.push_back(l);
+        }
+      }
+      local_label_indices.push_back(label_inds);
+
       if (nmin_struc <= cum_f && cum_f < nmax_struc) {
         // avoid multiple procs add the same sparse envs
         add_specific_environments(struc, training_sparse_indices[0][t]);
@@ -444,13 +453,20 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
   for (int i = 0; i < n_kernels; i++) {
     t1_inner = std::chrono::high_resolution_clock::now();
     assert(u_size_single_kernel == sparse_descriptors[i].n_clusters);
-    Eigen::MatrixXd kuf_i = Eigen::MatrixXd::Zero(u_size_single_kernel, f_size);
+    Eigen::MatrixXd kuf_i = Eigen::MatrixXd::Zero(u_size_single_kernel, f_size_per_proc); // TODO: change f_size
     for (int t = 0; t < training_structures.size(); t++) {
-      int f_size_i = 1 + training_structures[t].noa * 3 + 6;
-      kuf_i.block(0, cum_f, u_size_single_kernel, f_size_i) = kernels[i]->envs_struc(
+      int f_size_i = local_label_indices[t].size();
+      Eigen::MatrixXd kern_t = kernels[i]->envs_struc(
                   sparse_descriptors[i], 
                   training_structures[t].descriptors[i], 
                   kernels[i]->kernel_hyperparameters);
+
+      // Remove columns of kern_t that is not assigned to the current processor
+      Eigen::MatrixXd kern_local = Eigen::MatrixXd::Zero(u_size_single_kernel, f_size_i);
+      for (int l = 0; l < f_size_i; l++) {
+        kern_local.block(0, l, u_size_single_kernel, 1) = kern_t.block(0, local_label_indices[t][l], u_size_single_kernel, 1);
+      }
+      kuf_i.block(0, cum_f, u_size_single_kernel, f_size_i) = kern_local; 
       cum_f += f_size_i;
     }
     kuf.push_back(kuf_i);
@@ -567,12 +583,19 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
       labels.segment(n_energy + n_forces, n_stresses) = training_strucs[t].stresses;
       for (int l = 0; l < label_size; l++) {
         if (cum_f + l >= nmin_struc && cum_f + l < nmax_struc) {
+          int u_cum_kernel = 0;
           for (int i = 0; i < n_kernels; i++) { 
             // Assign a column of kuf to a row of A
             int u_size_single_kernel = sparse_descriptors[i].n_clusters;
-            for (int c = 0; c < u_size_single_kernel; c++) { 
-              A.set(cum_f + l, c + i * u_size_single_kernel, kuf[i](c, local_f + l) * noise_vector_sqrt(local_f + l), lock);
-            }
+//            for (int c = 0; c < u_size_single_kernel; c++) { 
+//              A.set(cum_f + l, c + u_cum_kernel, kuf[i](c, local_f + l) * noise_vector_sqrt(local_f + l), lock);
+//            }
+           
+            // Compute kuf * noise_vector_sqrt
+            Eigen::VectorXd kfu_noise = noise_vector_sqrt(local_f + l) * kuf[i].col(local_f + l);
+
+            A.scatter();
+            u_cum_kernel += u_size_single_kernel; 
           }
     
           // Assign training label to y 
