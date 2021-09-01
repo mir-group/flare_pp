@@ -587,14 +587,14 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
           for (int i = 0; i < n_kernels; i++) { 
             // Assign a column of kuf to a row of A
             int u_size_single_kernel = sparse_descriptors[i].n_clusters;
-//            for (int c = 0; c < u_size_single_kernel; c++) { 
-//              A.set(cum_f + l, c + u_cum_kernel, kuf[i](c, local_f + l) * noise_vector_sqrt(local_f + l), lock);
-//            }
+            for (int c = 0; c < u_size_single_kernel; c++) { 
+              A.set(cum_f + l, c + u_cum_kernel, kuf[i](c, local_f + l) * noise_vector_sqrt(local_f + l), lock);
+            }
            
             // Compute kuf * noise_vector_sqrt
             Eigen::VectorXd kfu_noise = noise_vector_sqrt(local_f + l) * kuf[i].col(local_f + l);
 
-            A.scatter();
+    //        A.scatter();
             u_cum_kernel += u_size_single_kernel; 
           }
     
@@ -621,10 +621,18 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
 
   // Copy L.T to A using scatter function
   Eigen::MatrixXd L_T;
+  int mb, nb, lld;
   if (blacs::mpirank == 0) {
     L_T = L.transpose();
+    mb = u_size;
+    nb = u_size;
+    lld = u_size;
+  } else {
+    mb = u_size;
+    nb = u_size;
+    lld = 0;
   }
-  A.scatter(&L_T(0,0), f_size, 0, u_size, u_size);
+  A.scatter(&L_T(0,0), f_size, 0, u_size, u_size, mb, nb, lld);
 
   A.fence();
 
