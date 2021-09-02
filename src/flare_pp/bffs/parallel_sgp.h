@@ -9,10 +9,6 @@
 #include <nlohmann/json.hpp>
 #include "json.h"
 
-#include <blacs.h>
-#include <distmatrix.h>
-#include <matrix.h>
-
 class ParallelSGP : public SparseGP {
 public:
   // Training and sparse points.
@@ -51,8 +47,8 @@ public:
   void initialize_global_sparse_descriptors(const Structure &structure);
 
   void add_global_noise(int n_energy, int n_force, int n_stress); 
-  Eigen::VectorXd global_noise_vector;
-
+  Eigen::VectorXd global_noise_vector, local_noise_vector;
+  Eigen::MatrixXd local_labels;
   void add_training_structure(const Structure &structure);
   
   Eigen::VectorXi sparse_indices_by_type(int n_types, std::vector<int> species, const std::vector<int> atoms);    

@@ -7,6 +7,11 @@
 #include <iostream>
 #include <numeric> // Iota
 
+#include <blacs.h>
+#include <distmatrix.h>
+#include <matrix.h>
+
+
 #define MAXLINE 1024
 
 
@@ -297,6 +302,7 @@ void ParallelSGP::load_local_training_data(const std::vector<Structure> &trainin
 
     // Collect local training structures for A, Kuf
     if (nmin_struc < cum_f + label_size && cum_f < nmax_struc) {
+      std::cout << "Rank: " << blacs::mpirank << ", training struc " << t << std::endl;
       struc = Structure(training_strucs[t].cell, training_strucs[t].species, 
               training_strucs[t].positions, cutoff, descriptor_calculators);
 
@@ -454,11 +460,11 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
   std::vector<Eigen::MatrixXd> kuf, kuu;
   int cum_f = 0;
   int cum_u = 0;
+  int local_f_size = nmax_struc - nmin_struc;
 
   for (int i = 0; i < n_kernels; i++) {
     t1_inner = std::chrono::high_resolution_clock::now();
     assert(u_size_single_kernel == sparse_descriptors[i].n_clusters);
-    int local_f_size = nmax_struc - nmin_struc;
     Eigen::MatrixXd kuf_i = Eigen::MatrixXd::Zero(u_size_single_kernel, local_f_size);
     for (int t = 0; t < training_structures.size(); t++) {
       int f_size_i = local_label_indices[t].size();
@@ -492,10 +498,25 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
     duration += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2_inner - t1_inner ).count();
     std::cout << "Rank: " << blacs::mpirank << ", build local kuu: " << duration << " ms" << std::endl;
 
-
   }
+
+  // Only keep the chunk of noise_vector assigned to the current proc
+  cum_f = 0;
+  int cum_f_struc = 0;
+  local_noise_vector = Eigen::VectorXd::Zero(local_f_size);
+  local_labels = Eigen::MatrixXd::Zero(local_f_size, 1); // TODO: change back to VectorXd
+  for (int t = 0; t < training_structures.size(); t++) {
+    int f_size_i = local_label_indices[t].size();
+    for (int l = 0; l < f_size_i; l++) {
+      local_noise_vector(cum_f + l) = noise_vector(cum_f_struc + local_label_indices[t][l]);
+      local_labels(cum_f + l, 0) = y(cum_f_struc + local_label_indices[t][l]);
+    }
+    cum_f += f_size_i;
+    cum_f_struc += training_strucs[t].n_labels();
+  }
+
   // Store square root of noise vector.
-  Eigen::VectorXd noise_vector_sqrt = sqrt(noise_vector.array());
+  Eigen::VectorXd noise_vector_sqrt = sqrt(local_noise_vector.array());
   Eigen::VectorXd global_noise_vector_sqrt = sqrt(global_noise_vector.array());
 
   std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
@@ -578,8 +599,16 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
   cum_f = 0;
   int local_f_full = 0;
   int local_f = 0;
-  Eigen::MatrixXd kfu = kuf[0].transpose();
-  A.collect(&kfu(0, 0), 0, 0, f_size, u_size, f_size_per_proc, u_size, nmax_struc - nmin_struc);
+  // Assign Lambda * Kfu to A
+  Eigen::MatrixXd noise_kfu = noise_vector_sqrt.asDiagonal() * kuf[0].transpose();
+  A.collect(&noise_kfu(0, 0), 0, 0, f_size, u_size, f_size_per_proc, u_size, nmax_struc - nmin_struc); 
+  Eigen::MatrixXd noise_labels = noise_vector_sqrt.asDiagonal() * local_labels;
+  b.collect(&noise_labels(0, 0), 0, 0, f_size, 1, f_size_per_proc, 1, nmax_struc - nmin_struc); 
+  for (int r = 0; r < f_size; r++) {
+      std::cout << "b(" << r << ")=" << b(r, 0) << noise_labels(r, 0) << std::endl;
+  }
+  b_debug = Eigen::VectorXd::Zero(f_size+u_size);
+  b.gather(&b_debug(0));
   std::cout << "Collected Kuf to A" << std::endl;
 
   for (int t = 0; t < training_strucs.size(); t++) { // training_structures is local subset
@@ -607,12 +636,11 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
             // Compute kuf * noise_vector_sqrt
 //            Eigen::VectorXd kfu_noise = noise_vector_sqrt(local_f_full + l) * kuf[i].col(local_f + cum_l);
 
-    //        A.scatter();
             u_cum_kernel += u_size_single_kernel; 
           }
     
           // Assign training label to y 
-          b.set(cum_f + l, 0, labels(l) * global_noise_vector_sqrt(cum_f + l), lock); 
+//          b.set(cum_f + l, 0, labels(l) * global_noise_vector_sqrt(cum_f + l), lock); 
           cum_l += 1;
         }
       }
@@ -648,13 +676,9 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
   int mb, nb, lld;
   if (blacs::mpirank == 0) {
     L_T = L.transpose();
-    mb = u_size;
-    nb = u_size;
-    lld = u_size;
+    mb = nb = lld = u_size;
   } else {
-    mb = 0; 
-    nb = 0;
-    lld = 0;
+    mb = nb = lld = 0; 
   }
   A.scatter(&L_T(0,0), f_size, 0, u_size, u_size);
 

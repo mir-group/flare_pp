@@ -6,6 +6,7 @@
 #include <thread>
 #include <chrono>
 #include <numeric> // Iota
+#include <blacs.h>
 
 
 TEST_F(StructureTest, BuildPMatrix){
@@ -163,10 +164,25 @@ TEST_F(StructureTest, BuildPMatrix){
 //        std::cout << "parallel_sgp.Kuu_inv(" << r << "," << c << ")=" << parallel_sgp.Kuu_inverse(r, c);
 //        std::cout << " " << sparse_gp.Kuu_inverse(r, c) << std::endl;
         // Sometimes the accuracy is between 1e-6 ~ 1e-5        
-        EXPECT_NEAR(parallel_sgp.Kuf(r, c), sparse_gp.Kuf(r, c), 1e-5);
+        EXPECT_NEAR(parallel_sgp.Kuf(r, c), sparse_gp.Kuf(r, c) * sqrt(sparse_gp.noise_vector(c)), 1e-5);
       }
     }
     std::cout << "Kuf matches" << std::endl;
+
+    for (int r = 0; r < parallel_sgp.y.size(); r++) {
+        std::cout << r << " " << parallel_sgp.y(r) << " " << sparse_gp.y(r) << std::endl;
+    }
+
+
+    for (int r = 0; r < parallel_sgp.b_debug.size(); r++) {
+        std::cout << r << " " << parallel_sgp.b_debug(r) << " " << sparse_gp.b_debug(r) << std::endl;
+    }
+
+    for (int r = 0; r < parallel_sgp.b_debug.size(); r++) {
+      EXPECT_NEAR(parallel_sgp.b_debug(r), sparse_gp.b_debug(r), 1e-6);
+    }
+    std::cout << "b matches" << std::endl;
+
 
     for (int r = 0; r < parallel_sgp.alpha.size(); r++) {
       EXPECT_NEAR(parallel_sgp.alpha(r), sparse_gp.alpha(r), 1e-6);

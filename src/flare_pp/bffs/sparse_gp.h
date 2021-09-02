@@ -27,6 +27,7 @@ public:
   // TODO: for debug
   Eigen::VectorXd Q_b;
   Eigen::MatrixXd R;
+  Eigen::VectorXd b_debug;
 
   // Training and sparse points.
   std::vector<ClusterDescriptor> sparse_descriptors;
