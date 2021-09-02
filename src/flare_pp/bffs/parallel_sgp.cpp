@@ -212,7 +212,11 @@ void ParallelSGP::build(const std::vector<Structure> &training_strucs,
   for (int i = 0; i < training_strucs.size(); i++) {
      f_size += training_strucs[i].energy.size() + training_strucs[i].forces.size() + training_strucs[i].stresses.size();
   }
-  f_size_per_proc = f_size / world_size; // TODO!! change to +1
+  if (f_size % world_size == 0) {
+    f_size_per_proc = f_size / world_size;
+  } else {
+    f_size_per_proc = f_size / world_size + 1;
+  }
 
   u_size = 0;
   for (int k = 0; k < n_kernels; k++) {
@@ -309,6 +313,7 @@ void ParallelSGP::load_local_training_data(const std::vector<Structure> &trainin
         }
       }
       local_label_indices.push_back(label_inds);
+      local_label_size += label_size;
 
       if (nmin_struc <= cum_f && cum_f < nmax_struc) {
         // avoid multiple procs add the same sparse envs
@@ -453,7 +458,8 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
   for (int i = 0; i < n_kernels; i++) {
     t1_inner = std::chrono::high_resolution_clock::now();
     assert(u_size_single_kernel == sparse_descriptors[i].n_clusters);
-    Eigen::MatrixXd kuf_i = Eigen::MatrixXd::Zero(u_size_single_kernel, f_size_per_proc); // TODO: change f_size
+    int local_f_size = nmax_struc - nmin_struc;
+    Eigen::MatrixXd kuf_i = Eigen::MatrixXd::Zero(u_size_single_kernel, local_f_size);
     for (int t = 0; t < training_structures.size(); t++) {
       int f_size_i = local_label_indices[t].size();
       Eigen::MatrixXd kern_t = kernels[i]->envs_struc(
@@ -570,7 +576,12 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
   t1 = std::chrono::high_resolution_clock::now();
 
   cum_f = 0;
+  int local_f_full = 0;
   int local_f = 0;
+  Eigen::MatrixXd kfu = kuf[0].transpose();
+  A.collect(&kfu(0, 0), 0, 0, f_size, u_size, f_size_per_proc, u_size, nmax_struc - nmin_struc);
+  std::cout << "Collected Kuf to A" << std::endl;
+
   for (int t = 0; t < training_strucs.size(); t++) { // training_structures is local subset
     int label_size = training_strucs[t].n_labels();
     int n_energy = training_strucs[t].n_energy();
@@ -582,17 +593,19 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
       labels.segment(n_energy, n_forces) = training_strucs[t].forces;
       labels.segment(n_energy + n_forces, n_stresses) = training_strucs[t].stresses;
       for (int l = 0; l < label_size; l++) {
+        int cum_l = 0;
         if (cum_f + l >= nmin_struc && cum_f + l < nmax_struc) {
           int u_cum_kernel = 0;
           for (int i = 0; i < n_kernels; i++) { 
             // Assign a column of kuf to a row of A
             int u_size_single_kernel = sparse_descriptors[i].n_clusters;
             for (int c = 0; c < u_size_single_kernel; c++) { 
-              A.set(cum_f + l, c + u_cum_kernel, kuf[i](c, local_f + l) * noise_vector_sqrt(local_f + l), lock);
+              //A.set(cum_f + l, c + u_cum_kernel, kuf[i](c, local_f + l) * noise_vector_sqrt(local_f + l), lock);
+              //A.set(cum_f + l, c + u_cum_kernel, kuf[i](c, local_f + cum_l) * noise_vector_sqrt(local_f_full + l), lock);
             }
            
             // Compute kuf * noise_vector_sqrt
-            Eigen::VectorXd kfu_noise = noise_vector_sqrt(local_f + l) * kuf[i].col(local_f + l);
+//            Eigen::VectorXd kfu_noise = noise_vector_sqrt(local_f_full + l) * kuf[i].col(local_f + cum_l);
 
     //        A.scatter();
             u_cum_kernel += u_size_single_kernel; 
@@ -600,9 +613,11 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
     
           // Assign training label to y 
           b.set(cum_f + l, 0, labels(l) * global_noise_vector_sqrt(cum_f + l), lock); 
+          cum_l += 1;
         }
       }
-      local_f += label_size;
+      local_f += local_label_indices[t].size();
+      local_f_full += label_size;
     }
 
     cum_f += label_size;
@@ -611,6 +626,15 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
   // Wait until the communication is done
   A.fence();
   b.fence();
+
+  // TODO: Kuf is for debugging
+  Kuf = Eigen::MatrixXd::Zero(u_size, f_size);
+  for (int r = 0; r < u_size; r++) {
+    for (int c = 0; c < f_size; c++) {
+      Kuf(r, c) = A(c, r);
+    }
+  }
+
 
   t2 = std::chrono::high_resolution_clock::now();
   duration += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2 - t1 ).count();
@@ -628,11 +652,11 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
     nb = u_size;
     lld = u_size;
   } else {
-    mb = u_size;
-    nb = u_size;
+    mb = 0; 
+    nb = 0;
     lld = 0;
   }
-  A.scatter(&L_T(0,0), f_size, 0, u_size, u_size, mb, nb, lld);
+  A.scatter(&L_T(0,0), f_size, 0, u_size, u_size);
 
   A.fence();
 

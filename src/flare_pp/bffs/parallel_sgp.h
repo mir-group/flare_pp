@@ -20,6 +20,7 @@ public:
   std::vector<std::vector<ClusterDescriptor>> local_sparse_descriptors;
   std::vector<std::vector<std::vector<int>>> global_sparse_indices;
   std::vector<std::vector<int>> local_label_indices;
+  int local_label_size;
 
   // Parallel parameters
   int u_size, u_size_single_kernel, u_size_per_proc; 
