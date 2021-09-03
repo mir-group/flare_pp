@@ -604,52 +604,9 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
   A.collect(&noise_kfu(0, 0), 0, 0, f_size, u_size, f_size_per_proc, u_size, nmax_struc - nmin_struc); 
   Eigen::MatrixXd noise_labels = noise_vector_sqrt.asDiagonal() * local_labels;
   b.collect(&noise_labels(0, 0), 0, 0, f_size, 1, f_size_per_proc, 1, nmax_struc - nmin_struc); 
-  for (int r = 0; r < f_size; r++) {
-      std::cout << "b(" << r << ")=" << b(r, 0) << noise_labels(r, 0) << std::endl;
-  }
   b_debug = Eigen::VectorXd::Zero(f_size+u_size);
   b.gather(&b_debug(0));
   std::cout << "Collected Kuf to A" << std::endl;
-
-  for (int t = 0; t < training_strucs.size(); t++) { // training_structures is local subset
-    int label_size = training_strucs[t].n_labels();
-    int n_energy = training_strucs[t].n_energy();
-    int n_forces = training_strucs[t].n_forces();
-    int n_stresses = training_strucs[t].n_stresses();
-    if (nmin_struc < cum_f + label_size && cum_f < nmax_struc) {
-      Eigen::VectorXd labels = Eigen::VectorXd::Zero(label_size);
-      labels.segment(0, n_energy) = training_strucs[t].energy;
-      labels.segment(n_energy, n_forces) = training_strucs[t].forces;
-      labels.segment(n_energy + n_forces, n_stresses) = training_strucs[t].stresses;
-      for (int l = 0; l < label_size; l++) {
-        int cum_l = 0;
-        if (cum_f + l >= nmin_struc && cum_f + l < nmax_struc) {
-          int u_cum_kernel = 0;
-          for (int i = 0; i < n_kernels; i++) { 
-            // Assign a column of kuf to a row of A
-            int u_size_single_kernel = sparse_descriptors[i].n_clusters;
-            for (int c = 0; c < u_size_single_kernel; c++) { 
-              //A.set(cum_f + l, c + u_cum_kernel, kuf[i](c, local_f + l) * noise_vector_sqrt(local_f + l), lock);
-              //A.set(cum_f + l, c + u_cum_kernel, kuf[i](c, local_f + cum_l) * noise_vector_sqrt(local_f_full + l), lock);
-            }
-           
-            // Compute kuf * noise_vector_sqrt
-//            Eigen::VectorXd kfu_noise = noise_vector_sqrt(local_f_full + l) * kuf[i].col(local_f + cum_l);
-
-            u_cum_kernel += u_size_single_kernel; 
-          }
-    
-          // Assign training label to y 
-//          b.set(cum_f + l, 0, labels(l) * global_noise_vector_sqrt(cum_f + l), lock); 
-          cum_l += 1;
-        }
-      }
-      local_f += local_label_indices[t].size();
-      local_f_full += label_size;
-    }
-
-    cum_f += label_size;
-  }
 
   // Wait until the communication is done
   A.fence();
