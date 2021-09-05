@@ -2,6 +2,7 @@
 #include <iostream>
 #include <cmath>
 #include <Eigen/Dense>
+#include <blacs.h>
 #include "omp.h"
 #include "mpi.h"
 

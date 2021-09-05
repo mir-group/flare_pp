@@ -4,6 +4,7 @@
 #include <iomanip>
 #include <limits>
 #include <Eigen/Dense>
+#include <blacs.h>
 #include "omp.h"
 #include "mpi.h"
 

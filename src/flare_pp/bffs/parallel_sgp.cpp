@@ -612,13 +612,13 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
   A.fence();
   b.fence();
 
-  // TODO: Kuf is for debugging
-  Kuf = Eigen::MatrixXd::Zero(u_size, f_size);
-  for (int r = 0; r < u_size; r++) {
-    for (int c = 0; c < f_size; c++) {
-      Kuf(r, c) = A(c, r);
-    }
-  }
+//  // TODO: Kuf is for debugging
+//  Kuf = Eigen::MatrixXd::Zero(u_size, f_size);
+//  for (int r = 0; r < u_size; r++) {
+//    for (int c = 0; c < f_size; c++) {
+//      Kuf(r, c) = A(c, r);
+//    }
+//  }
 
 
   t2 = std::chrono::high_resolution_clock::now();
