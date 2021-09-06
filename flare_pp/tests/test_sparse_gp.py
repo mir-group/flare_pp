@@ -30,7 +30,7 @@ test_structure = struc.Structure(cell, species, test_positions)
 # Test update db
 custom_range = [1, 2, 3]
 energy = np.random.rand()
-forces = np.random.rand(n_atoms, 3)
+forces = np.random.rand(n_atoms, 3) * 10
 stress = np.random.rand(6)
 np.savez(
     "random_data",
@@ -74,9 +74,9 @@ calc3 = Bk(radial_basis, cutoff_function, radial_hyps, cutoff_hyps, settings)
 
 calc_list = [calc1] #, calc2, calc3]
 
-sigma_e = 1.0
-sigma_f = 1.0
-sigma_s = 1.0
+sigma_e = 0.1
+sigma_f = 0.1
+sigma_s = 0.1
 species_map = {1: 0, 2: 1}
 max_iterations = 20
 
