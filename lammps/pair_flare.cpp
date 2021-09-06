@@ -105,7 +105,7 @@ void PairFLARE::compute(int eflag, int vflag) {
 
       double norm_squared;
       Eigen::VectorXcd single_bond_vals, u;
-      Eigen::VectorXd vals, env_dot;
+      Eigen::VectorXd vals, env_dot, partial_forces, beta_p;
       Eigen::MatrixXcd single_bond_env_dervs;
       Eigen::MatrixXd env_dervs;
 
@@ -128,6 +128,16 @@ void PairFLARE::compute(int eflag, int vflag) {
       if (norm_squared < empty_thresh)
         continue;
   
+      // Compute local energy and partial forces.
+      // TODO: not needed if using "u"
+      std::cout << "computing beta_p, evdwl" << std::endl;
+      beta_p = beta_matrices[kern][itype - 1] * vals;
+      evdwl = vals.dot(beta_p) / norm_squared;
+ 
+      std::cout << "computing partial_forces" << std::endl;
+      partial_forces =
+          2 * (- env_dervs * beta_p + evdwl * env_dot) / norm_squared;
+
       // Update energy, force and stress arrays.
       std::cout << "compute partial forces" << std::endl;
       n_count = 0;
@@ -141,10 +151,14 @@ void PairFLARE::compute(int eflag, int vflag) {
         rsq = delx * delx + dely * dely + delz * delz;
   
         if (rsq < (cutoff_val * cutoff_val)) {
-          // Compute partial force f_ij = u * dA/dr_ij
-          double fx = real(single_bond_env_dervs.row(n_count * 3 + 0).dot(u));
-          double fy = real(single_bond_env_dervs.row(n_count * 3 + 1).dot(u));
-          double fz = real(single_bond_env_dervs.row(n_count * 3 + 2).dot(u));
+          double fx = -partial_forces(n_count * 3);
+          double fy = -partial_forces(n_count * 3 + 1);
+          double fz = -partial_forces(n_count * 3 + 2);
+
+//          // Compute partial force f_ij = u * dA/dr_ij
+//          double fx = real(single_bond_env_dervs.row(n_count * 3 + 0).dot(u));
+//          double fy = real(single_bond_env_dervs.row(n_count * 3 + 1).dot(u));
+//          double fz = real(single_bond_env_dervs.row(n_count * 3 + 2).dot(u));
 
           f[i][0] += fx;
           f[i][1] += fy;

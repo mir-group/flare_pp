@@ -154,27 +154,29 @@ void compute_Bk(Eigen::VectorXd &Bk_vals, Eigen::MatrixXd &Bk_force_dervs,
     int m_index = nu_list[nu_list.size() - 2];
     Bk_vals(counter) += real(coeffs(m_index) * A);
 
-    // Prepare for partial force calculation
-    for (int t = 0; t < K; t++) {
-      dA_matr(counter, single_bond_index[t]) = coeffs(m_index) * dA(t);
-    }
-
-//    // Store force derivatives.
-//    for (int n = 0; n < n_neighbors; n++) {
-//      for (int comp = 0; comp < 3; comp++) {
-//        int ind = n * 3 + comp;
-//        std::complex<double> dA_dr = 1;
-//        for (int t = 0; t < K; t++) {
-//          dA_dr += dA(t) * single_bond_force_dervs(ind, single_bond_index[t]);
-//        }
-//        Bk_force_dervs(ind, counter) +=
-//            real(coeffs(m_index) * dA_dr);
-//      }
+//    // Prepare for partial force calculation
+//    for (int t = 0; t < K; t++) {
+//      dA_matr(counter, single_bond_index[t]) = coeffs(m_index) * dA(t);
 //    }
+
+    // Store force derivatives.
+    for (int n = 0; n < n_neighbors; n++) {
+      for (int comp = 0; comp < 3; comp++) {
+        int ind = n * 3 + comp;
+        std::complex<double> dA_dr = 1;
+        for (int t = 0; t < K; t++) {
+          dA_dr += dA(t) * single_bond_force_dervs(ind, single_bond_index[t]);
+        }
+        Bk_force_dervs(ind, counter) +=
+            real(coeffs(m_index) * dA_dr);
+      }
+    }
   }
 
   // Compute descriptor norm and energy.
-  //Bk_force_dot = Bk_force_dervs * Bk_vals.transpose();
+  std::cout << "computing Bk_force_dots" << std::endl;
+  Bk_force_dots = Bk_force_dervs * Bk_vals;
+  std::cout << "computing norm_squared" << std::endl;
   norm_squared = Bk_vals.dot(Bk_vals);
   Eigen::VectorXd beta_p = beta_matrix * Bk_vals;
   std::cout << "computing evdwl" << std::endl;
@@ -183,9 +185,8 @@ void compute_Bk(Eigen::VectorXd &Bk_vals, Eigen::MatrixXd &Bk_force_dervs,
 
   // Compute u(n1, l, m), where f_ik = u * dA/dr_ik
   //double factor;
-  //u = Eigen::VectorXd::Zero(single_bond_vals.size());
-  std::cout << "getting u" << std::endl;
-  u = w.transpose() * dA_matr;
-  std::cout << "done u" << std::endl;
+  //std::cout << "getting u" << std::endl;
+  //u = w.transpose() * dA_matr;
+  //std::cout << "done u" << std::endl;
    
 }

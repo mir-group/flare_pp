@@ -72,7 +72,7 @@ calc2 = Bk(radial_basis, cutoff_function, radial_hyps, cutoff_hyps, settings)
 settings = [len(atom_types), 3, 2, 2] 
 calc3 = Bk(radial_basis, cutoff_function, radial_hyps, cutoff_hyps, settings)
 
-calc_list = [calc1] #, calc2, calc3]
+calc_list = [calc2] #, calc2, calc3]
 
 sigma_e = 0.1
 sigma_f = 0.1
@@ -220,7 +220,7 @@ def test_lammps():
 
     print("Stress")
     lmp_s_ordered = - lmp_s[[0, 5, 4, 1, 3, 2]]
-    print(lmp_s[[0, 5, 4, 1, 3, 2]])
+    print(lmp_s_ordered)
     print(sgp_efs[-6:])
     assert np.allclose(lmp_s_ordered, sgp_efs[-6:])
 
