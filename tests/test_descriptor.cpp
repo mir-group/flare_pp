@@ -62,6 +62,19 @@ TYPED_TEST(DescTest, TestBk) {
       }
     }
   }
+
+  for (int i = 0; i < struc1.descriptors.size(); i++) {
+    for (int j = 0; j < struc1.descriptors[i].descriptor_force_dervs.size(); j++) {
+      for (int k = 0; k < struc1.descriptors[i].descriptor_force_dervs[j].rows(); k++) {
+        for (int l = 0; l < struc1.descriptors[i].descriptor_force_dervs[j].cols(); l++) {
+          d1 = struc1.descriptors[i].descriptor_force_dervs[j](k, l);
+          d2 = struc2.descriptors[i].descriptor_force_dervs[j](k, l);
+          EXPECT_NEAR(d1, d2, 1e-8);
+        }
+      }
+    }
+  }
+
 }
 
 // Test Bk with K=1,2,3 for rotational invariance 

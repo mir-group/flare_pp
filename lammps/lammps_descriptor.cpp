@@ -163,7 +163,7 @@ void compute_Bk(Eigen::VectorXd &Bk_vals, Eigen::MatrixXd &Bk_force_dervs,
     for (int n = 0; n < n_neighbors; n++) {
       for (int comp = 0; comp < 3; comp++) {
         int ind = n * 3 + comp;
-        std::complex<double> dA_dr = 1;
+        std::complex<double> dA_dr = 0;
         for (int t = 0; t < K; t++) {
           dA_dr += dA(t) * single_bond_force_dervs(ind, single_bond_index[t]);
         }

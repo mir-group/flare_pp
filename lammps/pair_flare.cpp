@@ -110,6 +110,7 @@ void PairFLARE::compute(int eflag, int vflag) {
       Eigen::MatrixXd env_dervs;
 
       // Compute covariant descriptors.
+      // TODO: this function call is duplicated for multiple kernels
       std::cout << "complex_single_bond" << std::endl;
       complex_single_bond(x, type, jnum, n_inner, i, xtmp, ytmp, ztmp, jlist,
                           basis_function[kern], cutoff_function[kern], 
