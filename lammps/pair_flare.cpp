@@ -111,7 +111,6 @@ void PairFLARE::compute(int eflag, int vflag) {
 
       // Compute covariant descriptors.
       // TODO: this function call is duplicated for multiple kernels
-      std::cout << "complex_single_bond" << std::endl;
       complex_single_bond(x, type, jnum, n_inner, i, xtmp, ytmp, ztmp, jlist,
                           basis_function[kern], cutoff_function[kern], 
                           n_species, n_max[kern], l_max[kern], 
@@ -119,7 +118,6 @@ void PairFLARE::compute(int eflag, int vflag) {
                           single_bond_vals, single_bond_env_dervs, cutoff_matrix);
 
       // Compute invariant descriptors.
-      std::cout << "compute_Bk" << std::endl;
       compute_Bk(vals, env_dervs, norm_squared, env_dot,
                  single_bond_vals, single_bond_env_dervs, nu[kern],
                  n_species, K[kern], n_max[kern], l_max[kern], coeffs[kern],
@@ -131,16 +129,13 @@ void PairFLARE::compute(int eflag, int vflag) {
   
       // Compute local energy and partial forces.
       // TODO: not needed if using "u"
-      std::cout << "computing beta_p, evdwl" << std::endl;
       beta_p = beta_matrices[kern][itype - 1] * vals;
       evdwl = vals.dot(beta_p) / norm_squared;
  
-      std::cout << "computing partial_forces" << std::endl;
       partial_forces =
           2 * (- env_dervs * beta_p + evdwl * env_dot) / norm_squared;
 
       // Update energy, force and stress arrays.
-      std::cout << "compute partial forces" << std::endl;
       n_count = 0;
       for (int jj = 0; jj < jnum; jj++) {
         j = jlist[jj];
@@ -383,7 +378,6 @@ void PairFLARE::read_file(char *filename) {
 
     // Check the relationship between the power spectrum and beta.
     int beta_check = n_descriptors * (n_descriptors + 1) / 2;
-    std::cout << "n_desc=" << n_descriptors << ", beta_check=" << beta_check << std::endl;
     if (beta_check != beta_size[k])
       error->all(FLERR, "Beta size doesn't match the number of descriptors.");
 

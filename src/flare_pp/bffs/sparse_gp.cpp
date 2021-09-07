@@ -1013,7 +1013,9 @@ void SparseGP::write_mapping_coefficients(std::string file_name,
         // New line if 5 numbers have been added.
         if (count == 5) {
           count = 0;
-          coeff_file << "\n";
+          if (i != mapping_coeffs.rows() - 1 || j != coeff_vals.size() - 1) {
+            coeff_file << "\n";
+          }
         }
       }
     }
