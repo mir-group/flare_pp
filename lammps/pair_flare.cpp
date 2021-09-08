@@ -44,11 +44,19 @@ PairFLARE::~PairFLARE() {
   if (copymode)
     return;
 
-
   if (allocated) {
     memory->destroy(setflag);
     memory->destroy(cutsq);
   }
+
+  memory->destroy(radial_code);
+  memory->destroy(cutoff_code);
+  memory->destroy(K);
+  memory->destroy(n_max);
+  memory->destroy(l_max);
+  memory->destroy(beta_size);
+  memory->destroy(cutoffs);
+
 }
 
 /* ---------------------------------------------------------------------- */
@@ -283,23 +291,11 @@ void PairFLARE::read_file(char *filename) {
   memory->create(n_max, num_kern, "pair:n_max");
   memory->create(l_max, num_kern, "pair:l_max");
   memory->create(beta_size, num_kern, "pair:beta_size");
-  memory->create(cutoffs, num_kern, "pair:cutoffs");
 
-  //MPI_Bcast(&num_kern, 1, MPI_INT, 0, world);
   for (int k = 0; k < num_kern; k++) {
     char desc_str[MAXLINE];
     fgets(line, MAXLINE, fptr);
     sscanf(line, "%s", desc_str); // Descriptor name
-//    if (!strcmp(desc_str, "B1")) {
-//      descriptor_code[k] = 1;
-//    } else if (!strcmp(desc_str, "B2")) {
-//      descriptor_code[k] = 2;
-//    } else {
-//      char str[128]; 
-//      snprintf(str, 128, "Descriptor %s is not supported\n.", desc_str);
-//      error->all(FLERR, str);
-//    }
-
 
     char radial_str[MAXLINE], cutoff_str[MAXLINE];
     fgets(line, MAXLINE, fptr);
@@ -327,14 +323,6 @@ void PairFLARE::read_file(char *filename) {
       error->all(FLERR, str);
     }
 
-//    // Parse the cutoffs
-//    fgets(line, MAXLINE, fptr);
-//    sscanf(line, "%lg", &cutoffs[k]); // Cutoffs
-//    cutoff = 0;
-//    for (int i = 0; i < sizeof(cutoffs) / sizeof(cutoffs[0]); i++) { // Use max cut as cutoff
-//      if (cutoffs[i] > cutoff) cutoff = cutoffs[i];
-//    }
-
     // Parse the cutoffs.
     int n_cutoffs = n_species * n_species;
     memory->create(cutoffs, n_cutoffs, "pair:cutoffs");
@@ -356,15 +344,6 @@ void PairFLARE::read_file(char *filename) {
     }
     cutoff_matrices.push_back(cutoff_matrix);
 
-    //MPI_Bcast(&n_species, 1, MPI_INT, 0, world);
-    //MPI_Bcast(&cutoff, 1, MPI_DOUBLE, 0, world);
-    //MPI_Bcast(n_max, num_kern, MPI_INT, 0, world);
-    //MPI_Bcast(l_max, num_kern, MPI_INT, 0, world);
-    //MPI_Bcast(beta_size, num_kern, MPI_INT, 0, world);
-    //MPI_Bcast(cutoffs, num_kern, MPI_DOUBLE, 0, world);
-    //MPI_Bcast(radial_code, num_kern, MPI_INT, 0, world);
-    //MPI_Bcast(cutoff_code, num_kern, MPI_INT, 0, world);
-
     // Compute indices and coefficients
     std::vector<int> descriptor_settings = {n_species, K[k], n_max[k], l_max[k]};
     std::vector<std::vector<int>> nu_kern = compute_indices(descriptor_settings);
@@ -384,7 +363,10 @@ void PairFLARE::read_file(char *filename) {
     // Set the radial basis.
     if (radial_code[k] == 1){ 
       basis_function.push_back(chebyshev);
-      std::vector<double> rh = {0, cutoffs[k]};
+      std::vector<double> rh = {0, cutoffs[0]}; // It does not matter what 
+                                                // cutoff is used, will be 
+                                                // modified to cutoff_matrix 
+                                                // when computing descriptors 
       radial_hyps.push_back(rh);
       std::vector<double> ch;
       cutoff_hyps.push_back(ch);
