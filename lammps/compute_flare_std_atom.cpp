@@ -108,8 +108,8 @@ void ComputeFlareStdAtom::compute_peratom() {
   if (atom->nmax > nmax) {
     memory->destroy(stds);
     nmax = atom->nmax;
-    memory->create(stds,nmax,"flare/std/atom:stds");
-    vector_atom = stds; // TODO: stds should be a matrix now
+    memory->create(stds,nmax,num_kern,"flare/std/atom:stds"); 
+    array_atom = stds; // each atom has an uncertainty vector from all kernels
   }
 
   int i, j, ii, jj, inum, jnum, itype, jtype, n_inner, n_count;
@@ -134,7 +134,9 @@ void ComputeFlareStdAtom::compute_peratom() {
   firstneigh = list->firstneigh;
 
   for (ii = 0; ii < ntotal; ii++) {
-    stds[ii] = 0.0;
+    for (jj = 0; jj < num_kern; jj++) {
+      stds[ii][jj] = 0.0;
+    }
   }
 
   double empty_thresh = 1e-8;
@@ -194,7 +196,7 @@ void ComputeFlareStdAtom::compute_peratom() {
       // Compute local energy and partial forces.
       // TODO: not needed if using "u"
       beta_p = beta_matrices[kern][itype - 1] * vals;
-      stds[i] = pow(abs(vals.dot(beta_p)) / norm_squared, 0.5); // the numerator could be negative
+      stds[ii][kern] = pow(abs(vals.dot(beta_p)) / norm_squared, 0.5); // the numerator could be negative
     }
   }
 }
@@ -209,8 +211,8 @@ int ComputeFlareStdAtom::pack_reverse_comm(int n, int first, double *buf)
   m = 0;
   last = first + n;
   for (i = first; i < last; i++) {
-    for (int comp = 0; comp < 3; comp++) {
-      buf[m++] = stds[i];
+    for (int k = 0; k < num_kern; k++) {
+      buf[m++] = stds[i][k];
     }
   }
 
@@ -226,8 +228,8 @@ void ComputeFlareStdAtom::unpack_reverse_comm(int n, int *list, double *buf)
   m = 0;
   for (i = 0; i < n; i++) {
     j = list[i];
-    for (int comp = 0; comp < 3; comp++) {
-      stds[j] += buf[m++];
+    for (int k = 0; k < num_kern; k++) {
+      stds[j][k] += buf[m++];
     }
   }
 
