@@ -17,17 +17,18 @@ void complex_single_bond(
         cutoff_function,
     int n_species, int N, int lmax,
     const std::vector<double> &radial_hyps,
-    const std::vector<double> &cutoff_hyps, Eigen::VectorXd &single_bond_vals,
-    Eigen::MatrixXd &single_bond_env_dervs,
+    const std::vector<double> &cutoff_hyps, Eigen::VectorXcd &single_bond_vals,
+    Eigen::MatrixXcd &single_bond_env_dervs,
     const Eigen::MatrixXd &cutoff_matrix); 
 
 void compute_Bk(Eigen::VectorXd &Bk_vals, Eigen::MatrixXd &Bk_env_dervs,
                 double &norm_squared, Eigen::VectorXd &Bk_env_dot,
-                const Eigen::VectorXd &single_bond_vals,
-                const Eigen::MatrixXd &single_bond_env_dervs, 
+                const Eigen::VectorXcd &single_bond_vals,
+                const Eigen::MatrixXcd &single_bond_env_dervs, 
                 std::vector<std::vector<int>> nu,
                 int n_species, int K, int N, int lmax, 
+                const Eigen::VectorXd &coeffs,
                 const Eigen::MatrixXd &beta_matrix,
-                Eigen::VectorXd &u, double *evdwl);
+                Eigen::VectorXcd &u, double *evdwl);
 
 #endif
