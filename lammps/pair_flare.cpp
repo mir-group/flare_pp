@@ -357,8 +357,11 @@ void PairFLARE::read_file(char *filename) {
 
     // Check the relationship between the power spectrum and beta.
     int beta_check = n_descriptors * (n_descriptors + 1) / 2;
-    if (beta_check != beta_size[k])
-      error->all(FLERR, "Beta size doesn't match the number of descriptors.");
+    if (beta_check != beta_size[k]) {
+      char str[128]; 
+      snprintf(str, 128, "The beta size of kernel %d doesn't match the number of descriptors.", k);
+      error->all(FLERR, str);
+    }
 
     // Set the radial basis.
     if (radial_code[k] == 1){ 

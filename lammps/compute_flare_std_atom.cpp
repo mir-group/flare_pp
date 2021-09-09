@@ -37,6 +37,9 @@ ComputeFlareStdAtom::ComputeFlareStdAtom(LAMMPS *lmp, int narg, char **arg) :
 
   peratom_flag = 1;
   size_peratom_cols = 0;
+
+  nmax = 0;
+
   timeflag = 1;
   comm_reverse = 1;
 
@@ -196,7 +199,7 @@ void ComputeFlareStdAtom::compute_peratom() {
       // Compute local energy and partial forces.
       // TODO: not needed if using "u"
       beta_p = beta_matrices[kern][itype - 1] * vals;
-      stds[ii][kern] = pow(abs(vals.dot(beta_p)) / norm_squared, 0.5); // the numerator could be negative
+      stds[i][kern] = pow(abs(vals.dot(beta_p)) / norm_squared, 0.5); // the numerator could be negative
     }
   }
 }
@@ -279,6 +282,7 @@ void ComputeFlareStdAtom::coeff(int narg, char **arg) {
     error->all(FLERR, "Incorrect args for compute coefficients");
 
   read_file(arg[3]);
+  size_peratom_cols = num_kern;
 
 }
 
@@ -386,9 +390,12 @@ void ComputeFlareStdAtom::read_file(char *filename) {
     int n_descriptors = last_index[last_index.size()-1] + 1; 
 
     // Check the relationship between the power spectrum and beta.
-    int beta_check = n_descriptors * (n_descriptors + 1) / 2;
-    if (beta_check != beta_size[k])
-      error->all(FLERR, "Beta size doesn't match the number of descriptors.");
+    int beta_check = n_descriptors * n_descriptors;
+    if (beta_check != beta_size[k]) {
+      char str[128]; 
+      snprintf(str, 128, "The beta size of kernel %d doesn't match the number of descriptors.", k);
+      error->all(FLERR, str);
+    }
 
     // Set the radial basis.
     if (radial_code[k] == 1){ 
