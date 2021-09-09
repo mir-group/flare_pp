@@ -27,6 +27,7 @@ public:
   // Training and sparse points.
   std::vector<ClusterDescriptor> sparse_descriptors;
   std::vector<Structure> training_structures;
+  std::vector<std::vector<int>> training_atom_indices;
   std::vector<std::vector<std::vector<int>>> sparse_indices;
 
   // Label attributes.
@@ -59,7 +60,8 @@ public:
   std::vector<std::vector<int>>
   sort_clusters_by_uncertainty(const Structure &structure);
 
-  void add_training_structure(const Structure &structure);
+  void add_training_structure(const Structure &structure, const std::vector<int> atom_indices = {-1});
+
   void update_Kuu(const std::vector<ClusterDescriptor> &cluster_descriptors);
   void update_Kuf(const std::vector<ClusterDescriptor> &cluster_descriptors);
   void stack_Kuu();
@@ -79,13 +81,8 @@ public:
   void set_hyperparameters(Eigen::VectorXd hyps);
 
   void write_mapping_coefficients(std::string file_name,
-                                  std::string contributor,
-                                  int kernel_index);
-
-  Eigen::MatrixXd varmap_coeffs; // for debugging. TODO: remove this line 
-  void write_varmap_coefficients(std::string file_name,
-                                  std::string contributor,
-                                  int kernel_index);
+      std::string contributor, std::vector<int> kernel_indices, 
+      std::string map_type = std::string("potential"));
 
   // TODO: Make kernels jsonable.
   NLOHMANN_DEFINE_TYPE_INTRUSIVE(SparseGP, hyperparameters, kernels,    
