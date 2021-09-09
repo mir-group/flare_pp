@@ -209,7 +209,7 @@ TEST_F(StructureTest, LikeGrad) {
 
     fin_diff = (like_up - like_down) / (2 * pert);
 
-    EXPECT_NEAR(like_grad(i), fin_diff, 1e-7);
+    EXPECT_NEAR(like_grad(i), fin_diff, 2e-6);
   }
 }
 
@@ -295,8 +295,7 @@ TEST_F(StructureTest, LikeGradStable) {
 
     fin_diff = (like_up - like_down) / (2 * pert);
 
-    std::cout << like_grad(i) << " " << fin_diff << std::endl;
-    EXPECT_NEAR(like_grad(i), fin_diff, 1e-7);
+    EXPECT_NEAR(like_grad(i), fin_diff, 1e-6);
     EXPECT_NEAR(like_grad(i), like_grad_original(i), 1e-7);
   }
 }

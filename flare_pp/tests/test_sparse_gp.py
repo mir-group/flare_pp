@@ -106,7 +106,7 @@ def test_update_db():
     sgp_py.update_db(
         train_structure,
         forces,
-        custom_range=[3],
+        custom_range=[3, 3, 3],
         energy=energy,
         stress=stress,
         mode="uncertain",
