@@ -24,9 +24,13 @@ TEST_F(StructureTest, BuildPMatrix){
   B2 ps(radial_string, cutoff_string, radial_hyps, cutoff_hyps,
         descriptor_settings);
   dc.push_back(&ps);
+  B2 ps1(radial_string, cutoff_string, radial_hyps, cutoff_hyps,
+        descriptor_settings);
+  dc.push_back(&ps1);
 
   std::vector<Kernel *> kernels;
   kernels.push_back(&kernel_norm);
+  kernels.push_back(&kernel_3_norm);
   ParallelSGP parallel_sgp = ParallelSGP(kernels, sigma_e, sigma_f, sigma_s);
   SparseGP sparse_gp = SparseGP(kernels, sigma_e, sigma_f, sigma_s);
 
@@ -75,18 +79,21 @@ TEST_F(StructureTest, BuildPMatrix){
 
   // Build kernel matrices for paralle sgp
   //std::vector<std::vector<std::vector<int>>> sparse_indices = {{{0, 1}, {2}}}; 
-  std::vector<std::vector<std::vector<int>>> sparse_indices = {{{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}, {0, 1, 2, 4, 5, 6, 7, 8, 9}}};
+  std::vector<std::vector<int>> comm_sparse_ind = {{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}, {0, 1, 2, 4, 5, 6, 7, 8, 9}};
+  std::vector<std::vector<std::vector<int>>> sparse_indices = {comm_sparse_ind, comm_sparse_ind};
 
   std::cout << "Start building" << std::endl;
   Structure struc_1 = Structure(cell_1, species_1, positions_1);
   struc_1.energy = labels_1.segment(0, 1);
   struc_1.forces = labels_1.segment(1, n_atoms_1 * 3);
   struc_1.stresses = labels_1.segment(1 + n_atoms_1 * 3, 6);
+  std::cout << "Done struc_1" << std::endl;
 
   Structure struc_2 = Structure(cell_2, species_2, positions_2);
   struc_2.energy = labels_2.segment(0, 1);
   struc_2.forces = labels_2.segment(1, n_atoms_2 * 3);
   struc_2.stresses = labels_2.segment(1 + n_atoms_2 * 3, 6);
+  std::cout << "Done struc_2" << std::endl;
 
   std::vector<Structure> training_strucs = {struc_1, struc_2};
   parallel_sgp.build(training_strucs, cutoff, dc, sparse_indices, n_types);

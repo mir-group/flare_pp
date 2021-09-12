@@ -213,6 +213,7 @@ void ParallelSGP::build(const std::vector<Structure> &training_strucs,
   MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
 
   // Compute the dimensions of the matrices Kuf and Kuu
+  std::cout << "start computing f_size" << std::endl;
   f_size = 0;
   for (int i = 0; i < training_strucs.size(); i++) {
      f_size += training_strucs[i].energy.size() + training_strucs[i].forces.size() + training_strucs[i].stresses.size();
@@ -223,16 +224,21 @@ void ParallelSGP::build(const std::vector<Structure> &training_strucs,
     f_size_per_proc = f_size / world_size + 1;
   }
 
+  std::cout << "start computing u_size" << std::endl;
   u_size = 0;
   for (int k = 0; k < n_kernels; k++) {
+    std::cout << "start kernel " << k << std::endl;
     int u_kern = 0;
     for (int i = 0; i < training_sparse_indices[k].size(); i++) {
       u_kern += training_sparse_indices[k][i].size();
     }
+    std::cout << "get u_kern" << std::endl;
     u_size += u_kern;
     u_size_single_kernel.push_back(u_kern);
+    std::cout << "push_back " << u_kern << std::endl;
   }
   u_size_per_proc = u_size / world_size;
+  std::cout << "done computing u_size" << std::endl;
 
   // Compute the range of structures covered by the current rank
   nmin_struc = world_rank * f_size_per_proc;
@@ -475,6 +481,7 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
     int u_kern = u_size_single_kernel[i]; // sparse set size of kernel i
     assert(u_kern == sparse_descriptors[i].n_clusters);
     Eigen::MatrixXd kuf_i = Eigen::MatrixXd::Zero(u_kern, local_f_size);
+    std::cout << "Rank: " << blacs::mpirank << ", starting computing kern_t" << std::endl;
     for (int t = 0; t < training_structures.size(); t++) {
       int f_size_i = local_label_indices[t].size();
       Eigen::MatrixXd kern_t = kernels[i]->envs_struc(
@@ -482,13 +489,16 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
                   training_structures[t].descriptors[i], 
                   kernels[i]->kernel_hyperparameters);
 
+      std::cout << "Rank: " << blacs::mpirank << ", starting assigning kern_local" << std::endl;
       // Remove columns of kern_t that is not assigned to the current processor
       Eigen::MatrixXd kern_local = Eigen::MatrixXd::Zero(u_kern, f_size_i);
       for (int l = 0; l < f_size_i; l++) {
         kern_local.block(0, l, u_kern, 1) = kern_t.block(0, local_label_indices[t][l], u_kern, 1);
+        std::cout << "Rank: " << blacs::mpirank << ", assigning kern_local" << std::endl;
       }
       kuf_i.block(0, cum_f, u_kern, f_size_i) = kern_local; 
       cum_f += f_size_i;
+      std::cout << "Rank: " << blacs::mpirank << ", done assigning kern_local" << std::endl;
     }
     kuf.push_back(kuf_i);
     t2_inner = std::chrono::high_resolution_clock::now();
@@ -510,6 +520,7 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
   }
 
   // Only keep the chunk of noise_vector assigned to the current proc
+  std::cout << "get noise" << std::endl;
   cum_f = 0;
   int cum_f_struc = 0;
   local_noise_vector = Eigen::VectorXd::Zero(local_f_size);
@@ -524,6 +535,7 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
     cum_f_struc += training_strucs[t].n_labels();
   }
 
+  std::cout << "get global noise" << std::endl;
   // Store square root of noise vector.
   Eigen::VectorXd noise_vector_sqrt = sqrt(local_noise_vector.array());
   Eigen::VectorXd global_noise_vector_sqrt = sqrt(global_noise_vector.array());
