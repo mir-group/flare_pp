@@ -225,11 +225,12 @@ void ParallelSGP::build(const std::vector<Structure> &training_strucs,
 
   u_size = 0;
   for (int k = 0; k < n_kernels; k++) {
-    u_size_single_kernel = 0; // TODO: here assumes that each kernel has the same set of sparse envs
+    int u_kern = 0;
     for (int i = 0; i < training_sparse_indices[k].size(); i++) {
-      u_size += training_sparse_indices[k][i].size();
-      u_size_single_kernel += training_sparse_indices[k][i].size();
+      u_kern += training_sparse_indices[k][i].size();
     }
+    u_size += u_kern;
+    u_size_single_kernel.push_back(u_kern);
   }
   u_size_per_proc = u_size / world_size;
 
@@ -238,7 +239,7 @@ void ParallelSGP::build(const std::vector<Structure> &training_strucs,
   nmin_envs = world_rank * u_size_per_proc;
   if (world_rank == world_size - 1) {
     nmax_struc = f_size;
-    nmin_envs = u_size_single_kernel; 
+    nmax_envs = u_size; 
   } else {
     nmax_struc = (world_rank + 1) * f_size_per_proc;
     nmax_envs = (world_rank + 1) * u_size_per_proc;
@@ -464,8 +465,9 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
 
   for (int i = 0; i < n_kernels; i++) {
     t1_inner = std::chrono::high_resolution_clock::now();
-    assert(u_size_single_kernel == sparse_descriptors[i].n_clusters);
-    Eigen::MatrixXd kuf_i = Eigen::MatrixXd::Zero(u_size_single_kernel, local_f_size);
+    int u_kern = u_size_single_kernel[i]; // sparse set size of kernel i
+    assert(u_kern == sparse_descriptors[i].n_clusters);
+    Eigen::MatrixXd kuf_i = Eigen::MatrixXd::Zero(u_kern, local_f_size);
     for (int t = 0; t < training_structures.size(); t++) {
       int f_size_i = local_label_indices[t].size();
       Eigen::MatrixXd kern_t = kernels[i]->envs_struc(
@@ -474,11 +476,11 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
                   kernels[i]->kernel_hyperparameters);
 
       // Remove columns of kern_t that is not assigned to the current processor
-      Eigen::MatrixXd kern_local = Eigen::MatrixXd::Zero(u_size_single_kernel, f_size_i);
+      Eigen::MatrixXd kern_local = Eigen::MatrixXd::Zero(u_kern, f_size_i);
       for (int l = 0; l < f_size_i; l++) {
-        kern_local.block(0, l, u_size_single_kernel, 1) = kern_t.block(0, local_label_indices[t][l], u_size_single_kernel, 1);
+        kern_local.block(0, l, u_kern, 1) = kern_t.block(0, local_label_indices[t][l], u_kern, 1);
       }
-      kuf_i.block(0, cum_f, u_size_single_kernel, f_size_i) = kern_local; 
+      kuf_i.block(0, cum_f, u_kern, f_size_i) = kern_local; 
       cum_f += f_size_i;
     }
     kuf.push_back(kuf_i);

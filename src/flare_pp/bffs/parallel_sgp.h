@@ -19,7 +19,8 @@ public:
   int local_label_size;
 
   // Parallel parameters
-  int u_size, u_size_single_kernel, u_size_per_proc; 
+  int u_size, u_size_per_proc; 
+  std::vector<int> u_size_single_kernel;
   int f_size, f_size_single_kernel, f_size_per_proc;
   int nmin_struc, nmax_struc, nmin_envs, nmax_envs;
   std::vector<Eigen::VectorXi> n_struc_clusters_by_type;
