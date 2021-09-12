@@ -23,7 +23,7 @@ public:
   std::vector<int> u_size_single_kernel;
   int f_size, f_size_single_kernel, f_size_per_proc;
   int nmin_struc, nmax_struc, nmin_envs, nmax_envs;
-  std::vector<Eigen::VectorXi> n_struc_clusters_by_type;
+  std::vector<std::vector<Eigen::VectorXi>> n_struc_clusters_by_type;
   int global_n_labels;
 
   // Constructors.
@@ -89,9 +89,8 @@ public:
         const std::vector<std::vector<std::vector<int>>> &training_sparse_indices,
         int n_types);
 
-  void gather_sparse_descriptors(std::vector<int> n_clusters_by_type,
-        const std::vector<Structure> &training_strucs,
-        const std::vector<std::vector<std::vector<int>>> &training_sparse_indices);
+  void gather_sparse_descriptors(std::vector<std::vector<int>> n_clusters_by_type,
+        const std::vector<Structure> &training_strucs);
 
   /**
    Method for computing kernel matrices and vectors

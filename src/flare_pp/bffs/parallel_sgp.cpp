@@ -280,9 +280,16 @@ void ParallelSGP::load_local_training_data(const std::vector<Structure> &trainin
   int cum_f = 0;
   global_n_labels = 0;
 
-  // Compute the total number of clusters of each type
-  std::vector<int> n_clusters_by_type;
-  for (int s = 0; s < n_types; s++) n_clusters_by_type.push_back(0);
+  // Compute the total number of clusters of each type of each kernel
+  std::vector<std::vector<int>> n_clusters_by_type;
+  for (int i = 0; i < n_kernels; i++) {
+    std::vector<int> n_clusters_kern;
+    for (int s = 0; s < n_types; s++) {
+      n_clusters_kern.push_back(0);
+    }
+    n_clusters_by_type.push_back(n_clusters_kern);
+    n_struc_clusters_by_type.push_back({});
+  }
 
   for (int t = 0; t < training_strucs.size(); t++) {
     t1_inner = std::chrono::high_resolution_clock::now();
@@ -296,10 +303,13 @@ void ParallelSGP::load_local_training_data(const std::vector<Structure> &trainin
     int n_stress = 6;
     add_global_noise(n_energy, n_forces, n_stress); // for b
 
-    Eigen::VectorXi n_envs_by_type = sparse_indices_by_type(n_types,
-            training_strucs[t].species, training_sparse_indices[0][t]);
-    n_struc_clusters_by_type.push_back(n_envs_by_type);
-    for (int s = 0; s < n_types; s++) n_clusters_by_type[s] += n_envs_by_type(s);
+    // Compute the total number of clusters of each type
+    for (int i = 0; i < n_kernels; i++) {
+      Eigen::VectorXi n_envs_by_type = sparse_indices_by_type(n_types,
+              training_strucs[t].species, training_sparse_indices[i][t]);
+      n_struc_clusters_by_type[i].push_back(n_envs_by_type);
+      for (int s = 0; s < n_types; s++) n_clusters_by_type[i][s] += n_envs_by_type(s);
+    }
 
     // Collect local training structures for A, Kuf
     if (nmin_struc < cum_f + label_size && cum_f < nmax_struc) {
@@ -330,121 +340,119 @@ void ParallelSGP::load_local_training_data(const std::vector<Structure> &trainin
 
     cum_f += label_size;
   }
-  for (int s = 0; s < n_types; s++) assert(n_clusters_by_type[s] >= world_size);
+  for (int i = 0; i < n_kernels; i++) {
+    for (int s = 0; s < n_types; s++) {
+      assert(n_clusters_by_type[i][s] >= world_size);
+    }
+  }
 
   blacs::barrier();
   
-  gather_sparse_descriptors(n_clusters_by_type, training_strucs, 
-          training_sparse_indices);
+  gather_sparse_descriptors(n_clusters_by_type, training_strucs); 
 }
 
-void ParallelSGP::gather_sparse_descriptors(std::vector<int> n_clusters_by_type,
-        const std::vector<Structure> &training_strucs,
-        const std::vector<std::vector<std::vector<int>>> &training_sparse_indices) {
-
-  // Assign global sparse descritors
-  // TODO: allow multiple descriptors
-  int n_descriptors = training_structures[0].descriptors[0].n_descriptors;
-  int n_types = training_structures[0].descriptors[0].n_types;
-
-  int cum_f, local_u, cum_u;
-  std::vector<Eigen::MatrixXd> descriptors;
-  std::vector<Eigen::VectorXd> descriptor_norms, cutoff_values;
-  int kernel_ind = 0;
-  std::cout << "begin distmat" << std::endl;
-  for (int s = 0; s < n_types; s++) {
-    std::cout << "type " << s << " of " << n_types << std::endl;
-    DistMatrix<double> dist_descriptors(n_clusters_by_type[s], n_descriptors);
-    DistMatrix<double> dist_descriptor_norms(n_clusters_by_type[s], 1);
-    DistMatrix<double> dist_cutoff_values(n_clusters_by_type[s], 1);
-    std::cout << "create distmat" << std::endl;
-    dist_descriptors = [](int i, int j){return 0.0;};
-    dist_descriptor_norms = [](int i, int j){return 0.0;};
-    dist_cutoff_values = [](int i, int j){return 0.0;};
-    std::cout << "assigned 0" << std::endl;
-    blacs::barrier();
-    std::cout << "barrier" << std::endl;
-
-    cum_f = 0;
-    cum_u = 0;
-    local_u = 0;
-    bool lock = true;
-    std::cout << "begin set element" << std::endl;
-    for (int t = 0; t < training_strucs.size(); t++) {
-      if (nmin_struc <= cum_f && cum_f < nmax_struc) {
-        ClusterDescriptor cluster_descriptor = local_sparse_descriptors[local_u][kernel_ind];
-        for (int j = 0; j < n_struc_clusters_by_type[t](s); j++) {
-          for (int d = 0; d < n_descriptors; d++) {
-            dist_descriptors.set(cum_u + j, d, 
-                    cluster_descriptor.descriptors[s](j, d), lock);
-            dist_descriptor_norms.set(cum_u + j, 0, 
-                    cluster_descriptor.descriptor_norms[s](j), lock);
-            dist_cutoff_values.set(cum_u + j, 0, 
-                    cluster_descriptor.cutoff_values[s](j), lock);
-          }
-        }
-        local_u += 1;
-      }
-      cum_u += n_struc_clusters_by_type[t](s);
-      int label_size = training_strucs[t].n_labels();
-      cum_f += label_size;
-    }
-    std::cout << "finish setting" << std::endl;
-    dist_descriptors.fence();
-    dist_descriptor_norms.fence();
-    dist_cutoff_values.fence();
-    std::cout << "fence" << std::endl;
-
-    int nrows = n_clusters_by_type[s];
-    int ncols = n_descriptors;
-    Eigen::MatrixXd type_descriptors = Eigen::MatrixXd::Zero(nrows, ncols);
-    Eigen::VectorXd type_descriptor_norms = Eigen::VectorXd::Zero(nrows);
-    Eigen::VectorXd type_cutoff_values = Eigen::VectorXd::Zero(nrows);
-
-    std::cout << "Rank: " << blacs::mpirank << ", descriptor size: " << s << " " << n_clusters_by_type[s] << " " << n_descriptors << " " << std::endl;
-    Matrix<double> descriptors_array(nrows, ncols);
-    Matrix<double> descriptor_norms_array(nrows, 1);
-    Matrix<double> cutoff_values_array(nrows, 1);
-    std::cout << "created serial matrix" << std::endl;
-
-    dist_descriptors.allgather(descriptors_array.array.get());
-    std::cout << "something" << std::endl;
-    dist_descriptor_norms.allgather(descriptor_norms_array.array.get());
-    std::cout << "something 1" << std::endl;
-    dist_cutoff_values.allgather(cutoff_values_array.array.get());
-    std::cout << "done allgather" << std::endl;
-    // TODO: use Eigen::Map to save memory
-    for (int r = 0; r < n_clusters_by_type[s]; r++) {
-      for (int c = 0; c < n_descriptors; c++) {
-        type_descriptors(r, c) = descriptors_array(r, c);//dist_descriptors(r, c, lock);
-      }
-      type_descriptor_norms(r) = descriptor_norms_array(r, 0); //dist_descriptor_norms(r, 0, lock);
-      type_cutoff_values(r) = cutoff_values_array(r, 0); //dist_cutoff_values(r, 0, lock);
-    }
-    std::cout << "begin push_back" << std::endl;
-    descriptors.push_back(type_descriptors);
-    descriptor_norms.push_back(type_descriptor_norms);
-    cutoff_values.push_back(type_cutoff_values);
-    std::cout << "added to local descriptor" << std::endl;
-
-  }
-
-  // Store sparse environments. 
-  // TODO: support multiple kernels
-  std::vector<int> cumulative_type_count = {0};
-  int n_clusters = 0;
-  for (int s = 0; s < n_types; s++) {
-    cumulative_type_count.push_back(cumulative_type_count[s] + n_clusters_by_type[s]);
-    n_clusters += n_clusters_by_type[s];
-  }
+void ParallelSGP::gather_sparse_descriptors(std::vector<std::vector<int>> n_clusters_by_type,
+        const std::vector<Structure> &training_strucs) {
 
   for (int i = 0; i < n_kernels; i++) {
+    // Assign global sparse descritors
+    int n_descriptors = training_structures[0].descriptors[i].n_descriptors;
+    int n_types = training_structures[0].descriptors[i].n_types;
+
+    int cum_f, local_u, cum_u;
+    std::vector<Eigen::MatrixXd> descriptors;
+    std::vector<Eigen::VectorXd> descriptor_norms, cutoff_values;
+    std::cout << "begin distmat" << std::endl;
+    for (int s = 0; s < n_types; s++) {
+      std::cout << "type " << s << " of " << n_types << std::endl;
+      DistMatrix<double> dist_descriptors(n_clusters_by_type[i][s], n_descriptors);
+      DistMatrix<double> dist_descriptor_norms(n_clusters_by_type[i][s], 1);
+      DistMatrix<double> dist_cutoff_values(n_clusters_by_type[i][s], 1);
+      std::cout << "create distmat" << std::endl;
+      dist_descriptors = [](int i, int j){return 0.0;};
+      dist_descriptor_norms = [](int i, int j){return 0.0;};
+      dist_cutoff_values = [](int i, int j){return 0.0;};
+      std::cout << "assigned 0" << std::endl;
+      blacs::barrier();
+      std::cout << "barrier" << std::endl;
+
+      cum_f = 0;
+      cum_u = 0;
+      local_u = 0;
+      bool lock = true;
+      std::cout << "begin set element" << std::endl;
+      for (int t = 0; t < training_strucs.size(); t++) {
+        if (nmin_struc <= cum_f && cum_f < nmax_struc) {
+          ClusterDescriptor cluster_descriptor = local_sparse_descriptors[local_u][i];
+          for (int j = 0; j < n_struc_clusters_by_type[i][t](s); j++) {
+            for (int d = 0; d < n_descriptors; d++) {
+              dist_descriptors.set(cum_u + j, d, 
+                      cluster_descriptor.descriptors[s](j, d), lock);
+              dist_descriptor_norms.set(cum_u + j, 0, 
+                      cluster_descriptor.descriptor_norms[s](j), lock);
+              dist_cutoff_values.set(cum_u + j, 0, 
+                      cluster_descriptor.cutoff_values[s](j), lock);
+            }
+          }
+          local_u += 1;
+        }
+        cum_u += n_struc_clusters_by_type[i][t](s);
+        int label_size = training_strucs[t].n_labels();
+        cum_f += label_size;
+      }
+      std::cout << "finish setting" << std::endl;
+      dist_descriptors.fence();
+      dist_descriptor_norms.fence();
+      dist_cutoff_values.fence();
+      std::cout << "fence" << std::endl;
+
+      int nrows = n_clusters_by_type[i][s];
+      int ncols = n_descriptors;
+      Eigen::MatrixXd type_descriptors = Eigen::MatrixXd::Zero(nrows, ncols);
+      Eigen::VectorXd type_descriptor_norms = Eigen::VectorXd::Zero(nrows);
+      Eigen::VectorXd type_cutoff_values = Eigen::VectorXd::Zero(nrows);
+
+      std::cout << "Rank: " << blacs::mpirank << ", descriptor size: " << s << " " << n_clusters_by_type[i][s] << " " << n_descriptors << " " << std::endl;
+      Matrix<double> descriptors_array(nrows, ncols);
+      Matrix<double> descriptor_norms_array(nrows, 1);
+      Matrix<double> cutoff_values_array(nrows, 1);
+      std::cout << "created serial matrix" << std::endl;
+
+      dist_descriptors.allgather(descriptors_array.array.get());
+      dist_descriptor_norms.allgather(descriptor_norms_array.array.get());
+      dist_cutoff_values.allgather(cutoff_values_array.array.get());
+      std::cout << "done allgather" << std::endl;
+      // TODO: use Eigen::Map to save memory
+      for (int r = 0; r < n_clusters_by_type[i][s]; r++) {
+        for (int c = 0; c < n_descriptors; c++) {
+          type_descriptors(r, c) = descriptors_array(r, c);//dist_descriptors(r, c, lock);
+        }
+        type_descriptor_norms(r) = descriptor_norms_array(r, 0); //dist_descriptor_norms(r, 0, lock);
+        type_cutoff_values(r) = cutoff_values_array(r, 0); //dist_cutoff_values(r, 0, lock);
+      }
+      std::cout << "begin push_back" << std::endl;
+      descriptors.push_back(type_descriptors);
+      descriptor_norms.push_back(type_descriptor_norms);
+      cutoff_values.push_back(type_cutoff_values);
+      std::cout << "added to local descriptor" << std::endl;
+
+    }
+
+    // Store sparse environments. 
+    // TODO: support multiple kernels
+    std::vector<int> cumulative_type_count = {0};
+    int n_clusters = 0;
+    for (int s = 0; s < n_types; s++) {
+      cumulative_type_count.push_back(cumulative_type_count[s] + n_clusters_by_type[i][s]);
+      n_clusters += n_clusters_by_type[i][s];
+    }
+
     ClusterDescriptor cluster_desc;
     cluster_desc.initialize_cluster(n_types, n_descriptors);
     cluster_desc.descriptors = descriptors;
     cluster_desc.descriptor_norms = descriptor_norms;
     cluster_desc.cutoff_values = cutoff_values;
-    cluster_desc.n_clusters_by_type = n_clusters_by_type;
+    cluster_desc.n_clusters_by_type = n_clusters_by_type[i];
     cluster_desc.cumulative_type_count = cumulative_type_count;
     cluster_desc.n_clusters = n_clusters;
     sparse_descriptors.push_back(cluster_desc);
