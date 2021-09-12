@@ -439,7 +439,6 @@ void ParallelSGP::gather_sparse_descriptors(std::vector<std::vector<int>> n_clus
     }
 
     // Store sparse environments. 
-    // TODO: support multiple kernels
     std::vector<int> cumulative_type_count = {0};
     int n_clusters = 0;
     for (int s = 0; s < n_types; s++) {
@@ -514,12 +513,12 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
   cum_f = 0;
   int cum_f_struc = 0;
   local_noise_vector = Eigen::VectorXd::Zero(local_f_size);
-  local_labels = Eigen::MatrixXd::Zero(local_f_size, 1); // TODO: change back to VectorXd
+  local_labels = Eigen::VectorXd::Zero(local_f_size);
   for (int t = 0; t < training_structures.size(); t++) {
     int f_size_i = local_label_indices[t].size();
     for (int l = 0; l < f_size_i; l++) {
       local_noise_vector(cum_f + l) = noise_vector(cum_f_struc + local_label_indices[t][l]);
-      local_labels(cum_f + l, 0) = y(cum_f_struc + local_label_indices[t][l]);
+      local_labels(cum_f + l) = y(cum_f_struc + local_label_indices[t][l]);
     }
     cum_f += f_size_i;
     cum_f_struc += training_strucs[t].n_labels();
@@ -612,8 +611,8 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
   // Assign Lambda * Kfu to A
   Eigen::MatrixXd noise_kfu = noise_vector_sqrt.asDiagonal() * kuf[0].transpose();
   A.collect(&noise_kfu(0, 0), 0, 0, f_size, u_size, f_size_per_proc, u_size, nmax_struc - nmin_struc); 
-  Eigen::MatrixXd noise_labels = noise_vector_sqrt.asDiagonal() * local_labels;
-  b.collect(&noise_labels(0, 0), 0, 0, f_size, 1, f_size_per_proc, 1, nmax_struc - nmin_struc); 
+  Eigen::VectorXd noise_labels = noise_vector_sqrt.asDiagonal() * local_labels;
+  b.collect(&noise_labels(0), 0, 0, f_size, 1, f_size_per_proc, 1, nmax_struc - nmin_struc); 
   b_debug = Eigen::VectorXd::Zero(f_size+u_size);
   b.gather(&b_debug(0));
   std::cout << "Collected Kuf to A" << std::endl;
