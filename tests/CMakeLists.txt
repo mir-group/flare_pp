@@ -1,3 +1,8 @@
+if (NOT EXISTS ${CMAKE_CURRENT_BINARY_DIR}/dft_data.xyz)
+    file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/dft_data.xyz
+                DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+endif ()
+
 # make executable
 add_executable(
   tests
@@ -6,8 +11,10 @@ add_executable(
   test_structure.cpp
   test_n_body.cpp
   test_sparse_gp.cpp
+  test_parallel_sgp.cpp
   test_descriptor.cpp
   test_json.cpp
+  test_utils.cpp
 )
 
 include_directories(../src/flare_pp)

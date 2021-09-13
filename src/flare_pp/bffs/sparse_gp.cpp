@@ -559,10 +559,11 @@ void SparseGP ::update_matrices_QR() {
   // Form b vector.
   Eigen::VectorXd b = Eigen::VectorXd::Zero(Kuf.cols() + Kuu.cols());
   b.segment(0, Kuf.cols()) = noise_vector_sqrt.asDiagonal() * y;
+  b_debug = b;
 
   // QR decompose A.
   Eigen::HouseholderQR<Eigen::MatrixXd> qr(A);
-  Eigen::VectorXd Q_b = qr.householderQ().transpose() * b;
+  Eigen::VectorXd Q_b = (qr.householderQ().transpose() * b).segment(0, Kuf.cols());
   R_inv = qr.matrixQR().block(0, 0, Kuu.cols(), Kuu.cols())
                        .triangularView<Eigen::Upper>()
                        .solve(Kuu_eye);

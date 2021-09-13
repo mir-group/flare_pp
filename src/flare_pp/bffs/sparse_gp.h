@@ -24,6 +24,11 @@ public:
   Eigen::MatrixXd Sigma, Kuu_inverse, R_inv, L_inv;
   Eigen::VectorXd alpha, R_inv_diag, L_diag;
 
+  // TODO: for debug
+  Eigen::VectorXd Q_b;
+  Eigen::MatrixXd R;
+  Eigen::VectorXd b_debug;
+
   // Training and sparse points.
   std::vector<ClusterDescriptor> sparse_descriptors;
   std::vector<Structure> training_structures;
@@ -42,6 +47,16 @@ public:
 
   // Constructors.
   SparseGP();
+
+  /**
+   Basic Sparse GP constructor.  
+
+   @param kernels A list of Kernel objects, e.g. NormalizedInnerProduct, SquaredExponential.
+        Note the number of kernels should be equal to the number of descriptor calculators.
+   @param energy_noise Noise hyperparameter for total energy.
+   @param force_noise Noise hyperparameter for atomic forces.
+   @param stress_noise Noise hyperparameter for total stress.
+   */
   SparseGP(std::vector<Kernel *> kernels, double energy_noise,
            double force_noise, double stress_noise);
 
@@ -78,12 +93,12 @@ public:
   double compute_likelihood_gradient(const Eigen::VectorXd &hyperparameters);
   void set_hyperparameters(Eigen::VectorXd hyps);
 
-  void write_mapping_coefficients(std::string file_name,
+  virtual void write_mapping_coefficients(std::string file_name,
                                   std::string contributor,
                                   int kernel_index);
 
   Eigen::MatrixXd varmap_coeffs; // for debugging. TODO: remove this line 
-  void write_varmap_coefficients(std::string file_name,
+  virtual void write_varmap_coefficients(std::string file_name,
                                   std::string contributor,
                                   int kernel_index);
 

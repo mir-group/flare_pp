@@ -9,7 +9,7 @@ list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/CMakeModules/)
 
 include(ExternalProject)
 
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -111,6 +111,23 @@ endif()
 
 # Greatly reduces the code bloat
 target_compile_options(pybind11 INTERFACE "-fvisibility=hidden")
+
+# dist matrix
+FetchContent_Declare(
+    distmatrix
+    GIT_REPOSITORY https://github.com/mir-group/distmatrix.git
+)
+FetchContent_MakeAvailable(distmatrix)
+
+link_directories(
+    ${CMAKE_CURRENT_BINARY_DIR}/distmatrix_build
+)
+include_directories(
+    ${CMAKE_CURRENT_BINARY_DIR}/distmatrix_src/include
+)
+
+
+#target_link_libraries(flare PUBLIC distmatrix)
 ###############################################################################
 
 # Specify source files.
@@ -119,7 +136,9 @@ set(FLARE_SOURCES
     src/flare_pp/radial.cpp
     src/flare_pp/cutoffs.cpp
     src/flare_pp/structure.cpp
+    src/flare_pp/utils.cpp
     src/flare_pp/bffs/sparse_gp.cpp
+    src/flare_pp/bffs/parallel_sgp.cpp
     src/flare_pp/bffs/gp.cpp
     src/flare_pp/descriptors/descriptor.cpp
     src/flare_pp/descriptors/b2.cpp
@@ -152,6 +171,14 @@ include_directories(
 add_library(flare STATIC ${FLARE_SOURCES})
 set_target_properties(flare PROPERTIES POSITION_INDEPENDENT_CODE ON)
 add_dependencies(flare eigen_project)
+add_dependencies(flare distmatrix)
+
+# Link to MPI
+find_package(MPI REQUIRED)
+target_link_libraries(flare PUBLIC MPI::MPI_CXX)
+
+# Link to distmatrix
+target_link_libraries(flare PUBLIC distmatrix -lgfortran)
 
 # Link to json.
 target_link_libraries(flare PUBLIC nlohmann_json::nlohmann_json)
@@ -205,3 +232,6 @@ set_target_properties(flare_module PROPERTIES OUTPUT_NAME "_C_flare")
 
 # Add test directory.
 add_subdirectory(tests)
+
+add_subdirectory(timing)
+add_subdirectory(scripts)
