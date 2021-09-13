@@ -44,6 +44,7 @@ TEST_F(StructureTest, BuildPMatrix){
   MPI_Bcast(forces.data(), n_atoms *  3, MPI_DOUBLE, 0, MPI_COMM_WORLD);
   MPI_Bcast(stresses.data(), 6, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
+  test_struc = Structure(cell, species, positions, cutoff, dc);
   test_struc.energy = energy;
   test_struc.forces = forces;
   test_struc.stresses = stresses;
@@ -128,7 +129,11 @@ TEST_F(StructureTest, BuildPMatrix){
  
     // Check the kernel matrices are consistent
     std::cout << "begin comparing n_clusters" << std::endl;
-    EXPECT_EQ(parallel_sgp.sparse_descriptors[0].n_clusters, sparse_gp.Sigma.rows());
+    int n_clusters = 0;
+    for (int i = 0; i < parallel_sgp.n_kernels; i++) {
+      n_clusters += parallel_sgp.sparse_descriptors[i].n_clusters;
+    }
+    EXPECT_EQ(n_clusters, sparse_gp.Sigma.rows());
     //EXPECT_EQ(sparse_gp.sparse_descriptors[0].n_clusters,
     //          parallel_sgp.Kuu_inverse.rows());
     EXPECT_EQ(parallel_sgp.sparse_descriptors[0].n_clusters, sparse_gp.sparse_descriptors[0].n_clusters);
