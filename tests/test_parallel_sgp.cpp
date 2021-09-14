@@ -102,9 +102,9 @@ TEST_F(StructureTest, BuildPMatrix){
   if (blacs::mpirank == 0) {
     std::cout << "Start mapping" << std::endl;
     std::cout << "kernel size " << parallel_sgp.kernels.size() << std::endl;
-    parallel_sgp.write_mapping_coefficients("par_beta.txt", "Me", 0);
+    parallel_sgp.write_mapping_coefficients("par_beta.txt", "Me", {0}, "potential");
     std::cout << "Start mapping variance" << std::endl;
-    parallel_sgp.write_varmap_coefficients("par_beta_var.txt", "Me", 0);
+    parallel_sgp.write_mapping_coefficients("par_beta_var.txt", "Me", {0}, "uncertainty");
   
     // Build sparse_gp (non parallel)
     Structure train_struc_1 = Structure(cell_1, species_1, positions_1, cutoff, dc);
@@ -124,8 +124,8 @@ TEST_F(StructureTest, BuildPMatrix){
     sparse_gp.update_matrices_QR();
     std::cout << "Done QR for sparse_gp" << std::endl;
   
-    sparse_gp.write_mapping_coefficients("beta.txt", "Me", 0);
-    sparse_gp.write_varmap_coefficients("beta_var.txt", "Me", 0);
+    sparse_gp.write_mapping_coefficients("beta.txt", "Me", {0}, "potential");
+    sparse_gp.write_mapping_coefficients("beta_var.txt", "Me", {0}, "uncertainty");
  
     // Check the kernel matrices are consistent
     std::cout << "begin comparing n_clusters" << std::endl;
