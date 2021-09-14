@@ -181,15 +181,6 @@ TEST_F(StructureTest, BuildPMatrix){
     }
     std::cout << "Kuf matches" << std::endl;
 
-    for (int r = 0; r < parallel_sgp.y.size(); r++) {
-        std::cout << r << " " << parallel_sgp.y(r) << " " << sparse_gp.y(r) << std::endl;
-    }
-
-
-    for (int r = 0; r < parallel_sgp.b_debug.size(); r++) {
-        std::cout << r << " " << parallel_sgp.b_debug(r) << " " << sparse_gp.b_debug(r) << std::endl;
-    }
-
     for (int r = 0; r < parallel_sgp.b_debug.size(); r++) {
       EXPECT_NEAR(parallel_sgp.b_debug(r), sparse_gp.b_debug(r), 1e-6);
     }
@@ -217,4 +208,100 @@ TEST_F(StructureTest, BuildPMatrix){
       }
     }
   }
+  //blacs::finalize();
+}
+
+TEST_F(StructureTest, ParLikeGrad){
+  double sigma_e = 1;
+  double sigma_f = 2;
+  double sigma_s = 3;
+  int n_atoms_1 = 10;
+  int n_atoms_2 = 17;
+  int n_atoms = 10;      
+  int n_types = n_species;
+
+  blacs::initialize();
+
+  std::vector<Descriptor *> dc;
+  B2 ps(radial_string, cutoff_string, radial_hyps, cutoff_hyps,
+        descriptor_settings);
+  dc.push_back(&ps);
+//  B2 ps1(radial_string, cutoff_string, radial_hyps, cutoff_hyps,
+//        descriptor_settings);
+//  dc.push_back(&ps1);
+
+  std::vector<Kernel *> kernels;
+  kernels.push_back(&kernel_norm);
+//  kernels.push_back(&kernel_3_norm);
+  ParallelSGP parallel_sgp = ParallelSGP(kernels, sigma_e, sigma_f, sigma_s);
+  SparseGP sparse_gp = SparseGP(kernels, sigma_e, sigma_f, sigma_s);
+
+  // Generate random labels
+  Eigen::VectorXd energy = Eigen::VectorXd::Random(1);
+  Eigen::VectorXd forces = Eigen::VectorXd::Random(n_atoms * 3);
+  Eigen::VectorXd stresses = Eigen::VectorXd::Random(6);
+
+  // Broadcast data such that different procs won't generate different random numbers
+  MPI_Bcast(energy.data(), 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+  MPI_Bcast(forces.data(), n_atoms *  3, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+  MPI_Bcast(stresses.data(), 6, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
+  test_struc = Structure(cell, species, positions, cutoff, dc);
+  test_struc.energy = energy;
+  test_struc.forces = forces;
+  test_struc.stresses = stresses;
+
+  // Make positions.
+  Eigen::MatrixXd cell_1, cell_2;
+  std::vector<int> species_1, species_2;
+  Eigen::MatrixXd positions_1, positions_2;
+  Eigen::VectorXd labels_1, labels_2;
+
+  cell_1 = Eigen::MatrixXd::Identity(3, 3) * cell_size;
+  cell_2 = Eigen::MatrixXd::Identity(3, 3) * cell_size;
+
+  positions_1 = Eigen::MatrixXd::Random(n_atoms_1, 3) * cell_size / 2;
+  positions_2 = Eigen::MatrixXd::Random(n_atoms_2, 3) * cell_size / 2;
+  MPI_Bcast(positions_1.data(), n_atoms_1 * 3, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+  MPI_Bcast(positions_2.data(), n_atoms_2 * 3, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
+  labels_1 = Eigen::VectorXd::Random(1 + n_atoms_1 * 3 + 6);
+  labels_2 = Eigen::VectorXd::Random(1 + n_atoms_2 * 3 + 6);
+  MPI_Bcast(labels_1.data(), 1 + n_atoms_1 * 3 + 6, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+  MPI_Bcast(labels_2.data(), 1 + n_atoms_2 * 3 + 6, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
+  // Make random species.
+  for (int i = 0; i < n_atoms_1; i++) {
+    species_1.push_back(rand() % n_species);
+  }
+  for (int i = 0; i < n_atoms_2; i++) {
+    species_2.push_back(rand() % n_species);
+  }
+  MPI_Bcast(species_1.data(), n_atoms_1, MPI_INT, 0, MPI_COMM_WORLD);
+  MPI_Bcast(species_2.data(), n_atoms_2, MPI_INT, 0, MPI_COMM_WORLD);
+
+  // Build kernel matrices for paralle sgp
+  //std::vector<std::vector<std::vector<int>>> sparse_indices = {{{0, 1}, {2}}}; 
+  std::vector<std::vector<int>> comm_sparse_ind = {{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}, {0, 1, 2, 4, 5, 6, 7, 8, 9}};
+  //std::vector<std::vector<std::vector<int>>> sparse_indices = {comm_sparse_ind, comm_sparse_ind};
+  std::vector<std::vector<std::vector<int>>> sparse_indices = {comm_sparse_ind};
+
+  std::cout << "Start building" << std::endl;
+  Structure struc_1 = Structure(cell_1, species_1, positions_1);
+  struc_1.energy = labels_1.segment(0, 1);
+  struc_1.forces = labels_1.segment(1, n_atoms_1 * 3);
+  struc_1.stresses = labels_1.segment(1 + n_atoms_1 * 3, 6);
+  std::cout << "Done struc_1" << std::endl;
+
+  Structure struc_2 = Structure(cell_2, species_2, positions_2);
+  struc_2.energy = labels_2.segment(0, 1);
+  struc_2.forces = labels_2.segment(1, n_atoms_2 * 3);
+  struc_2.stresses = labels_2.segment(1 + n_atoms_2 * 3, 6);
+  std::cout << "Done struc_2" << std::endl;
+
+  std::vector<Structure> training_strucs = {struc_1, struc_2};
+  parallel_sgp.build(training_strucs, cutoff, dc, sparse_indices, n_types);
+
+//  parallel_sgp.compute_likelihood_gradient_stable();
+  blacs::finalize();
 }

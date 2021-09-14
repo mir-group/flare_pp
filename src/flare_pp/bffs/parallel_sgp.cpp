@@ -269,8 +269,8 @@ void ParallelSGP::build(const std::vector<Structure> &training_strucs,
   duration += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2 - t1 ).count();
   std::cout << "Rank: " << blacs::mpirank << ", compute_matrices: " << duration << " ms" << std::endl;
 
-  // finalize BLACS
-  blacs::finalize();
+  // TODO: finalize BLACS
+  //blacs::finalize();
 
 }
 
@@ -751,29 +751,39 @@ void ParallelSGP ::predict_local_uncertainties(Structure &test_structure) {
 }
 
 double ParallelSGP ::compute_likelihood_gradient_stable() {
+  // initialize BLACS
+  blacs::initialize();
+
+
+  std::cout << "build Kuf_dist" << std::endl;
   DistMatrix<double> Kuf_dist(u_size, f_size);
   Kuf_dist.collect(&Kuf_local(0, 0), 0, 0, f_size, u_size, f_size_per_proc, u_size, nmax_struc - nmin_struc); 
 
+  std::cout << "build alpha_dist" << std::endl;
   DistMatrix<double> alpha_dist(u_size, 1);
   alpha_dist.scatter(&alpha(0), 0, 0, u_size, 1);
 
+  std::cout << "build K_alpha_dist" << std::endl;
   DistMatrix<double> K_alpha_dist(f_size, 1);
   K_alpha_dist = Kuf_dist.matmul(alpha_dist, 1.0, 'T', 'N');
   Eigen::VectorXd K_alpha;
   K_alpha_dist.gather(&K_alpha(0));
 
+  std::cout << "build y_dist" << std::endl;
   DistMatrix<double> y_dist(f_size, 1);
   y_dist.collect(&local_labels(0), 0, 0, f_size, 1, f_size_per_proc, 1, nmax_struc - nmin_struc);
   Eigen::VectorXd y_global;
   y_dist.gather(&y_global(0));
 
   if (blacs::mpirank == 0) {
+    std::cout << "build y_K_alpha" << std::endl;
     Eigen::VectorXd y_K_alpha = y_global - K_alpha;
     data_fit =
         -(1. / 2.) * y_global.transpose() * global_noise_vector.cwiseProduct(y_K_alpha);
     constant_term = -(1. / 2.) * global_n_labels * log(2 * M_PI);
 
     // Compute complexity penalty.
+    std::cout << "computing noise_det" << std::endl;
     double noise_det = - 2 * (global_n_energy_labels * log(abs(energy_noise))
             + global_n_force_labels * log(abs(force_noise))
             + global_n_stress_labels * log(abs(stress_noise)));
@@ -792,4 +802,9 @@ double ParallelSGP ::compute_likelihood_gradient_stable() {
     log_marginal_likelihood = complexity_penalty + data_fit + constant_term;
 
   }
+
+  // finalize BLACS
+  blacs::finalize();
+
+
 }
