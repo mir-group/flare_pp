@@ -189,6 +189,9 @@ void ParallelSGP ::add_global_noise(int n_energy, int n_force, int n_stress) {
   global_noise_vector.segment(global_n_labels + n_energy + n_force, n_stress) =
       Eigen::VectorXd::Constant(n_stress, 1 / (stress_noise * stress_noise));
 
+  global_n_energy_labels += n_energy;
+  global_n_force_labels += n_force;
+  global_n_stress_labels += n_stress;
   global_n_labels += n_struc_labels;
 
 }
@@ -475,7 +478,7 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
   int cum_f = 0;
   int cum_u = 0;
   int local_f_size = nmax_struc - nmin_struc;
-  Eigen::MatrixXd Kuf_local = Eigen::MatrixXd::Zero(u_size, local_f_size);
+  Kuf_local = Eigen::MatrixXd::Zero(u_size, local_f_size);
 
   for (int i = 0; i < n_kernels; i++) {
     t1_inner = std::chrono::high_resolution_clock::now();
@@ -592,7 +595,7 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
   duration = 0;
   t1 = std::chrono::high_resolution_clock::now();
 
-  // TODO: Kuu and L_inv are only needed for debug and unit test 
+  // TODO: Kuu is only needed for debug and unit test 
   Matrix<double> Kuu_array(u_size, u_size);
   std::cout << "Begin allgather Kuu" << std::endl;
   Kuu_dist.allgather(Kuu_array.array.get());
@@ -615,6 +618,7 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
   Eigen::MatrixXd L = chol.matrixL();
   L_inv = chol.matrixL().solve(Kuu_eye);
   Kuu_inverse = L_inv.transpose() * L_inv;
+  L_diag = L_inv.diagonal();
 
   t2 = std::chrono::high_resolution_clock::now();
   duration += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2 - t1 ).count();
@@ -710,8 +714,9 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
 
   // Using Lapack triangular solver to temporarily avoid the numerical issue 
   // with Scalapack block algorithm with ill-conditioned matrix
-  alpha = R.triangularView<Eigen::Upper>().solve(Q_b);
-
+  R_inv = R.triangularView<Eigen::Upper>().solve(Kuu_eye);
+  R_inv_diag = R_inv.diagonal();
+  alpha = R_inv * Q_b;
 
   t2 = std::chrono::high_resolution_clock::now();
   duration += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2 - t1 ).count();
@@ -745,3 +750,46 @@ void ParallelSGP ::predict_local_uncertainties(Structure &test_structure) {
 
 }
 
+double ParallelSGP ::compute_likelihood_gradient_stable() {
+  DistMatrix<double> Kuf_dist(u_size, f_size);
+  Kuf_dist.collect(&Kuf_local(0, 0), 0, 0, f_size, u_size, f_size_per_proc, u_size, nmax_struc - nmin_struc); 
+
+  DistMatrix<double> alpha_dist(u_size, 1);
+  alpha_dist.scatter(&alpha(0), 0, 0, u_size, 1);
+
+  DistMatrix<double> K_alpha_dist(f_size, 1);
+  K_alpha_dist = Kuf_dist.matmul(alpha_dist, 1.0, 'T', 'N');
+  Eigen::VectorXd K_alpha;
+  K_alpha_dist.gather(&K_alpha(0));
+
+  DistMatrix<double> y_dist(f_size, 1);
+  y_dist.collect(&local_labels(0), 0, 0, f_size, 1, f_size_per_proc, 1, nmax_struc - nmin_struc);
+  Eigen::VectorXd y_global;
+  y_dist.gather(&y_global(0));
+
+  if (blacs::mpirank == 0) {
+    Eigen::VectorXd y_K_alpha = y_global - K_alpha;
+    data_fit =
+        -(1. / 2.) * y_global.transpose() * global_noise_vector.cwiseProduct(y_K_alpha);
+    constant_term = -(1. / 2.) * global_n_labels * log(2 * M_PI);
+
+    // Compute complexity penalty.
+    double noise_det = - 2 * (global_n_energy_labels * log(abs(energy_noise))
+            + global_n_force_labels * log(abs(force_noise))
+            + global_n_stress_labels * log(abs(stress_noise)));
+
+    assert(L_diag.size() == R_inv_diag.size());
+    double Kuu_inv_det = 0;
+    double sigma_inv_det = 0;
+    for (int i = 0; i < L_diag.size(); i++) {
+      Kuu_inv_det -= 2 * log(abs(L_diag(i)));
+      sigma_inv_det += 2 * log(abs(R_inv_diag(i)));
+    }
+
+    complexity_penalty = (1. / 2.) * (noise_det + Kuu_inv_det + sigma_inv_det);
+    std::cout << "like_grad comp data " << complexity_penalty << " " << data_fit << std::endl;
+    std::cout << "noise_det Kuu_inv_det sigma_inv_det " << noise_det << " " << Kuu_inv_det << " " << sigma_inv_det << std::endl;
+    log_marginal_likelihood = complexity_penalty + data_fit + constant_term;
+
+  }
+}
