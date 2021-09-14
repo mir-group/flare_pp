@@ -1,16 +1,19 @@
-#include "b2.h"
+#include "bk.h"
 #include "cutoffs.h"
 #include "descriptor.h"
+#include "omp.h"
 #include "radial.h"
 #include "structure.h"
+#include "coeffs.h"
+#include "indices.h"
 #include "y_grad.h"
 #include <fstream> // File operations
 #include <iomanip> // setprecision
 #include <iostream>
 
-B2 ::B2() {}
+Bk ::Bk() {}
 
-B2 ::B2(const std::string &radial_basis, const std::string &cutoff_function,
+Bk ::Bk(const std::string &radial_basis, const std::string &cutoff_function,
         const std::vector<double> &radial_hyps,
         const std::vector<double> &cutoff_hyps,
         const std::vector<int> &descriptor_settings) {
@@ -19,7 +22,17 @@ B2 ::B2(const std::string &radial_basis, const std::string &cutoff_function,
   this->cutoff_function = cutoff_function;
   this->radial_hyps = radial_hyps;
   this->cutoff_hyps = cutoff_hyps;
-  this->descriptor_settings = descriptor_settings;
+  this->descriptor_settings = descriptor_settings; // nos, K, nmax, lmax
+
+  // check if lmax = 0 when K = 1
+  if (this->descriptor_settings[1] == 1 && this->descriptor_settings[3] != 0) {
+    std::cout << "Warning: change lmax to 0 because K = 1" << std::endl;
+    this->descriptor_settings[3] = 0;
+  }
+
+  nu = compute_indices(descriptor_settings); 
+  std::cout << "nu size: " << nu.size() << std::endl;
+  coeffs = compute_coeffs(descriptor_settings[1], descriptor_settings[3]);
 
   set_radial_basis(radial_basis, this->radial_pointer);
   set_cutoff(cutoff_function, this->cutoff_pointer);
@@ -30,7 +43,7 @@ B2 ::B2(const std::string &radial_basis, const std::string &cutoff_function,
   cutoffs = Eigen::MatrixXd::Constant(n_species, n_species, cutoff_val);
 }
 
-B2 ::B2(const std::string &radial_basis, const std::string &cutoff_function,
+Bk ::Bk(const std::string &radial_basis, const std::string &cutoff_function,
         const std::vector<double> &radial_hyps,
         const std::vector<double> &cutoff_hyps,
         const std::vector<int> &descriptor_settings,
@@ -40,7 +53,17 @@ B2 ::B2(const std::string &radial_basis, const std::string &cutoff_function,
   this->cutoff_function = cutoff_function;
   this->radial_hyps = radial_hyps;
   this->cutoff_hyps = cutoff_hyps;
-  this->descriptor_settings = descriptor_settings;
+  this->descriptor_settings = descriptor_settings; // nos, K, nmax, lmax
+
+  // check if lmax = 0 when K = 1
+  if (this->descriptor_settings[1] == 1 && this->descriptor_settings[3] != 0) {
+    std::cout << "Warning: change lmax to 0 because K = 1" << std::endl;
+    this->descriptor_settings[3] = 0;
+  }
+
+  nu = compute_indices(descriptor_settings); 
+  std::cout << "nu size: " << nu.size() << std::endl;
+  coeffs = compute_coeffs(descriptor_settings[1], descriptor_settings[3]);
 
   set_radial_basis(radial_basis, this->radial_pointer);
   set_cutoff(cutoff_function, this->cutoff_pointer);
@@ -49,17 +72,21 @@ B2 ::B2(const std::string &radial_basis, const std::string &cutoff_function,
   this->cutoffs = cutoffs;
 }
 
-void B2 ::write_to_file(std::ofstream &coeff_file, int coeff_size) {
+void Bk ::write_to_file(std::ofstream &coeff_file, int coeff_size) {
+  int n_species = descriptor_settings[0];
+  int K = descriptor_settings[1];
+  int n_max = descriptor_settings[2];
+  int l_max = descriptor_settings[3];
+
+  coeff_file << "\n" << "B" << K << "\n";
+
   // Report radial basis set.
   coeff_file << radial_basis << "\n";
 
   // Record number of species, nmax, lmax, and the cutoff.
-  int n_species = descriptor_settings[0];
-  int n_max = descriptor_settings[1];
-  int l_max = descriptor_settings[2];
   double cutoff = radial_hyps[1];
 
-  coeff_file << n_species << " " << n_max << " " << l_max << " ";
+  coeff_file << n_species << " " << K << " " << n_max << " " << l_max << " ";
   coeff_file << coeff_size << "\n";
   coeff_file << cutoff_function << "\n";
 
@@ -73,33 +100,34 @@ void B2 ::write_to_file(std::ofstream &coeff_file, int coeff_size) {
   coeff_file << "\n";
 }
 
-DescriptorValues B2 ::compute_struc(Structure &structure) {
+DescriptorValues Bk ::compute_struc(Structure &structure) {
 
   // Initialize descriptor values.
   DescriptorValues desc = DescriptorValues();
 
   // Compute single bond values.
-  Eigen::MatrixXd single_bond_vals, force_dervs, neighbor_coords;
+  Eigen::MatrixXcd single_bond_vals, force_dervs;
+  Eigen::MatrixXd neighbor_coords;
   Eigen::VectorXi unique_neighbor_count, cumulative_neighbor_count,
       descriptor_indices;
 
   int nos = descriptor_settings[0];
-  int N = descriptor_settings[1];
-  int lmax = descriptor_settings[2];
+  int K = descriptor_settings[1];
+  int N = descriptor_settings[2];
+  int lmax = descriptor_settings[3];
 
-  single_bond_multiple_cutoffs(
-    single_bond_vals, force_dervs, neighbor_coords, unique_neighbor_count,
-    cumulative_neighbor_count, descriptor_indices, radial_pointer,
-    cutoff_pointer, nos, N, lmax, radial_hyps, cutoff_hyps, structure,
-    cutoffs);
+  complex_single_bond(single_bond_vals, force_dervs, neighbor_coords,
+                      unique_neighbor_count, cumulative_neighbor_count,
+                      descriptor_indices, radial_pointer, cutoff_pointer, nos,
+                      N, lmax, radial_hyps, cutoff_hyps, structure, cutoffs);
 
   // Compute descriptor values.
-  Eigen::MatrixXd B2_vals, B2_force_dervs;
-  Eigen::VectorXd B2_norms, B2_force_dots;
+  Eigen::MatrixXd Bk_vals, Bk_force_dervs;
+  Eigen::VectorXd Bk_norms, Bk_force_dots;
 
-  compute_b2(B2_vals, B2_force_dervs, B2_norms, B2_force_dots, single_bond_vals,
+  compute_Bk(Bk_vals, Bk_force_dervs, Bk_norms, Bk_force_dots, single_bond_vals,
              force_dervs, unique_neighbor_count, cumulative_neighbor_count,
-             descriptor_indices, nos, N, lmax);
+             descriptor_indices, nu, nos, K, N, lmax, coeffs);
 
   // Gather species information.
   int noa = structure.noa;
@@ -113,7 +141,7 @@ DescriptorValues B2 ::compute_struc(Structure &structure) {
   }
 
   // Initialize arrays.
-  int n_d = B2_vals.cols();
+  int n_d = Bk_vals.cols();
   desc.n_descriptors = n_d;
   desc.n_types = nos;
   desc.n_atoms = noa;
@@ -155,15 +183,15 @@ DescriptorValues B2 ::compute_struc(Structure &structure) {
     int n_count = neighbor_counter(s);
     int cum_neigh = cumulative_neighbor_count(i);
 
-    desc.descriptors[s].row(s_count) = B2_vals.row(i);
+    desc.descriptors[s].row(s_count) = Bk_vals.row(i);
     desc.descriptor_force_dervs[s].block(n_count * 3, 0, n_neigh * 3, n_d) =
-        B2_force_dervs.block(cum_neigh * 3, 0, n_neigh * 3, n_d);
+        Bk_force_dervs.block(cum_neigh * 3, 0, n_neigh * 3, n_d);
     desc.neighbor_coordinates[s].block(n_count, 0, n_neigh, 3) =
         neighbor_coords.block(cum_neigh, 0, n_neigh, 3);
 
-    desc.descriptor_norms[s](s_count) = B2_norms(i);
+    desc.descriptor_norms[s](s_count) = Bk_norms(i);
     desc.descriptor_force_dots[s].segment(n_count * 3, n_neigh * 3) =
-        B2_force_dots.segment(cum_neigh * 3, n_neigh * 3);
+        Bk_force_dots.segment(cum_neigh * 3, n_neigh * 3);
 
     desc.neighbor_counts[s](s_count) = n_neigh;
     desc.cumulative_neighbor_counts[s](s_count) = n_count;
@@ -178,69 +206,78 @@ DescriptorValues B2 ::compute_struc(Structure &structure) {
   return desc;
 }
 
-void compute_b2(Eigen::MatrixXd &B2_vals, Eigen::MatrixXd &B2_force_dervs,
-                Eigen::VectorXd &B2_norms, Eigen::VectorXd &B2_force_dots,
-                const Eigen::MatrixXd &single_bond_vals,
-                const Eigen::MatrixXd &single_bond_force_dervs,
+void compute_Bk(Eigen::MatrixXd &Bk_vals, Eigen::MatrixXd &Bk_force_dervs,
+                Eigen::VectorXd &Bk_norms, Eigen::VectorXd &Bk_force_dots,
+                const Eigen::MatrixXcd &single_bond_vals,
+                const Eigen::MatrixXcd &single_bond_force_dervs,
                 const Eigen::VectorXi &unique_neighbor_count,
                 const Eigen::VectorXi &cumulative_neighbor_count,
-                const Eigen::VectorXi &descriptor_indices, int nos, int N,
-                int lmax) {
+                const Eigen::VectorXi &descriptor_indices, 
+                std::vector<std::vector<int>> nu, int nos, int K, int N,
+                int lmax, const Eigen::VectorXd &coeffs) {
 
   int n_atoms = single_bond_vals.rows();
   int n_neighbors = cumulative_neighbor_count(n_atoms);
-  int n_radial = nos * N;
-  int n_harmonics = (lmax + 1) * (lmax + 1);
-  int n_bond = n_radial * n_harmonics;
-  int n_d = (n_radial * (n_radial + 1) / 2) * (lmax + 1);
+
+  // The value of last counter is the number of descriptors
+  std::vector<int> last_index = nu[nu.size()-1];
+  int n_d = last_index[last_index.size()-1] + 1; 
 
   // Initialize arrays.
-  B2_vals = Eigen::MatrixXd::Zero(n_atoms, n_d);
-  B2_force_dervs = Eigen::MatrixXd::Zero(n_neighbors * 3, n_d);
-  B2_norms = Eigen::VectorXd::Zero(n_atoms);
-  B2_force_dots = Eigen::VectorXd::Zero(n_neighbors * 3);
+  Bk_vals = Eigen::MatrixXd::Zero(n_atoms, n_d);
+  Bk_force_dervs = Eigen::MatrixXd::Zero(n_neighbors * 3, n_d);
+  Bk_norms = Eigen::VectorXd::Zero(n_atoms);
+  Bk_force_dots = Eigen::VectorXd::Zero(n_neighbors * 3);
 
 #pragma omp parallel for
   for (int atom = 0; atom < n_atoms; atom++) {
     int n_atom_neighbors = unique_neighbor_count(atom);
     int force_start = cumulative_neighbor_count(atom) * 3;
-    int n1, n2, l, m, n1_l, n2_l;
-    int counter = 0;
-    for (int n1 = 0; n1 < n_radial; n1++) {
-      for (int n2 = n1; n2 < n_radial; n2++) { // can be simplified
-        for (int l = 0; l < (lmax + 1); l++) {
-          for (int m = 0; m < (2 * l + 1); m++) {
-            n1_l = n1 * n_harmonics + (l * l + m);
-            n2_l = n2 * n_harmonics + (l * l + m);
-            B2_vals(atom, counter) +=
-                single_bond_vals(atom, n1_l) * single_bond_vals(atom, n2_l);
+    for (int i = 0; i < nu.size(); i++) {
+      std::vector<int> nu_list = nu[i];
+      std::vector<int> single_bond_index = std::vector<int>(nu_list.end() - 2 - K, nu_list.end() - 2); // Get n1_l, n2_l, n3_l, etc.
+      // Forward
+      std::complex<double> A_fwd = 1;
+      Eigen::VectorXcd dA = Eigen::VectorXcd::Ones(K);
+      for (int t = 0; t < K - 1; t++) {
+        A_fwd *= single_bond_vals(atom, single_bond_index[t]);
+        dA(t + 1) *= A_fwd;
+      }
+      // Backward
+      std::complex<double> A_bwd = 1;
+      for (int t = K - 1; t > 0; t--) {
+        A_bwd *= single_bond_vals(atom, single_bond_index[t]);
+        dA(t - 1) *= A_bwd;
+      }
+      std::complex<double> A = A_fwd * single_bond_vals(atom, single_bond_index[K - 1]);
 
-            // Store force derivatives.
-            for (int n = 0; n < n_atom_neighbors; n++) {
-              for (int comp = 0; comp < 3; comp++) {
-                int ind = force_start + n * 3 + comp;
-                B2_force_dervs(ind, counter) +=
-                    single_bond_vals(atom, n1_l) *
-                        single_bond_force_dervs(ind, n2_l) +
-                    single_bond_force_dervs(ind, n1_l) *
-                        single_bond_vals(atom, n2_l);
-              }
-            }
+      int counter = nu_list[nu_list.size() - 1];
+      int m_index = nu_list[nu_list.size() - 2];
+      Bk_vals(atom, counter) += real(coeffs(m_index) * A); 
+
+      // Store force derivatives.
+      for (int n = 0; n < n_atom_neighbors; n++) {
+        for (int comp = 0; comp < 3; comp++) {
+          int ind = force_start + n * 3 + comp;
+          std::complex<double> dA_dr = 0;
+          for (int t = 0; t < K; t++) {
+            dA_dr += dA(t) * single_bond_force_dervs(ind, single_bond_index[t]);
           }
-          counter++;
+          Bk_force_dervs(ind, counter) +=
+              real(coeffs(m_index) * dA_dr);
         }
       }
     }
     // Compute descriptor norm and force dot products.
-    B2_norms(atom) = sqrt(B2_vals.row(atom).dot(B2_vals.row(atom)));
-    B2_force_dots.segment(force_start, n_atom_neighbors * 3) =
-        B2_force_dervs.block(force_start, 0, n_atom_neighbors * 3, n_d) *
-        B2_vals.row(atom).transpose();
+    Bk_norms(atom) = sqrt(Bk_vals.row(atom).dot(Bk_vals.row(atom)));
+    Bk_force_dots.segment(force_start, n_atom_neighbors * 3) =
+        Bk_force_dervs.block(force_start, 0, n_atom_neighbors * 3, n_d) *
+        Bk_vals.row(atom).transpose();
   }
 }
 
-void single_bond_multiple_cutoffs(
-    Eigen::MatrixXd &single_bond_vals, Eigen::MatrixXd &force_dervs,
+void complex_single_bond(
+    Eigen::MatrixXcd &single_bond_vals, Eigen::MatrixXcd &force_dervs,
     Eigen::MatrixXd &neighbor_coordinates, Eigen::VectorXi &neighbor_count,
     Eigen::VectorXi &cumulative_neighbor_count,
     Eigen::VectorXi &neighbor_indices,
@@ -306,8 +343,8 @@ void single_bond_multiple_cutoffs(
   int no_bond_vals = N * number_of_harmonics;
   int single_bond_size = no_bond_vals * nos;
 
-  single_bond_vals = Eigen::MatrixXd::Zero(n_atoms, single_bond_size);
-  force_dervs = Eigen::MatrixXd::Zero(bond_neighbors * 3, single_bond_size);
+  single_bond_vals = Eigen::MatrixXcd::Zero(n_atoms, single_bond_size);
+  force_dervs = Eigen::MatrixXcd::Zero(bond_neighbors * 3, single_bond_size);
   neighbor_coordinates = Eigen::MatrixXd::Zero(bond_neighbors, 3);
 
 #pragma omp parallel for
@@ -326,13 +363,10 @@ void single_bond_multiple_cutoffs(
     std::vector<double> gy = std::vector<double>(N, 0);
     std::vector<double> gz = std::vector<double>(N, 0);
 
-    std::vector<double> h = std::vector<double>(number_of_harmonics, 0);
-    std::vector<double> hx = std::vector<double>(number_of_harmonics, 0);
-    std::vector<double> hy = std::vector<double>(number_of_harmonics, 0);
-    std::vector<double> hz = std::vector<double>(number_of_harmonics, 0);
+    Eigen::VectorXcd h, hx, hy, hz;
 
-    double x, y, z, r, bond, bond_x, bond_y, bond_z, g_val, gx_val, gy_val,
-        gz_val, h_val;
+    double x, y, z, r, g_val, gx_val, gy_val, gz_val;
+    std::complex<double> bond, bond_x, bond_y, bond_z, h_val;
     int s, neigh_index, descriptor_counter, unique_ind;
     for (int j = 0; j < i_neighbors; j++) {
       neigh_index = rel_index + j;
@@ -357,7 +391,7 @@ void single_bond_multiple_cutoffs(
       // Compute radial basis values and spherical harmonics.
       calculate_radial(g, gx, gy, gz, radial_function, cutoff_function, x, y, z,
                        r, rcut, N, new_radial_hyps, cutoff_hyps);
-      get_Y(h, hx, hy, hz, x, y, z, lmax);
+      get_complex_Y(h, hx, hy, hz, x, y, z, lmax);
 
       // Store the products and their derivatives.
       descriptor_counter = s * no_bond_vals;
@@ -373,13 +407,13 @@ void single_bond_multiple_cutoffs(
              angular_counter++) {
 
           // Compute single bond value.
-          h_val = h[angular_counter];
+          h_val = h(angular_counter);
           bond = g_val * h_val;
 
           // Calculate derivatives with the product rule.
-          bond_x = gx_val * h_val + g_val * hx[angular_counter];
-          bond_y = gy_val * h_val + g_val * hy[angular_counter];
-          bond_z = gz_val * h_val + g_val * hz[angular_counter];
+          bond_x = gx_val * h_val + g_val * hx(angular_counter);
+          bond_y = gy_val * h_val + g_val * hy(angular_counter);
+          bond_z = gz_val * h_val + g_val * hz(angular_counter);
 
           // Update single bond arrays.
           single_bond_vals(i, descriptor_counter) += bond;
@@ -396,154 +430,7 @@ void single_bond_multiple_cutoffs(
   }
 }
 
-void compute_single_bond(
-    Eigen::MatrixXd &single_bond_vals, Eigen::MatrixXd &force_dervs,
-    Eigen::MatrixXd &neighbor_coordinates, Eigen::VectorXi &neighbor_count,
-    Eigen::VectorXi &cumulative_neighbor_count,
-    Eigen::VectorXi &neighbor_indices,
-    std::function<void(std::vector<double> &, std::vector<double> &, double,
-                       int, std::vector<double>)>
-        radial_function,
-    std::function<void(std::vector<double> &, double, double,
-                       std::vector<double>)>
-        cutoff_function,
-    int nos, int N, int lmax, const std::vector<double> &radial_hyps,
-    const std::vector<double> &cutoff_hyps, const Structure &structure) {
-
-  int n_atoms = structure.noa;
-  int n_neighbors = structure.n_neighbors;
-
-  // TODO: Make rcut an attribute of the descriptor calculator.
-  double rcut = radial_hyps[1];
-
-  // Count atoms inside the descriptor cutoff.
-  neighbor_count = Eigen::VectorXi::Zero(n_atoms);
-  Eigen::VectorXi store_neighbors = Eigen::VectorXi::Zero(n_neighbors);
-#pragma omp parallel for
-  for (int i = 0; i < n_atoms; i++) {
-    int i_neighbors = structure.neighbor_count(i);
-    int rel_index = structure.cumulative_neighbor_count(i);
-    for (int j = 0; j < i_neighbors; j++) {
-      int current_count = neighbor_count(i);
-      int neigh_index = rel_index + j;
-      double r = structure.relative_positions(neigh_index, 0);
-      // Check that atom is within descriptor cutoff.
-      if (r <= rcut) {
-        int struc_index = structure.structure_indices(neigh_index);
-        // Update neighbor list.
-        store_neighbors(rel_index + current_count) = struc_index;
-        neighbor_count(i)++;
-      }
-    }
-  }
-
-  // Count cumulative number of unique neighbors.
-  cumulative_neighbor_count = Eigen::VectorXi::Zero(n_atoms + 1);
-  for (int i = 1; i < n_atoms + 1; i++) {
-    cumulative_neighbor_count(i) +=
-        cumulative_neighbor_count(i - 1) + neighbor_count(i - 1);
-  }
-
-  // Record neighbor indices.
-  int bond_neighbors = cumulative_neighbor_count(n_atoms);
-  neighbor_indices = Eigen::VectorXi::Zero(bond_neighbors);
-#pragma omp parallel for
-  for (int i = 0; i < n_atoms; i++) {
-    int i_neighbors = neighbor_count(i);
-    int ind1 = cumulative_neighbor_count(i);
-    int ind2 = structure.cumulative_neighbor_count(i);
-    for (int j = 0; j < i_neighbors; j++) {
-      neighbor_indices(ind1 + j) = store_neighbors(ind2 + j);
-    }
-  }
-
-  // Initialize single bond arrays.
-  int number_of_harmonics = (lmax + 1) * (lmax + 1);
-  int no_bond_vals = N * number_of_harmonics;
-  int single_bond_size = no_bond_vals * nos;
-
-  single_bond_vals = Eigen::MatrixXd::Zero(n_atoms, single_bond_size);
-  force_dervs = Eigen::MatrixXd::Zero(bond_neighbors * 3, single_bond_size);
-  neighbor_coordinates = Eigen::MatrixXd::Zero(bond_neighbors, 3);
-
-#pragma omp parallel for
-  for (int i = 0; i < n_atoms; i++) {
-    int i_neighbors = structure.neighbor_count(i);
-    int rel_index = structure.cumulative_neighbor_count(i);
-    int neighbor_index = cumulative_neighbor_count(i);
-
-    // Initialize radial and spherical harmonic vectors.
-    std::vector<double> g = std::vector<double>(N, 0);
-    std::vector<double> gx = std::vector<double>(N, 0);
-    std::vector<double> gy = std::vector<double>(N, 0);
-    std::vector<double> gz = std::vector<double>(N, 0);
-
-    std::vector<double> h = std::vector<double>(number_of_harmonics, 0);
-    std::vector<double> hx = std::vector<double>(number_of_harmonics, 0);
-    std::vector<double> hy = std::vector<double>(number_of_harmonics, 0);
-    std::vector<double> hz = std::vector<double>(number_of_harmonics, 0);
-
-    double x, y, z, r, bond, bond_x, bond_y, bond_z, g_val, gx_val, gy_val,
-        gz_val, h_val;
-    int s, neigh_index, descriptor_counter, unique_ind;
-    for (int j = 0; j < i_neighbors; j++) {
-      neigh_index = rel_index + j;
-      r = structure.relative_positions(neigh_index, 0);
-      if (r > rcut)
-        continue; // Skip if outside cutoff.
-      x = structure.relative_positions(neigh_index, 1);
-      y = structure.relative_positions(neigh_index, 2);
-      z = structure.relative_positions(neigh_index, 3);
-      s = structure.neighbor_species(neigh_index);
-
-      // Store neighbor coordinates.
-      neighbor_coordinates(neighbor_index, 0) = x;
-      neighbor_coordinates(neighbor_index, 1) = y;
-      neighbor_coordinates(neighbor_index, 2) = z;
-
-      // Compute radial basis values and spherical harmonics.
-      calculate_radial(g, gx, gy, gz, radial_function, cutoff_function, x, y, z,
-                       r, rcut, N, radial_hyps, cutoff_hyps);
-      get_Y(h, hx, hy, hz, x, y, z, lmax);
-
-      // Store the products and their derivatives.
-      descriptor_counter = s * no_bond_vals;
-
-      for (int radial_counter = 0; radial_counter < N; radial_counter++) {
-        // Retrieve radial values.
-        g_val = g[radial_counter];
-        gx_val = gx[radial_counter];
-        gy_val = gy[radial_counter];
-        gz_val = gz[radial_counter];
-
-        for (int angular_counter = 0; angular_counter < number_of_harmonics;
-             angular_counter++) {
-
-          // Compute single bond value.
-          h_val = h[angular_counter];
-          bond = g_val * h_val;
-
-          // Calculate derivatives with the product rule.
-          bond_x = gx_val * h_val + g_val * hx[angular_counter];
-          bond_y = gy_val * h_val + g_val * hy[angular_counter];
-          bond_z = gz_val * h_val + g_val * hz[angular_counter];
-
-          // Update single bond arrays.
-          single_bond_vals(i, descriptor_counter) += bond;
-
-          force_dervs(neighbor_index * 3, descriptor_counter) += bond_x;
-          force_dervs(neighbor_index * 3 + 1, descriptor_counter) += bond_y;
-          force_dervs(neighbor_index * 3 + 2, descriptor_counter) += bond_z;
-
-          descriptor_counter++;
-        }
-      }
-      neighbor_index++;
-    }
-  }
-}
-
-void to_json(nlohmann::json& j, const B2 & p){
+void to_json(nlohmann::json& j, const Bk & p){
   j = nlohmann::json{
     {"radial_basis", p.radial_basis},
     {"cutoff_function", p.cutoff_function},
@@ -555,8 +442,8 @@ void to_json(nlohmann::json& j, const B2 & p){
   };
 }
 
-void from_json(const nlohmann::json& j, B2 & p){
-  p = B2(
+void from_json(const nlohmann::json& j, Bk & p){
+  p = Bk(
     j.at("radial_basis"),
     j.at("cutoff_function"),
     j.at("radial_hyps"),
@@ -566,7 +453,7 @@ void from_json(const nlohmann::json& j, B2 & p){
   );
 }
 
-nlohmann::json B2 ::return_json(){
+nlohmann::json Bk ::return_json(){
   nlohmann::json j;
   to_json(j, *this);
   return j;

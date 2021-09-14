@@ -1,7 +1,7 @@
 #include "b2.h"
 #include "b2_norm.h"
 #include "b2_simple.h"
-#include "b3.h"
+#include "bk.h"
 #include "structure.h"
 #include "four_body.h"
 #include "normalized_dot_product.h"
@@ -85,7 +85,7 @@ public:
     struc_desc = test_struc.descriptors[0];
 
     kernel = SquaredExponential(sigma, ls);
-    kernel_norm = NormalizedDotProduct(sigma, power);
+    kernel_norm = NormalizedDotProduct(sigma + 10.0, power);
 
     icm_coeffs = Eigen::MatrixXd::Zero(3, 3);
     // icm_coeffs << 1, 2, 3, 2, 3, 4, 3, 4, 5;

@@ -1,51 +1,131 @@
+#include "bk.h"
+#include "b1.h"
+#include "b2.h"
 #include "b3.h"
 #include "descriptor.h"
 #include "test_structure.h"
 #include "gtest/gtest.h"
 #include <Eigen/Dense>
 #include <cmath>
+#include <list>
 #include <iostream>
 
-TEST_F(StructureTest, RotationTest) {
+// Test different types B1, B2, B3 to match with Bk
+template <typename T>
+class DescTest : public StructureTest {
+public:
+  using List = std::list<T>;
+};
 
+using DescTypes = ::testing::Types<B1, B2, B3>;
+TYPED_TEST_SUITE(DescTest, DescTypes);
+
+TYPED_TEST(DescTest, TestBk) {
+  // Set up B1/2/3 descriptors
+  std::vector<int> descriptor_settings_1{this->n_species, this->N, this->L};
+  std::vector<Descriptor *> descriptors1;
+
+  TypeParam desc1(this->radial_string, this->cutoff_string, this->radial_hyps, 
+                  this->cutoff_hyps, descriptor_settings_1);
+  descriptors1.push_back(&desc1);
+
+  // Set up Bk descriptors
+  int K = desc1.K;
+  std::vector<int> descriptor_settings_2{this->n_species, K, this->N, this->L};
+  Bk desc2(this->radial_string, this->cutoff_string, this->radial_hyps, 
+           this->cutoff_hyps, descriptor_settings_2);
+  std::vector<Descriptor *> descriptors2;
+  descriptors2.push_back(&desc2);
+ 
+  Structure struc1 = Structure(this->cell, this->species, this->positions, this->cutoff, descriptors1);
+  Structure struc2 = Structure(this->cell, this->species, this->positions, this->cutoff, descriptors2);
+  
+  // Check the descriptor dimensions
+  std::vector<int> last_index = desc2.nu[desc2.nu.size()-1];
+  int n_d = last_index[last_index.size()-1] + 1; // the size of list nu
+  int n_d1 = struc1.descriptors[0].n_descriptors;
+  int n_d2 = struc2.descriptors[0].n_descriptors;
+  EXPECT_EQ(n_d, n_d1);
+  EXPECT_EQ(n_d1, n_d2);
+  
+  // Check that Bk and B3 give the same descriptors.
+  double d1, d2;
+  int nu_ind;
+  for (int i = 0; i < struc1.descriptors.size(); i++) {
+    for (int j = 0; j < struc1.descriptors[i].descriptors.size(); j++) {
+      for (int k = 0; k < struc1.descriptors[i].descriptors[j].rows(); k++) {
+        for (int l = 0; l < struc1.descriptors[i].descriptors[j].cols(); l++) {
+          d1 = struc1.descriptors[i].descriptors[j](k, l);
+          d2 = struc2.descriptors[i].descriptors[j](k, l);
+          EXPECT_NEAR(d1, d2, 1e-8);
+        }
+      }
+    }
+  }
+
+  for (int i = 0; i < struc1.descriptors.size(); i++) {
+    for (int j = 0; j < struc1.descriptors[i].descriptor_force_dervs.size(); j++) {
+      for (int k = 0; k < struc1.descriptors[i].descriptor_force_dervs[j].rows(); k++) {
+        for (int l = 0; l < struc1.descriptors[i].descriptor_force_dervs[j].cols(); l++) {
+          d1 = struc1.descriptors[i].descriptor_force_dervs[j](k, l);
+          d2 = struc2.descriptors[i].descriptor_force_dervs[j](k, l);
+          EXPECT_NEAR(d1, d2, 1e-8);
+        }
+      }
+    }
+  }
+
+}
+
+// Test Bk with K=1,2,3 for rotational invariance 
+class DescRotTest : public StructureTest,
+                    public testing::WithParamInterface<int> {
+public:
   // Choose arbitrary rotation angles.
   double xrot = 1.28;
   double yrot = -3.21;
   double zrot = 0.42;
 
+  Eigen::MatrixXd rotated_pos;
+  Eigen::MatrixXd rotated_cell;
+
   // Define rotation matrices.
   Eigen::MatrixXd Rx{3, 3}, Ry{3, 3}, Rz{3, 3}, R{3, 3};
-  Rx << 1, 0, 0, 0, cos(xrot), -sin(xrot), 0, sin(xrot), cos(xrot);
-  Ry << cos(yrot), 0, sin(yrot), 0, 1, 0, -sin(yrot), 0, cos(yrot);
-  Rz << cos(zrot), -sin(zrot), 0, sin(zrot), cos(zrot), 0, 0, 0, 1;
-  R = Rx * Ry * Rz;
+  DescRotTest() {
+    Rx << 1, 0, 0, 0, cos(xrot), -sin(xrot), 0, sin(xrot), cos(xrot);
+    Ry << cos(yrot), 0, sin(yrot), 0, 1, 0, -sin(yrot), 0, cos(yrot);
+    Rz << cos(zrot), -sin(zrot), 0, sin(zrot), cos(zrot), 0, 0, 0, 1;
+    R = Rx * Ry * Rz;
+    rotated_pos = positions * R.transpose();
+    rotated_cell = cell * R.transpose();
+  }
+};
 
-  Eigen::MatrixXd rotated_pos = positions * R.transpose();
-  Eigen::MatrixXd rotated_cell = cell * R.transpose();
-
-  // Define descriptors.
-  descriptor_settings[2] = 2;
-  B3 descriptor = B3(radial_string, cutoff_string, radial_hyps, cutoff_hyps,
-                     descriptor_settings);
+TEST_P(DescRotTest, RotationTest) {
+  int K = GetParam();
+  std::vector<int> descriptor_settings{n_species, K, N, L};
+  Bk desc(radial_string, cutoff_string, radial_hyps, cutoff_hyps,
+          descriptor_settings);
 
   std::vector<Descriptor *> descriptors;
-  descriptors.push_back(&descriptor);
+  descriptors.push_back(&desc);
 
   Structure struc1 = Structure(cell, species, positions, cutoff, descriptors);
   Structure struc2 =
-      Structure(rotated_cell, species, rotated_pos, cutoff, descriptors);
+      Structure(this->rotated_cell, species, this->rotated_pos, cutoff, descriptors);
 
   // Check that B1 is rotationally invariant.
-  double d1, d2, diff;
-  double tol = 1e-10;
+  double d1, d2;
 
+  std::cout << "n_descriptors=" << struc1.descriptors[0].n_descriptors << std::endl;
   for (int n = 0; n < struc1.descriptors[0].n_descriptors; n++) {
     d1 = struc1.descriptors[0].descriptors[0](0, n);
     d2 = struc2.descriptors[0].descriptors[0](0, n);
-    diff = d1 - d2;
-    EXPECT_LE(abs(diff), tol);
+    EXPECT_NEAR(d1, d2, 1e-10);
   }
 }
+
+INSTANTIATE_TEST_SUITE_P(DescBodies, DescRotTest, testing::Values(1, 2, 3));
 
   // TEST_F(DescriptorTest, SingleBond) {
   //   // Check that B1 descriptors match the corresponding elements of the

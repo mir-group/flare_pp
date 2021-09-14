@@ -21,6 +21,7 @@ public:
   Eigen::VectorXd wigner3j_coeffs;
 
   std::string descriptor_name = "B3";
+  int K = 3; // Body order
 
   B3();
 
@@ -42,19 +43,5 @@ void compute_B3(Eigen::MatrixXd &B3_vals, Eigen::MatrixXd &B3_force_dervs,
                 const Eigen::VectorXi &cumulative_neighbor_count,
                 const Eigen::VectorXi &descriptor_indices, int nos, int N,
                 int lmax, const Eigen::VectorXd &wigner3j_coeffs);
-
-void complex_single_bond(
-    Eigen::MatrixXcd &single_bond_vals, Eigen::MatrixXcd &force_dervs,
-    Eigen::MatrixXd &neighbor_coordinates, Eigen::VectorXi &neighbor_count,
-    Eigen::VectorXi &cumulative_neighbor_count,
-    Eigen::VectorXi &neighbor_indices,
-    std::function<void(std::vector<double> &, std::vector<double> &, double,
-                       int, std::vector<double>)>
-        radial_function,
-    std::function<void(std::vector<double> &, double, double,
-                       std::vector<double>)>
-        cutoff_function,
-    int nos, int N, int lmax, const std::vector<double> &radial_hyps,
-    const std::vector<double> &cutoff_hyps, const Structure &structure);
 
 #endif

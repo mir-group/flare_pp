@@ -20,6 +20,8 @@
 #include "lammps_descriptor.h"
 #include "radial.h"
 #include "y_grad.h"
+#include "indices.h"
+#include "coeffs.h"
 
 using namespace LAMMPS_NS;
 
@@ -42,12 +44,19 @@ PairFLARE::~PairFLARE() {
   if (copymode)
     return;
 
-  memory->destroy(beta);
-
   if (allocated) {
     memory->destroy(setflag);
     memory->destroy(cutsq);
   }
+
+  memory->destroy(radial_code);
+  memory->destroy(cutoff_code);
+  memory->destroy(K);
+  memory->destroy(n_max);
+  memory->destroy(l_max);
+  memory->destroy(beta_size);
+  memory->destroy(cutoffs);
+
 }
 
 /* ---------------------------------------------------------------------- */
@@ -73,10 +82,6 @@ void PairFLARE::compute(int eflag, int vflag) {
   numneigh = list->numneigh;
   firstneigh = list->firstneigh;
 
-  int beta_init, beta_counter;
-  double B2_norm_squared, B2_val_1, B2_val_2;
-  Eigen::VectorXd single_bond_vals, B2_vals, B2_env_dot, beta_p, partial_forces;
-  Eigen::MatrixXd single_bond_env_dervs, B2_env_dervs;
   double empty_thresh = 1e-8;
 
   for (ii = 0; ii < inum; ii++) {
@@ -88,76 +93,97 @@ void PairFLARE::compute(int eflag, int vflag) {
     ztmp = x[i][2];
     jlist = firstneigh[i];
 
-    // Count the atoms inside the cutoff.
-    n_inner = 0;
-    for (int jj = 0; jj < jnum; jj++) {
-      j = jlist[jj];
-      int s = type[j] - 1;
-      double cutoff_val = cutoff_matrix(itype-1, s);
+    for (int kern = 0; kern < num_kern; kern++) {
+      cutoff_matrix = cutoff_matrices[kern];
 
-      delx = x[j][0] - xtmp;
-      dely = x[j][1] - ytmp;
-      delz = x[j][2] - ztmp;
-      rsq = delx * delx + dely * dely + delz * delz;
-      if (rsq < (cutoff_val * cutoff_val))
-        n_inner++;
-    }
-
-    // Compute covariant descriptors.
-    single_bond_multiple_cutoffs(x, type, jnum, n_inner, i, xtmp, ytmp, ztmp,
-                                 jlist, basis_function, cutoff_function,
-                                 n_species, n_max, l_max, radial_hyps,
-                                 cutoff_hyps, single_bond_vals,
-                                 single_bond_env_dervs, cutoff_matrix);
-
-    // Compute invariant descriptors.
-    B2_descriptor(B2_vals, B2_env_dervs, B2_norm_squared, B2_env_dot,
-                  single_bond_vals, single_bond_env_dervs, n_species, n_max,
-                  l_max);
-
-    // Continue if the environment is empty.
-    if (B2_norm_squared < empty_thresh)
-      continue;
-
-    // Compute local energy and partial forces.
-    beta_p = beta_matrices[itype - 1] * B2_vals;
-    evdwl = B2_vals.dot(beta_p) / B2_norm_squared;
-    partial_forces =
-        2 * (-B2_env_dervs * beta_p + evdwl * B2_env_dot) / B2_norm_squared;
-
-    // Update energy, force and stress arrays.
-    n_count = 0;
-    for (int jj = 0; jj < jnum; jj++) {
-      j = jlist[jj];
-      int s = type[j] - 1;
-      double cutoff_val = cutoff_matrix(itype-1, s);
-      delx = xtmp - x[j][0];
-      dely = ytmp - x[j][1];
-      delz = ztmp - x[j][2];
-      rsq = delx * delx + dely * dely + delz * delz;
-
-      if (rsq < (cutoff_val * cutoff_val)) {
-        double fx = -partial_forces(n_count * 3);
-        double fy = -partial_forces(n_count * 3 + 1);
-        double fz = -partial_forces(n_count * 3 + 2);
-        f[i][0] += fx;
-        f[i][1] += fy;
-        f[i][2] += fz;
-        f[j][0] -= fx;
-        f[j][1] -= fy;
-        f[j][2] -= fz;
-
-        if (vflag) {
-          ev_tally_xyz(i, j, nlocal, newton_pair, 0.0, 0.0, fx, fy, fz, delx,
-                       dely, delz);
-        }
-        n_count++;
+      // Count the atoms inside the cutoff. 
+      // TODO: this might be duplicated when multiple kernels share the same cutoff
+      n_inner = 0;
+      for (int jj = 0; jj < jnum; jj++) {
+        j = jlist[jj];
+        int s = type[j] - 1;
+        double cutoff_val = cutoff_matrix(itype-1, s);
+        delx = x[j][0] - xtmp;
+        dely = x[j][1] - ytmp;
+        delz = x[j][2] - ztmp;
+        rsq = delx * delx + dely * dely + delz * delz;
+        if (rsq < (cutoff_val * cutoff_val))
+          n_inner++;
       }
+
+      double norm_squared;
+      Eigen::VectorXcd single_bond_vals, u;
+      Eigen::VectorXd vals, env_dot, partial_forces, beta_p;
+      Eigen::MatrixXcd single_bond_env_dervs;
+      Eigen::MatrixXd env_dervs;
+
+      // Compute covariant descriptors.
+      // TODO: this function call is duplicated for multiple kernels
+      complex_single_bond(x, type, jnum, n_inner, i, xtmp, ytmp, ztmp, jlist,
+                          basis_function[kern], cutoff_function[kern], 
+                          n_species, n_max[kern], l_max[kern], 
+                          radial_hyps[kern], cutoff_hyps[kern], 
+                          single_bond_vals, single_bond_env_dervs, cutoff_matrix);
+
+      // Compute invariant descriptors.
+      compute_Bk(vals, env_dervs, norm_squared, env_dot,
+                 single_bond_vals, single_bond_env_dervs, nu[kern],
+                 n_species, K[kern], n_max[kern], l_max[kern], coeffs[kern],
+                 beta_matrices[kern][itype - 1], u, &evdwl);
+
+      // Continue if the environment is empty.
+      if (norm_squared < empty_thresh)
+        continue;
+  
+      // Compute local energy and partial forces.
+      // TODO: not needed if using "u"
+      beta_p = beta_matrices[kern][itype - 1] * vals;
+      evdwl = vals.dot(beta_p) / norm_squared;
+ 
+      partial_forces =
+          2 * (- env_dervs * beta_p + evdwl * env_dot) / norm_squared;
+
+      // Update energy, force and stress arrays.
+      n_count = 0;
+      for (int jj = 0; jj < jnum; jj++) {
+        j = jlist[jj];
+        int s = type[j] - 1;
+        double cutoff_val = cutoff_matrix(itype-1, s);
+        delx = xtmp - x[j][0];
+        dely = ytmp - x[j][1];
+        delz = ztmp - x[j][2];
+        rsq = delx * delx + dely * dely + delz * delz;
+  
+        if (rsq < (cutoff_val * cutoff_val)) {
+          double fx = -partial_forces(n_count * 3);
+          double fy = -partial_forces(n_count * 3 + 1);
+          double fz = -partial_forces(n_count * 3 + 2);
+
+//          // Compute partial force f_ij = u * dA/dr_ij
+//          double fx = real(single_bond_env_dervs.row(n_count * 3 + 0).dot(u));
+//          double fy = real(single_bond_env_dervs.row(n_count * 3 + 1).dot(u));
+//          double fz = real(single_bond_env_dervs.row(n_count * 3 + 2).dot(u));
+
+          f[i][0] += fx;
+          f[i][1] += fy;
+          f[i][2] += fz;
+          f[j][0] -= fx;
+          f[j][1] -= fy;
+          f[j][2] -= fz;
+  
+          if (vflag) {
+            ev_tally_xyz(i, j, nlocal, newton_pair, 0.0, 0.0, fx, fy, fz, delx,
+                         dely, delz);
+          }
+          n_count++;
+        }
+      }
+
+      // Compute local energy.
+      if (eflag)
+        ev_tally_full(i, 2.0 * evdwl, 0.0, 0.0, 0.0, 0.0, 0.0);
     }
 
-    // Compute local energy.
-    if (eflag)
-      ev_tally_full(i, 2.0 * evdwl, 0.0, 0.0, 0.0, 0.0, 0.0);
   }
 
   if (vflag_fdotr)
@@ -243,110 +269,151 @@ double PairFLARE::init_one(int i, int j) {
 
 void PairFLARE::read_file(char *filename) {
   int me = comm->me;
-  char line[MAXLINE], radial_string[MAXLINE], cutoff_string[MAXLINE];
-  int radial_string_length, cutoff_string_length;
+  char line[MAXLINE];
   FILE *fptr;
 
   // Check that the potential file can be opened.
-  if (me == 0) {
-    fptr = utils::open_potential(filename,lmp,nullptr);
-    if (fptr == NULL) {
-      char str[128];
-      snprintf(str, 128, "Cannot open potential file %s", filename);
-      error->one(FLERR, str);
-    }
+  fptr = utils::open_potential(filename,lmp,nullptr);
+  if (fptr == NULL) {
+    char str[128];
+    snprintf(str, 128, "Cannot open potential file %s", filename);
+    error->one(FLERR, str);
   }
 
   int tmp, nwords;
-  if (me == 0) {
-    fgets(line, MAXLINE, fptr);
-    fgets(line, MAXLINE, fptr);
-    sscanf(line, "%s", radial_string); // Radial basis set
-    radial_string_length = strlen(radial_string);
-    fgets(line, MAXLINE, fptr);
-    sscanf(line, "%i %i %i %i", &n_species, &n_max, &l_max, &beta_size);
-    fgets(line, MAXLINE, fptr);
-    sscanf(line, "%s", cutoff_string); // Cutoff function
-    cutoff_string_length = strlen(cutoff_string);
-  }
+  fgets(line, MAXLINE, fptr);
+  fgets(line, MAXLINE, fptr);
+  sscanf(line, "%i", &num_kern); // number of descriptors/kernels
 
-  MPI_Bcast(&n_species, 1, MPI_INT, 0, world);
-  MPI_Bcast(&n_max, 1, MPI_INT, 0, world);
-  MPI_Bcast(&l_max, 1, MPI_INT, 0, world);
-  MPI_Bcast(&beta_size, 1, MPI_INT, 0, world);
-  MPI_Bcast(&cutoff, 1, MPI_DOUBLE, 0, world);
-  MPI_Bcast(&radial_string_length, 1, MPI_INT, 0, world);
-  MPI_Bcast(&cutoff_string_length, 1, MPI_INT, 0, world);
-  MPI_Bcast(radial_string, radial_string_length + 1, MPI_CHAR, 0, world);
-  MPI_Bcast(cutoff_string, cutoff_string_length + 1, MPI_CHAR, 0, world);
+  memory->create(radial_code, num_kern, "pair:radial_code");
+  memory->create(cutoff_code, num_kern, "pair:cutoff_code");
+  memory->create(K, num_kern, "pair:K");
+  memory->create(n_max, num_kern, "pair:n_max");
+  memory->create(l_max, num_kern, "pair:l_max");
+  memory->create(beta_size, num_kern, "pair:beta_size");
 
-  // Parse the cutoffs.
-  int n_cutoffs = n_species * n_species;
-  memory->create(cutoffs, n_cutoffs, "pair:cutoffs");
-  if (me == 0)
-    grab(fptr, n_cutoffs, cutoffs);
-  MPI_Bcast(cutoffs, n_cutoffs, MPI_DOUBLE, 0, world);
+  for (int k = 0; k < num_kern; k++) {
+    char desc_str[MAXLINE];
+    fgets(line, MAXLINE, fptr);
+    sscanf(line, "%s", desc_str); // Descriptor name
 
-  // Fill in the cutoff matrix.
-  cutoff = -1;
-  cutoff_matrix = Eigen::MatrixXd::Zero(n_species, n_species);
-  int cutoff_count = 0;
-  for (int i = 0; i < n_species; i++){
-    for (int j = 0; j < n_species; j++){
-      double cutoff_val = cutoffs[cutoff_count];
-      cutoff_matrix(i, j) = cutoff_val;
-      if (cutoff_val > cutoff) cutoff = cutoff_val;
-      cutoff_count ++;
+    char radial_str[MAXLINE], cutoff_str[MAXLINE];
+    fgets(line, MAXLINE, fptr);
+    sscanf(line, "%s", radial_str); // Radial basis set
+    if (!strcmp(radial_str, "chebyshev")) {
+      radial_code[k] = 1;
+    } else {
+      char str[128]; 
+      snprintf(str, 128, "Radial function %s is not supported\n.", radial_str);
+      error->all(FLERR, str);
     }
-  }
+    
+    fgets(line, MAXLINE, fptr);
+    sscanf(line, "%i %i %i %i %i", &n_species, &K[k], &n_max[k], &l_max[k], &beta_size[k]);
+    
+    fgets(line, MAXLINE, fptr);
+    sscanf(line, "%s", cutoff_str); // Cutoff function
+    if (!strcmp(cutoff_str, "cosine")) {
+      cutoff_code[k] = 1;
+    } else if (!strcmp(cutoff_str, "quadratic")) {
+      cutoff_code[k] = 2;
+    } else {
+      char str[128]; 
+      snprintf(str, 128, "Cutoff function %s is not supported\n.", cutoff_str);
+      error->all(FLERR, str);
+    }
 
-  // Set number of descriptors.
-  int n_radial = n_max * n_species;
-  n_descriptors = (n_radial * (n_radial + 1) / 2) * (l_max + 1);
-
-  // Check the relationship between the power spectrum and beta.
-  int beta_check = n_descriptors * (n_descriptors + 1) / 2;
-  if (beta_check != beta_size)
-    error->all(FLERR, "Beta size doesn't match the number of descriptors.");
-
-  // Set the radial basis.
-  if (!strcmp(radial_string, "chebyshev")) {
-    basis_function = chebyshev;
-    radial_hyps = std::vector<double>{0, cutoff};
-  }
-
-  // Set the cutoff function.
-  if (!strcmp(cutoff_string, "quadratic"))
-    cutoff_function = quadratic_cutoff;
-  else if (!strcmp(cutoff_string, "cosine"))
-    cutoff_function = cos_cutoff;
-
-  // Parse the beta vectors.
-  memory->create(beta, beta_size * n_species, "pair:beta");
-  if (me == 0)
-    grab(fptr, beta_size * n_species, beta);
-  MPI_Bcast(beta, beta_size * n_species, MPI_DOUBLE, 0, world);
-
-  // Fill in the beta matrix.
-  // TODO: Remove factor of 2 from beta.
-  Eigen::MatrixXd beta_matrix;
-  int beta_count = 0;
-  double beta_val;
-  for (int k = 0; k < n_species; k++) {
-    beta_matrix = Eigen::MatrixXd::Zero(n_descriptors, n_descriptors);
-    for (int i = 0; i < n_descriptors; i++) {
-      for (int j = i; j < n_descriptors; j++) {
-        if (i == j)
-          beta_matrix(i, j) = beta[beta_count];
-        else if (i != j) {
-          beta_val = beta[beta_count] / 2;
-          beta_matrix(i, j) = beta_val;
-          beta_matrix(j, i) = beta_val;
-        }
-        beta_count++;
+    // Parse the cutoffs.
+    int n_cutoffs = n_species * n_species;
+    memory->create(cutoffs, n_cutoffs, "pair:cutoffs");
+    if (me == 0)
+      grab(fptr, n_cutoffs, cutoffs);
+    MPI_Bcast(cutoffs, n_cutoffs, MPI_DOUBLE, 0, world);
+  
+    // Fill in the cutoff matrix.
+    cutoff = -1;
+    cutoff_matrix = Eigen::MatrixXd::Zero(n_species, n_species);
+    int cutoff_count = 0;
+    for (int i = 0; i < n_species; i++){
+      for (int j = 0; j < n_species; j++){
+        double cutoff_val = cutoffs[cutoff_count];
+        cutoff_matrix(i, j) = cutoff_val;
+        if (cutoff_val > cutoff) cutoff = cutoff_val;
+        cutoff_count ++;
       }
     }
-    beta_matrices.push_back(beta_matrix);
+    cutoff_matrices.push_back(cutoff_matrix);
+
+    // Compute indices and coefficients
+    std::vector<int> descriptor_settings = {n_species, K[k], n_max[k], l_max[k]};
+    std::vector<std::vector<int>> nu_kern = compute_indices(descriptor_settings);
+    Eigen::VectorXd coeffs_kern = compute_coeffs(K[k], l_max[k]);
+    nu.push_back(nu_kern);
+    coeffs.push_back(coeffs_kern);
+
+    // Set number of descriptors.
+    std::vector<int> last_index = nu_kern[nu_kern.size()-1];
+    int n_descriptors = last_index[last_index.size()-1] + 1; 
+
+    // Check the relationship between the power spectrum and beta.
+    int beta_check = n_descriptors * (n_descriptors + 1) / 2;
+    if (beta_check != beta_size[k]) {
+      char str[128]; 
+      snprintf(str, 128, "The beta size of kernel %d doesn't match the number of descriptors.", k);
+      error->all(FLERR, str);
+    }
+
+    // Set the radial basis.
+    if (radial_code[k] == 1){ 
+      basis_function.push_back(chebyshev);
+      std::vector<double> rh = {0, cutoffs[0]}; // It does not matter what 
+                                                // cutoff is used, will be 
+                                                // modified to cutoff_matrix 
+                                                // when computing descriptors 
+      radial_hyps.push_back(rh);
+      std::vector<double> ch;
+      cutoff_hyps.push_back(ch);
+    }
+  
+    // Set the cutoff function.
+    if (cutoff_code[k] == 1) 
+      cutoff_function.push_back(cos_cutoff);
+    else if (cutoff_code[k] == 2) 
+      cutoff_function.push_back(quadratic_cutoff);
+
+    // Parse the beta vectors.
+    // TODO: check this memory creation
+    memory->create(beta, beta_size[k] * n_species, "pair:beta");
+    grab(fptr, beta_size[k] * n_species, beta);
+    //MPI_Bcast(beta1, beta_size[k] * n_species, MPI_DOUBLE, 0, world);
+    
+    // Fill in the beta matrix.
+    // TODO: Remove factor of 2 from beta.
+    Eigen::MatrixXd beta_matrix;
+    std::vector<Eigen::MatrixXd> beta_matrix_kern;
+    int beta_count = 0;
+    double beta_val;
+    for (int s = 0; s < n_species; s++) {
+      beta_matrix = Eigen::MatrixXd::Zero(n_descriptors, n_descriptors);
+      for (int i = 0; i < n_descriptors; i++) {
+        for (int j = i; j < n_descriptors; j++) {
+          if (i == j)
+            beta_matrix(i, j) = beta[beta_count];
+          else if (i != j) {
+            beta_val = beta[beta_count] / 2;
+            beta_matrix(i, j) = beta_val;
+            beta_matrix(j, i) = beta_val;
+          }
+          beta_count++;
+        }
+      }
+      beta_matrix_kern.push_back(beta_matrix);
+    }
+    beta_matrices.push_back(beta_matrix_kern);
+
+    // TODO: check this memory destroy
+    memory->destroy(beta);
+
   }
 }
 
