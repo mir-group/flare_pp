@@ -117,6 +117,19 @@ void ParallelSGP ::add_training_structure(const Structure &structure) {
   noise_vector.segment(n_labels + n_energy + n_force, n_stress) =
       Eigen::VectorXd::Constant(n_stress, 1 / (stress_noise * stress_noise));
 
+  // Save "1" vector for energy, force and stress noise, for likelihood gradient calculation
+  e_noise_one.conservativeResize(n_labels + n_struc_labels);
+  f_noise_one.conservativeResize(n_labels + n_struc_labels);
+  s_noise_one.conservativeResize(n_labels + n_struc_labels);
+
+  e_noise_one.segment(n_labels, n_struc_labels) = Eigen::VectorXd::Zero(n_struc_labels);
+  f_noise_one.segment(n_labels, n_struc_labels) = Eigen::VectorXd::Zero(n_struc_labels);
+  s_noise_one.segment(n_labels, n_struc_labels) = Eigen::VectorXd::Zero(n_struc_labels);
+
+  e_noise_one.segment(n_labels, n_energy) = Eigen::VectorXd::Ones(n_energy);
+  f_noise_one.segment(n_labels + n_energy, n_force) = Eigen::VectorXd::Ones(n_force);
+  s_noise_one.segment(n_labels + n_energy + n_force, n_stress) = Eigen::VectorXd::Ones(n_stress);
+ 
   // Update label count.
   n_energy_labels += n_energy;
   n_force_labels += n_force;
@@ -516,10 +529,10 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
 
     t1_inner = std::chrono::high_resolution_clock::now();
 
-    kuu.push_back(kernels[i]->envs_envs(
+    Kuu_kernels[i] = kernels[i]->envs_envs(
               sparse_descriptors[i], 
               sparse_descriptors[i],
-              kernels[i]->kernel_hyperparameters));
+              kernels[i]->kernel_hyperparameters);
     cum_u += u_kern;
 
     t2_inner = std::chrono::high_resolution_clock::now();
@@ -534,11 +547,17 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
   cum_u = 0;
   int cum_f_struc = 0;
   local_noise_vector = Eigen::VectorXd::Zero(local_f_size);
+  local_e_noise_one = Eigen::VectorXd::Zero(local_f_size);
+  local_f_noise_one = Eigen::VectorXd::Zero(local_f_size);
+  local_s_noise_one = Eigen::VectorXd::Zero(local_f_size);
   local_labels = Eigen::VectorXd::Zero(local_f_size);
   for (int t = 0; t < training_structures.size(); t++) {
     int f_size_i = local_label_indices[t].size();
     for (int l = 0; l < f_size_i; l++) {
       local_noise_vector(cum_f + l) = noise_vector(cum_f_struc + local_label_indices[t][l]);
+      local_e_noise_one(cum_f + l) = e_noise_one(cum_f_struc + local_label_indices[t][l]);
+      local_f_noise_one(cum_f + l) = f_noise_one(cum_f_struc + local_label_indices[t][l]);
+      local_s_noise_one(cum_f + l) = s_noise_one(cum_f_struc + local_label_indices[t][l]);
       local_labels(cum_f + l) = y(cum_f_struc + local_label_indices[t][l]);
     }
     cum_f += f_size_i;
@@ -577,14 +596,14 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
   cum_u = 0;
   // Assign sparse set kernel matrix Kuu
   for (int i = 0; i < n_kernels; i++) { 
-    for (int r = 0; r < kuu[i].rows(); r++) {
-      for (int c = 0; c < kuu[i].cols(); c++) {
+    for (int r = 0; r < Kuu_kernels[i].rows(); r++) {
+      for (int c = 0; c < Kuu_kernels[i].cols(); c++) {
         if (Kuu_dist.islocal(r + cum_u, c + cum_u)) { // only set the local part
-          Kuu_dist.set(r + cum_u, c + cum_u, kuu[i](r, c), lock);
+          Kuu_dist.set(r + cum_u, c + cum_u, Kuu_kernels[i](r, c), lock);
         }
       }
     }
-    cum_u += kuu[i].rows();
+    cum_u += Kuu_kernels[i].rows();
   }
   Kuu_dist.fence();
 
@@ -754,10 +773,10 @@ double ParallelSGP ::compute_likelihood_gradient_stable() {
   // initialize BLACS
   blacs::initialize();
 
-
   std::cout << "build Kuf_dist" << std::endl;
-  DistMatrix<double> Kuf_dist(u_size, f_size);
-  Kuf_dist.collect(&Kuf_local(0, 0), 0, 0, f_size, u_size, f_size_per_proc, u_size, nmax_struc - nmin_struc); 
+  DistMatrix<double> Kfu_dist(f_size, u_size);
+  Eigen::MatrixXd Kfu_local = Kuf_local.transpose();
+  Kfu_dist.collect(&Kfu_local(0, 0), 0, 0, f_size, u_size, f_size_per_proc, u_size, nmax_struc - nmin_struc); 
 
   std::cout << "build alpha_dist" << std::endl;
   DistMatrix<double> alpha_dist(u_size, 1);
@@ -765,14 +784,16 @@ double ParallelSGP ::compute_likelihood_gradient_stable() {
 
   std::cout << "build K_alpha_dist" << std::endl;
   DistMatrix<double> K_alpha_dist(f_size, 1);
-  K_alpha_dist = Kuf_dist.matmul(alpha_dist, 1.0, 'T', 'N');
-  Eigen::VectorXd K_alpha;
+  std::cout << "matmul" << std::endl;
+  K_alpha_dist = Kfu_dist.matmul(alpha_dist, 1.0, 'N', 'N');
+  Eigen::VectorXd K_alpha = Eigen::VectorXd::Zero(f_size);
+  std::cout << "gather" << std::endl;
   K_alpha_dist.gather(&K_alpha(0));
 
   std::cout << "build y_dist" << std::endl;
   DistMatrix<double> y_dist(f_size, 1);
   y_dist.collect(&local_labels(0), 0, 0, f_size, 1, f_size_per_proc, 1, nmax_struc - nmin_struc);
-  Eigen::VectorXd y_global;
+  Eigen::VectorXd y_global = Eigen::VectorXd::Zero(f_size);
   y_dist.gather(&y_global(0));
 
   if (blacs::mpirank == 0) {
@@ -801,10 +822,94 @@ double ParallelSGP ::compute_likelihood_gradient_stable() {
     std::cout << "noise_det Kuu_inv_det sigma_inv_det " << noise_det << " " << Kuu_inv_det << " " << sigma_inv_det << std::endl;
     log_marginal_likelihood = complexity_penalty + data_fit + constant_term;
 
+    // Compute Kuu and Kuf matrices and gradients.
+    int n_hyps_total = hyperparameters.size();
+    std::vector<Eigen::MatrixXd> Kuu_grad, Kuf_grad, Kuu_grads, Kuf_grads;
+    int n_hyps, hyp_index = 0, grad_index = 0;
+    Eigen::VectorXd hyps_curr;
+  
+    int count = 0;
+    Eigen::VectorXd complexity_grad = Eigen::VectorXd::Zero(n_hyps_total);
+    Eigen::VectorXd datafit_grad = Eigen::VectorXd::Zero(n_hyps_total);
+    likelihood_gradient = Eigen::VectorXd::Zero(n_hyps_total);
+    for (int i = 0; i < n_kernels; i++) {
+      n_hyps = kernels[i]->kernel_hyperparameters.size();
+      hyps_curr = hyperparameters.segment(hyp_index, n_hyps);
+      int size = Kuu_kernels[i].rows();
+      Kuu_grad = kernels[i]->Kuu_grad(sparse_descriptors[i], Kuu_kernels[i], hyps_curr);
+      
+      // TODO: compute Kuf_grad or precompute KnK
+      // ...
+      
+      Eigen::MatrixXd Kuu_i = Kuu_grad[0];
+
+    } 
+
+    std::cout << "compute_KnK" << std::endl;
+    compute_KnK(Kfu_dist);
   }
+  std::cout << "barrier" << std::endl;
+  blacs::barrier(); 
 
   // finalize BLACS
+  std::cout << "finalize" << std::endl;
   blacs::finalize();
-
+  std::cout << "finalized" << std::endl;
 
 }
+
+Eigen::MatrixXd ParallelSGP ::compute_KnK_efs(DistMatrix<double> Kfu_dist, 
+        Eigen::VectorXd noise_one_local) {
+  // Compute and return Kuf * e/f/s_noise_one * Kuf.transpose()
+  
+  // Compute Kuf * e/f/s_noise_one_local and collect to distributed matrix
+  Eigen::MatrixXd Kn_local = Kuf_local * noise_one_local.asDiagonal();
+  DistMatrix<double> Kn_dist(u_size, f_size);
+  Kn_dist.collect(&Kn_local(0, 0), 0, 0, u_size, f_size, u_size, f_size_per_proc, nmax_struc - nmin_struc);
+
+  // Compute Kn * Kuf.tranpose() 
+  DistMatrix<double> KnK_dist(u_size, u_size);
+  KnK_dist = Kn_dist.matmul(Kfu_dist, 1.0, 'N', 'N');
+
+  // Gather to get the serial matrix
+  Eigen::MatrixXd KnK_serial = Eigen::MatrixXd::Zero(u_size, u_size);
+  KnK_dist.gather(&KnK_serial(0,0));
+  KnK_dist.fence();
+  return KnK_serial;
+}
+
+void ParallelSGP ::compute_KnK(DistMatrix<double> Kfu_dist) {
+  KnK_e = compute_KnK_efs(Kfu_dist, local_e_noise_one);
+  Kfu_dist.fence();
+  KnK_f = compute_KnK_efs(Kfu_dist, local_f_noise_one);
+  Kfu_dist.fence();
+  KnK_s = compute_KnK_efs(Kfu_dist, local_s_noise_one);
+  Kfu_dist.fence();
+}
+
+//Eigen::MatrixXd ParallelSGP ::compute_dKnK_efs(DistMatrix<double> Kfu_dist, 
+//        Eigen::VectorXd noise_one_local) {
+//  // Compute and return Kuf * e/f/s_noise_one * Kuf.transpose()
+//  
+//  // Compute Kuf * e/f/s_noise_one_local and collect to distributed matrix
+//  Eigen::MatrixXd Kn_local = Kuf_local * noise_one_local.asDiagonal();
+//  DistMatrix<double> Kn_dist(u_size, f_size);
+//  Kn_dist.collect(&Kn_local(0, 0), 0, 0, u_size, f_size, u_size, f_size_per_proc, nmax_struc - nmin_struc);
+//
+//  // Compute Kn * Kuf.tranpose() 
+//  DistMatrix<double> KnK_dist(u_size, u_size);
+//  KnK_dist = Kn_dist.matmul(Kfu_dist, 1.0, 'T', 'T');
+//
+//  // Gather to get the serial matrix
+//  Eigen::MatrixXd KnK_serial = Eigen::MatrixXd::Zero(u_size, u_size);
+//  KnK_dist.gather(&KnK_serial(0, 0));
+//  return KnK_serial;
+//}
+//
+//void ParallelSGP ::compute_KnK(DistMatrix<double> Kfu_dist) {
+//  KnK_e = compute_KnK_efs(Kfu_dist, local_e_noise_one);
+//  KnK_f = compute_KnK_efs(Kfu_dist, local_f_noise_one);
+//  KnK_s = compute_KnK_efs(Kfu_dist, local_s_noise_one);
+//}
+//
+//

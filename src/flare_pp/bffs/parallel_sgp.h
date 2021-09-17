@@ -8,6 +8,7 @@
 #include <vector>
 #include <nlohmann/json.hpp>
 #include "json.h"
+#include <distmatrix.h>
 
 class ParallelSGP : public SparseGP {
 public:
@@ -50,7 +51,7 @@ public:
   void initialize_global_sparse_descriptors(const Structure &structure);
 
   void add_global_noise(int n_energy, int n_force, int n_stress); 
-  Eigen::VectorXd global_noise_vector, local_noise_vector;
+  Eigen::VectorXd global_noise_vector, local_noise_vector, local_e_noise_one, local_f_noise_one, local_s_noise_one;
   Eigen::MatrixXd local_labels;
   void add_training_structure(const Structure &structure);
   
@@ -103,6 +104,8 @@ public:
 
   Eigen::MatrixXd varmap_coeffs; // for debugging. TODO: remove this line 
   double compute_likelihood_gradient_stable();
+  Eigen::MatrixXd compute_KnK_efs(DistMatrix<double> Kuf_dist, Eigen::VectorXd noise_one_local);
+  void compute_KnK(DistMatrix<double> Kuf_dist);
 };
 
 #endif
