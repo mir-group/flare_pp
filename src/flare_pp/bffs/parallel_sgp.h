@@ -106,6 +106,7 @@ public:
   double compute_likelihood_gradient_stable();
   Eigen::MatrixXd compute_KnK_efs(DistMatrix<double> Kuf_dist, Eigen::VectorXd noise_one_local);
   void compute_KnK(DistMatrix<double> Kuf_dist);
+  Eigen::MatrixXd compute_dKnK(DistMatrix<double> Kfu_dist, int i, Eigen::VectorXd hyp_curr);
 };
 
 #endif
