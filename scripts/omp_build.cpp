@@ -128,7 +128,7 @@ int main(int argc, char* argv[]) {
   sparse_gp.update_matrices_QR();
   std::cout << "Sparse GP is built!" << std::endl;
 
-  sparse_gp.write_mapping_coefficients(coefname, contributor, 0);
+  sparse_gp.write_mapping_coefficients(coefname, contributor, {0});
   std::cout << "Mapping coefficients are written" << std::endl;
 
   std::cout << "start L_inv" << std::endl;

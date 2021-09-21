@@ -133,7 +133,7 @@ int main(int argc, char* argv[]) {
   std::cout << "Parallel_sgp is built!" << std::endl;
 
   if (blacs::mpirank == 0) {
-    parallel_sgp.write_mapping_coefficients(coefname, contributor, 0);
+    parallel_sgp.write_mapping_coefficients(coefname, contributor, {0});
     std::cout << "Mapping coefficients are written" << std::endl;
 
     // validate the Kuu is symmetric
