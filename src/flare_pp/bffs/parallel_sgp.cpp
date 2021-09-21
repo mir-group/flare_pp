@@ -387,6 +387,7 @@ void ParallelSGP::gather_sparse_descriptors(std::vector<std::vector<int>> n_clus
     std::cout << "begin distmat" << std::endl;
     for (int s = 0; s < n_types; s++) {
       std::cout << "type " << s << " of " << n_types << std::endl;
+      std::cout << "n_clusters_by_type=" << n_clusters_by_type[i][s] << std::endl;
       DistMatrix<double> dist_descriptors(n_clusters_by_type[i][s], n_descriptors);
       DistMatrix<double> dist_descriptor_norms(n_clusters_by_type[i][s], 1);
       DistMatrix<double> dist_cutoff_values(n_clusters_by_type[i][s], 1);
@@ -797,15 +798,16 @@ double ParallelSGP ::compute_likelihood_gradient_stable() {
   Eigen::VectorXd y_global = Eigen::VectorXd::Zero(f_size);
   y_dist.gather(&y_global(0));
 
+  // Compute log marginal likelihood
+  Eigen::VectorXd y_K_alpha;
+  log_marginal_likelihood = 0;
   if (blacs::mpirank == 0) {
-    std::cout << "build y_K_alpha" << std::endl;
-    Eigen::VectorXd y_K_alpha = y_global - K_alpha;
+    y_K_alpha = y_global - K_alpha;
     data_fit =
         -(1. / 2.) * y_global.transpose() * global_noise_vector.cwiseProduct(y_K_alpha);
     constant_term = -(1. / 2.) * global_n_labels * log(2 * M_PI);
 
     // Compute complexity penalty.
-    std::cout << "computing noise_det" << std::endl;
     double noise_det = - 2 * (global_n_energy_labels * log(abs(energy_noise))
             + global_n_force_labels * log(abs(force_noise))
             + global_n_stress_labels * log(abs(stress_noise)));
@@ -822,49 +824,97 @@ double ParallelSGP ::compute_likelihood_gradient_stable() {
     std::cout << "like_grad comp data " << complexity_penalty << " " << data_fit << std::endl;
     std::cout << "noise_det Kuu_inv_det sigma_inv_det " << noise_det << " " << Kuu_inv_det << " " << sigma_inv_det << std::endl;
     log_marginal_likelihood = complexity_penalty + data_fit + constant_term;
-
-    // Compute Kuu and Kuf matrices and gradients.
-    int n_hyps_total = hyperparameters.size();
-    std::vector<Eigen::MatrixXd> Kuu_grad, Kuf_grad, Kuu_grads, Kuf_grads;
-    int n_hyps, hyp_index = 0, grad_index = 0;
-    Eigen::VectorXd hyps_curr;
-  
-    int count = 0;
-    Eigen::VectorXd complexity_grad = Eigen::VectorXd::Zero(n_hyps_total);
-    Eigen::VectorXd datafit_grad = Eigen::VectorXd::Zero(n_hyps_total);
-    likelihood_gradient = Eigen::VectorXd::Zero(n_hyps_total);
-    for (int i = 0; i < n_kernels; i++) {
-      n_hyps = kernels[i]->kernel_hyperparameters.size();
-      hyps_curr = hyperparameters.segment(hyp_index, n_hyps);
-      int size = Kuu_kernels[i].rows();
-      Kuu_grad = kernels[i]->Kuu_grad(sparse_descriptors[i], Kuu_kernels[i], hyps_curr);
-      Eigen::MatrixXd Kuu_i = Kuu_grad[0];
-
-      for (int j = 0; j < n_hyps; j++) {
-        Eigen::MatrixXd dKuu = Eigen::MatrixXd::Zero(u_size, u_size);
-        dKuu.block(count, count, size, size) = Kuu_grad[j + 1];
-        Eigen::MatrixXd dK_noise_K = compute_dKnK(Kfu_dist, i, hyps_curr);
-        Eigen::MatrixXd Pi_mat = dK_noise_K + dK_noise_K.transpose() + dKuu;
-
-        // Derivative of complexity over sigma
-        // TODO: the 2nd term is not very stable numerically, because dK_noise_K is very large, and Kuu_grads is small
-        complexity_grad(hyp_index + j) += 1./2. * (Kuu_i.inverse() * Kuu_grad[j + 1]).trace() - 1./2. * (Pi_mat * Sigma).trace(); 
-      }
-      count += size;
-      hyp_index += n_hyps;
-    } 
-
-    std::cout << "compute_KnK" << std::endl;
-    compute_KnK(Kfu_dist);
   }
+
+  // Compute Kuu and Kuf matrices and gradients.
+  int n_hyps_total = hyperparameters.size();
+  std::vector<Eigen::MatrixXd> Kuu_grad, Kuf_grad, Kuu_grads, Kuf_grads;
+  int n_hyps, hyp_index = 0, grad_index = 0;
+  Eigen::VectorXd hyps_curr;
+
+  int count = 0;
+  Eigen::VectorXd complexity_grad = Eigen::VectorXd::Zero(n_hyps_total);
+  Eigen::VectorXd datafit_grad = Eigen::VectorXd::Zero(n_hyps_total);
+  likelihood_gradient = Eigen::VectorXd::Zero(n_hyps_total);
+  for (int i = 0; i < n_kernels; i++) {
+    n_hyps = kernels[i]->kernel_hyperparameters.size();
+    hyps_curr = hyperparameters.segment(hyp_index, n_hyps);
+    int size = Kuu_kernels[i].rows();
+    Kuu_grad = kernels[i]->Kuu_grad(sparse_descriptors[i], Kuu_kernels[i], hyps_curr);
+    Kuf_grad = kernels[i]->Kuf_grad(sparse_descriptors[i], 
+              training_structures, i, Kuf_kernels[i], hyps_curr);
+
+    Eigen::MatrixXd Kuu_i = Kuu_grad[0];
+
+    for (int j = 0; j < n_hyps; j++) {
+      Eigen::MatrixXd dKuu = Eigen::MatrixXd::Zero(u_size, u_size);
+      dKuu.block(count, count, size, size) = Kuu_grad[j + 1];
+      Eigen::MatrixXd dK_noise_K = compute_dKnK(Kfu_dist, i, hyps_curr);
+      Eigen::MatrixXd Pi_mat = dK_noise_K + dK_noise_K.transpose() + dKuu;
+
+      // Derivative of complexity over sigma
+      // TODO: the 2nd term is not very stable numerically, because dK_noise_K is very large, and Kuu_grads is small
+      complexity_grad(hyp_index + j) += 1./2. * (Kuu_i.inverse() * Kuu_grad[j + 1]).trace() - 1./2. * (Pi_mat * R_inv * R_inv).trace(); 
+
+      // Derivative of data_fit over sigma
+      Eigen::MatrixXd dKuf_local = Kuf_grad[j + 1];
+      DistMatrix<double> dKuf_dist(u_size, f_size);
+      dKuf_dist.collect(&dKuf_local(0, 0), 0, 0, u_size, f_size, u_size, f_size_per_proc, nmax_struc - nmin_struc);
+      DistMatrix<double> dK_alpha_dist(f_size, 1);
+      dK_alpha_dist = dKuf_dist.matmul(alpha_dist, 1.0, 'T', 'N');
+      Eigen::VectorXd dK_alpha = Eigen::VectorXd::Zero(f_size);
+      dK_alpha_dist.gather(&dK_alpha(0));
+
+      if (blacs::mpirank == 0) {
+        datafit_grad(hyp_index + j) +=
+            dK_alpha.transpose() * global_noise_vector.cwiseProduct(y_K_alpha);
+        datafit_grad(hyp_index + j) += 
+            - 1./2. * alpha.transpose() * dKuu * alpha;
+
+        likelihood_gradient(hyp_index + j) += complexity_grad(hyp_index + j) + datafit_grad(hyp_index + j); 
+      }
+    }
+    count += size;
+    hyp_index += n_hyps;
+  } 
+
+  // Derivative of complexity over noise
+  double en3 = energy_noise * energy_noise * energy_noise;
+  double fn3 = force_noise * force_noise * force_noise;
+  double sn3 = stress_noise * stress_noise * stress_noise;
+ 
+  std::cout << "compute_KnK" << std::endl;
+  compute_KnK(Kfu_dist);
   std::cout << "barrier" << std::endl;
   blacs::barrier(); 
+
+  if (blacs::mpirank == 0) {
+    complexity_grad(hyp_index + 0) = - e_noise_one.sum() / energy_noise 
+        + (KnK_e * Sigma).trace() / en3;
+    complexity_grad(hyp_index + 1) = - f_noise_one.sum() / force_noise 
+        + (KnK_f * Sigma).trace() / fn3;
+    complexity_grad(hyp_index + 2) = - s_noise_one.sum() / stress_noise 
+        + (KnK_s * Sigma).trace() / sn3;
+ 
+    // Derivative of data_fit over noise  
+    datafit_grad(hyp_index + 0) = y_K_alpha.transpose() * e_noise_one.cwiseProduct(y_K_alpha);
+    datafit_grad(hyp_index + 0) /= en3;
+    datafit_grad(hyp_index + 1) = y_K_alpha.transpose() * f_noise_one.cwiseProduct(y_K_alpha);
+    datafit_grad(hyp_index + 1) /= fn3;
+    datafit_grad(hyp_index + 2) = y_K_alpha.transpose() * s_noise_one.cwiseProduct(y_K_alpha);
+    datafit_grad(hyp_index + 2) /= sn3;
+
+    likelihood_gradient(hyp_index + 0) += complexity_grad(hyp_index + 0) + datafit_grad(hyp_index + 0);
+    likelihood_gradient(hyp_index + 1) += complexity_grad(hyp_index + 1) + datafit_grad(hyp_index + 1);
+    likelihood_gradient(hyp_index + 2) += complexity_grad(hyp_index + 2) + datafit_grad(hyp_index + 2);
+  }
 
   // finalize BLACS
   std::cout << "finalize" << std::endl;
   blacs::finalize();
   std::cout << "finalized" << std::endl;
-
+  
+  return log_marginal_likelihood;
 }
 
 Eigen::MatrixXd ParallelSGP ::compute_KnK_efs(DistMatrix<double> Kfu_dist, 
