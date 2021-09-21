@@ -302,7 +302,44 @@ TEST_F(StructureTest, ParLikeGrad){
   std::vector<Structure> training_strucs = {struc_1, struc_2};
   parallel_sgp.build(training_strucs, cutoff, dc, sparse_indices, n_types);
 
-  parallel_sgp.compute_likelihood_gradient_stable();
+  double likelihood_parallel = parallel_sgp.compute_likelihood_gradient_stable();
+  Eigen::VectorXd like_grad_parallel = parallel_sgp.likelihood_gradient;
   std::cout << "computed likelihood" << std::endl;
   blacs::finalize();
+
+  if (blacs::mpirank == 0) {
+    std::cout << "Start mapping" << std::endl;
+    std::cout << "kernel size " << parallel_sgp.kernels.size() << std::endl;
+    parallel_sgp.write_mapping_coefficients("par_beta.txt", "Me", {0}, "potential");
+    std::cout << "Start mapping variance" << std::endl;
+    parallel_sgp.write_mapping_coefficients("par_beta_var.txt", "Me", {0}, "uncertainty");
+  
+    // Build sparse_gp (non parallel)
+    Structure train_struc_1 = Structure(cell_1, species_1, positions_1, cutoff, dc);
+    train_struc_1.energy = labels_1.segment(0, 1);
+    train_struc_1.forces = labels_1.segment(1, n_atoms_1 * 3);
+    train_struc_1.stresses = labels_1.segment(1 + n_atoms_1 * 3, 6);
+  
+    Structure train_struc_2 = Structure(cell_2, species_2, positions_2, cutoff, dc);
+    train_struc_2.energy = labels_2.segment(0, 1);
+    train_struc_2.forces = labels_2.segment(1, n_atoms_2 * 3);
+    train_struc_2.stresses = labels_2.segment(1 + n_atoms_2 * 3, 6);
+ 
+    sparse_gp.add_training_structure(train_struc_1);
+    sparse_gp.add_specific_environments(train_struc_1, sparse_indices[0][0]);
+    sparse_gp.add_training_structure(train_struc_2);
+    sparse_gp.add_specific_environments(train_struc_2, sparse_indices[0][1]);
+    sparse_gp.update_matrices_QR();
+    std::cout << "Done QR for sparse_gp" << std::endl;
+  
+    double likelihood_serial = sparse_gp.compute_likelihood_gradient_stable(false);
+    std::cout << "likelihood: " << likelihood_serial << " " << likelihood_parallel << std::endl;
+    EXPECT_NEAR(likelihood_serial, likelihood_parallel, 1e-6);
+
+    Eigen::VectorXd like_grad_serial = sparse_gp.likelihood_gradient;
+    EXPECT_EQ(like_grad_serial.size(), like_grad_parallel.size());
+    for (int i = 0; i < like_grad_serial.size(); i++) {
+      EXPECT_NEAR(like_grad_serial(i), like_grad_parallel(i), 1e-6);
+    }
+  }
 }

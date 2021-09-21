@@ -395,7 +395,6 @@ void ParallelSGP::gather_sparse_descriptors(std::vector<std::vector<int>> n_clus
       dist_descriptors = [](int i, int j){return 0.0;};
       dist_descriptor_norms = [](int i, int j){return 0.0;};
       dist_cutoff_values = [](int i, int j){return 0.0;};
-      std::cout << "assigned 0" << std::endl;
       blacs::barrier();
       std::cout << "barrier" << std::endl;
 
@@ -514,7 +513,6 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
       Eigen::MatrixXd kern_local = Eigen::MatrixXd::Zero(u_kern, f_size_i);
       for (int l = 0; l < f_size_i; l++) {
         kern_local.block(0, l, u_kern, 1) = kern_t.block(0, local_label_indices[t][l], u_kern, 1);
-        std::cout << "Rank: " << blacs::mpirank << ", assigning kern_local" << std::endl;
       }
       kuf_i.block(0, cum_f, u_kern, f_size_i) = kern_local; 
       cum_f += f_size_i;
@@ -855,22 +853,26 @@ double ParallelSGP ::compute_likelihood_gradient_stable() {
       // Derivative of complexity over sigma
       // TODO: the 2nd term is not very stable numerically, because dK_noise_K is very large, and Kuu_grads is small
       complexity_grad(hyp_index + j) += 1./2. * (Kuu_i.inverse() * Kuu_grad[j + 1]).trace() - 1./2. * (Pi_mat * R_inv * R_inv).trace(); 
+      std::cout << "par comp grad 1:" << complexity_grad(hyp_index + j) << std::endl;
 
       // Derivative of data_fit over sigma
-      Eigen::MatrixXd dKuf_local = Kuf_grad[j + 1];
-      DistMatrix<double> dKuf_dist(u_size, f_size);
-      dKuf_dist.collect(&dKuf_local(0, 0), 0, 0, u_size, f_size, u_size, f_size_per_proc, nmax_struc - nmin_struc);
+      Eigen::MatrixXd dKfu_local = Kuf_grad[j + 1].transpose();
+      DistMatrix<double> dKfu_dist(f_size, u_size);
+      dKfu_dist.collect(&dKfu_local(0, 0), 0, 0, f_size, u_size, f_size_per_proc, u_size, nmax_struc - nmin_struc); 
       DistMatrix<double> dK_alpha_dist(f_size, 1);
-      dK_alpha_dist = dKuf_dist.matmul(alpha_dist, 1.0, 'T', 'N');
+      dK_alpha_dist = dKfu_dist.matmul(alpha_dist, 1.0, 'N', 'N');
       Eigen::VectorXd dK_alpha = Eigen::VectorXd::Zero(f_size);
       dK_alpha_dist.gather(&dK_alpha(0));
 
       if (blacs::mpirank == 0) {
+        std::cout << "par dK_alpha=" << dK_alpha << std::endl;
+//        std::cout << "par dK_local_alpha=" << dKuf_local.transpose() * alpha << std::endl;
         datafit_grad(hyp_index + j) +=
             dK_alpha.transpose() * global_noise_vector.cwiseProduct(y_K_alpha);
+        std::cout << "par data grad 1:" << dK_alpha.transpose() * global_noise_vector.cwiseProduct(y_K_alpha) << std::endl;
         datafit_grad(hyp_index + j) += 
             - 1./2. * alpha.transpose() * dKuu * alpha;
-
+        std::cout << "par data grad 2:" << - 1./2. * alpha.transpose() * dKuu * alpha << std::endl;
         likelihood_gradient(hyp_index + j) += complexity_grad(hyp_index + j) + datafit_grad(hyp_index + j); 
       }
     }
@@ -895,6 +897,7 @@ double ParallelSGP ::compute_likelihood_gradient_stable() {
         + (KnK_f * Sigma).trace() / fn3;
     complexity_grad(hyp_index + 2) = - s_noise_one.sum() / stress_noise 
         + (KnK_s * Sigma).trace() / sn3;
+    std::cout << "par comp grad efs:" << complexity_grad.segment(hyp_index, 3) << std::endl;
  
     // Derivative of data_fit over noise  
     datafit_grad(hyp_index + 0) = y_K_alpha.transpose() * e_noise_one.cwiseProduct(y_K_alpha);
@@ -903,6 +906,7 @@ double ParallelSGP ::compute_likelihood_gradient_stable() {
     datafit_grad(hyp_index + 1) /= fn3;
     datafit_grad(hyp_index + 2) = y_K_alpha.transpose() * s_noise_one.cwiseProduct(y_K_alpha);
     datafit_grad(hyp_index + 2) /= sn3;
+    std::cout << "par data grad efs:" << datafit_grad.segment(hyp_index, 3) << std::endl;
 
     likelihood_gradient(hyp_index + 0) += complexity_grad(hyp_index + 0) + datafit_grad(hyp_index + 0);
     likelihood_gradient(hyp_index + 1) += complexity_grad(hyp_index + 1) + datafit_grad(hyp_index + 1);
