@@ -911,7 +911,7 @@ double ParallelSGP ::compute_likelihood_gradient_stable() {
 
   // finalize BLACS
   std::cout << "finalize" << std::endl;
-  blacs::finalize();
+  //blacs::finalize();
   std::cout << "finalized" << std::endl;
   
   return log_marginal_likelihood;

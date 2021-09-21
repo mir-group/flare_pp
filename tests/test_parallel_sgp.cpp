@@ -304,5 +304,5 @@ TEST_F(StructureTest, ParLikeGrad){
 
   parallel_sgp.compute_likelihood_gradient_stable();
   std::cout << "computed likelihood" << std::endl;
-//  blacs::finalize();
+  blacs::finalize();
 }
