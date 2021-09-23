@@ -281,6 +281,10 @@ void ParallelSGP::build(const std::vector<Structure> &training_strucs,
 
 }
 
+/* -------------------------------------------------------------------------
+ *                Load training data and compute descriptors 
+ * ------------------------------------------------------------------------- */
+
 void ParallelSGP::load_local_training_data(const std::vector<Structure> &training_strucs,
         double cutoff, std::vector<Descriptor *> descriptor_calculators,
         const std::vector<std::vector<std::vector<int>>> &training_sparse_indices,
@@ -360,6 +364,10 @@ void ParallelSGP::load_local_training_data(const std::vector<Structure> &trainin
   
   gather_sparse_descriptors(n_clusters_by_type, training_strucs); 
 }
+
+/* -------------------------------------------------------------------------
+ *                   Gather distributed sparse descriptors
+ * ------------------------------------------------------------------------- */
 
 void ParallelSGP::gather_sparse_descriptors(std::vector<std::vector<int>> n_clusters_by_type,
         const std::vector<Structure> &training_strucs) {
@@ -466,6 +474,10 @@ void ParallelSGP::gather_sparse_descriptors(std::vector<std::vector<int>> n_clus
   }
 
 }
+
+/* -------------------------------------------------------------------------
+ *                   Compute kernel matrices and alpha 
+ * ------------------------------------------------------------------------- */
 
 void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs) {
   double duration = 0;
@@ -681,6 +693,10 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
   timer.toc("get alpha", blacs::mpirank);
 }
 
+/* -------------------------------------------------------------------------
+ *                    Predict mean and uncertainties 
+ * ------------------------------------------------------------------------- */
+
 void ParallelSGP ::predict_local_uncertainties(Structure &test_structure) {
   int n_atoms = test_structure.noa;
   int n_out = 1 + 3 * n_atoms + 6;
@@ -703,7 +719,11 @@ void ParallelSGP ::predict_local_uncertainties(Structure &test_structure) {
 
 }
 
-double ParallelSGP ::compute_likelihood_gradient_stable() {
+/* -------------------------------------------------------------------------
+ *                          Compute likelihood
+ * ------------------------------------------------------------------------- */
+
+void ParallelSGP ::compute_likelihood_stable() {
   // initialize BLACS
   blacs::initialize();
 
@@ -728,7 +748,7 @@ double ParallelSGP ::compute_likelihood_gradient_stable() {
   Eigen::VectorXd y_global = Eigen::VectorXd::Zero(f_size);
   y_dist.gather(&y_global(0));
 
-  Eigen::VectorXd y_K_alpha = Eigen::VectorXd::Zero(f_size);
+  y_K_alpha = Eigen::VectorXd::Zero(f_size);
 
   // Compute log marginal likelihood
   log_marginal_likelihood = 0;
@@ -754,6 +774,46 @@ double ParallelSGP ::compute_likelihood_gradient_stable() {
     complexity_penalty = (1. / 2.) * (noise_det + Kuu_inv_det + sigma_inv_det);
     log_marginal_likelihood = complexity_penalty + data_fit + constant_term;
   }
+}
+
+/* -------------------------------------------------------------------------
+ *              Compute likelihood gradient of hyperparameters
+ * ------------------------------------------------------------------------- */
+
+double ParallelSGP ::compute_likelihood_gradient_stable() {
+  // initialize BLACS
+  blacs::initialize();
+
+  // Compute likelihood
+  compute_likelihood_stable();
+
+  Sigma = R_inv * R_inv.transpose();
+
+  // Compute likelihood gradient of kernel hyps such as signal variance
+  int n_hyps_total = hyperparameters.size();
+  likelihood_gradient = Eigen::VectorXd::Zero(n_hyps_total);
+  likelihood_gradient += compute_like_grad_of_kernel_hyps();
+
+  // Compute likelihood gradient of energy, force, stress noises
+  likelihood_gradient.segment(n_hyps_total - 3, 3) += compute_like_grad_of_noise();
+
+  // finalize BLACS
+  std::cout << "finalize" << std::endl;
+  //blacs::finalize();
+  
+  return log_marginal_likelihood;
+}
+
+Eigen::VectorXd ParallelSGP ::compute_like_grad_of_kernel_hyps() {
+  std::cout << "build Kuf_dist" << std::endl;
+  DistMatrix<double> Kfu_dist(f_size, u_size);
+  Eigen::MatrixXd Kfu_local = Kuf_local.transpose();
+  Kfu_dist.collect(&Kfu_local(0, 0), 0, 0, f_size, u_size, f_size_per_proc, u_size, nmax_struc - nmin_struc); 
+
+  std::cout << "build alpha_dist" << std::endl;
+  DistMatrix<double> alpha_dist(u_size, 1);
+  alpha_dist.scatter(&alpha(0), 0, 0, u_size, 1);
+
 
   // Compute Kuu and Kuf matrices and gradients.
   int n_hyps_total = hyperparameters.size();
@@ -761,12 +821,10 @@ double ParallelSGP ::compute_likelihood_gradient_stable() {
   int n_hyps, hyp_index = 0, grad_index = 0;
   Eigen::VectorXd hyps_curr;
 
-  Sigma = R_inv * R_inv.transpose();
-
   int count = 0;
   Eigen::VectorXd complexity_grad = Eigen::VectorXd::Zero(n_hyps_total);
   Eigen::VectorXd datafit_grad = Eigen::VectorXd::Zero(n_hyps_total);
-  likelihood_gradient = Eigen::VectorXd::Zero(n_hyps_total);
+  Eigen::VectorXd likelihood_grad = Eigen::VectorXd::Zero(n_hyps_total);
   for (int i = 0; i < n_kernels; i++) {
     n_hyps = kernels[i]->kernel_hyperparameters.size();
     hyps_curr = hyperparameters.segment(hyp_index, n_hyps);
@@ -803,12 +861,21 @@ double ParallelSGP ::compute_likelihood_gradient_stable() {
             dK_alpha.transpose() * global_noise_vector.cwiseProduct(y_K_alpha);
         datafit_grad(hyp_index + j) += 
             - 1./2. * alpha.transpose() * dKuu * alpha;
-        likelihood_gradient(hyp_index + j) += complexity_grad(hyp_index + j) + datafit_grad(hyp_index + j); 
+        likelihood_grad(hyp_index + j) += complexity_grad(hyp_index + j) + datafit_grad(hyp_index + j); 
       }
     }
     count += size;
     hyp_index += n_hyps;
   } 
+  assert(hyp_index == n_hyps_total - 3);
+  return likelihood_grad;
+}
+
+Eigen::VectorXd ParallelSGP ::compute_like_grad_of_noise() {
+  std::cout << "build Kuf_dist" << std::endl;
+  DistMatrix<double> Kfu_dist(f_size, u_size);
+  Eigen::MatrixXd Kfu_local = Kuf_local.transpose();
+  Kfu_dist.collect(&Kfu_local(0, 0), 0, 0, f_size, u_size, f_size_per_proc, u_size, nmax_struc - nmin_struc); 
 
   // Derivative of complexity over noise
   double en3 = energy_noise * energy_noise * energy_noise;
@@ -820,12 +887,16 @@ double ParallelSGP ::compute_likelihood_gradient_stable() {
   std::cout << "barrier" << std::endl;
   blacs::barrier(); 
 
+  Eigen::VectorXd complexity_grad = Eigen::VectorXd::Zero(3);
+  Eigen::VectorXd datafit_grad = Eigen::VectorXd::Zero(3);
+  Eigen::VectorXd likelihood_grad = Eigen::VectorXd::Zero(3);
+
   if (blacs::mpirank == 0) {
-    complexity_grad(hyp_index + 0) = - global_n_energy_labels / energy_noise 
+    complexity_grad(0) = - global_n_energy_labels / energy_noise 
         + (KnK_e * Sigma).trace() / en3;
-    complexity_grad(hyp_index + 1) = - global_n_force_labels / force_noise 
+    complexity_grad(1) = - global_n_force_labels / force_noise 
         + (KnK_f * Sigma).trace() / fn3;
-    complexity_grad(hyp_index + 2) = - global_n_stress_labels / stress_noise 
+    complexity_grad(2) = - global_n_stress_labels / stress_noise 
         + (KnK_s * Sigma).trace() / sn3;
   }
  
@@ -846,23 +917,18 @@ double ParallelSGP ::compute_likelihood_gradient_stable() {
   s_noise_one_dist.gather(&global_s_noise_one(0));
 
   if (blacs::mpirank == 0) {
-    datafit_grad(hyp_index + 0) = y_K_alpha.transpose() * global_e_noise_one.cwiseProduct(y_K_alpha);
-    datafit_grad(hyp_index + 0) /= en3;
-    datafit_grad(hyp_index + 1) = y_K_alpha.transpose() * global_f_noise_one.cwiseProduct(y_K_alpha);
-    datafit_grad(hyp_index + 1) /= fn3;
-    datafit_grad(hyp_index + 2) = y_K_alpha.transpose() * global_s_noise_one.cwiseProduct(y_K_alpha);
-    datafit_grad(hyp_index + 2) /= sn3;
+    datafit_grad(0) = y_K_alpha.transpose() * global_e_noise_one.cwiseProduct(y_K_alpha);
+    datafit_grad(0) /= en3;
+    datafit_grad(1) = y_K_alpha.transpose() * global_f_noise_one.cwiseProduct(y_K_alpha);
+    datafit_grad(1) /= fn3;
+    datafit_grad(2) = y_K_alpha.transpose() * global_s_noise_one.cwiseProduct(y_K_alpha);
+    datafit_grad(2) /= sn3;
 
-    likelihood_gradient(hyp_index + 0) += complexity_grad(hyp_index + 0) + datafit_grad(hyp_index + 0);
-    likelihood_gradient(hyp_index + 1) += complexity_grad(hyp_index + 1) + datafit_grad(hyp_index + 1);
-    likelihood_gradient(hyp_index + 2) += complexity_grad(hyp_index + 2) + datafit_grad(hyp_index + 2);
+    likelihood_grad(0) += complexity_grad(0) + datafit_grad(0);
+    likelihood_grad(1) += complexity_grad(1) + datafit_grad(1);
+    likelihood_grad(2) += complexity_grad(2) + datafit_grad(2);
   }
-
-  // finalize BLACS
-  std::cout << "finalize" << std::endl;
-  //blacs::finalize();
-  
-  return log_marginal_likelihood;
+  return likelihood_grad;
 }
 
 Eigen::MatrixXd ParallelSGP ::compute_KnK_efs(DistMatrix<double> Kfu_dist, 
