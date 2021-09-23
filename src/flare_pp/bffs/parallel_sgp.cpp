@@ -386,8 +386,6 @@ void ParallelSGP::gather_sparse_descriptors(std::vector<std::vector<int>> n_clus
     std::vector<Eigen::VectorXd> descriptor_norms, cutoff_values;
     std::cout << "begin distmat" << std::endl;
     for (int s = 0; s < n_types; s++) {
-      std::cout << "type " << s << " of " << n_types << std::endl;
-      std::cout << "n_clusters_by_type=" << n_clusters_by_type[i][s] << std::endl;
       DistMatrix<double> dist_descriptors(n_clusters_by_type[i][s], n_descriptors);
       DistMatrix<double> dist_descriptor_norms(n_clusters_by_type[i][s], 1);
       DistMatrix<double> dist_cutoff_values(n_clusters_by_type[i][s], 1);
@@ -818,8 +816,6 @@ double ParallelSGP ::compute_likelihood_gradient_stable() {
     }
 
     complexity_penalty = (1. / 2.) * (noise_det + Kuu_inv_det + sigma_inv_det);
-    std::cout << "like_grad comp data " << complexity_penalty << " " << data_fit << std::endl;
-    std::cout << "noise_det Kuu_inv_det sigma_inv_det " << noise_det << " " << Kuu_inv_det << " " << sigma_inv_det << std::endl;
     log_marginal_likelihood = complexity_penalty + data_fit + constant_term;
   }
 
@@ -855,7 +851,6 @@ double ParallelSGP ::compute_likelihood_gradient_stable() {
         // Derivative of complexity over sigma
         // TODO: the 2nd term is not very stable numerically, because dK_noise_K is very large, and Kuu_grads is small
         complexity_grad(hyp_index + j) += 1./2. * (Kuu_i.inverse() * Kuu_grad[j + 1]).trace() - 1./2. * (Pi_mat * Sigma).trace(); 
-        std::cout << "par comp grad 1:" << 1./2. * (Kuu_i.inverse() * Kuu_grad[j + 1]).trace() << - 1./2. * (Pi_mat * Sigma).trace() << std::endl;
       }
 
       // Derivative of data_fit over sigma
@@ -870,10 +865,8 @@ double ParallelSGP ::compute_likelihood_gradient_stable() {
       if (blacs::mpirank == 0) {
         datafit_grad(hyp_index + j) +=
             dK_alpha.transpose() * global_noise_vector.cwiseProduct(y_K_alpha);
-        std::cout << "par data grad 1:" << dK_alpha.transpose() * global_noise_vector.cwiseProduct(y_K_alpha) << std::endl;
         datafit_grad(hyp_index + j) += 
             - 1./2. * alpha.transpose() * dKuu * alpha;
-        std::cout << "par data grad 2:" << - 1./2. * alpha.transpose() * dKuu * alpha << std::endl;
         likelihood_gradient(hyp_index + j) += complexity_grad(hyp_index + j) + datafit_grad(hyp_index + j); 
       }
     }
@@ -898,7 +891,6 @@ double ParallelSGP ::compute_likelihood_gradient_stable() {
         + (KnK_f * Sigma).trace() / fn3;
     complexity_grad(hyp_index + 2) = - global_n_stress_labels / stress_noise 
         + (KnK_s * Sigma).trace() / sn3;
-    std::cout << "par comp grad efs:" << complexity_grad.segment(hyp_index, 3) << std::endl;
   }
  
   // Derivative of data_fit over noise  
@@ -924,7 +916,6 @@ double ParallelSGP ::compute_likelihood_gradient_stable() {
     datafit_grad(hyp_index + 1) /= fn3;
     datafit_grad(hyp_index + 2) = y_K_alpha.transpose() * global_s_noise_one.cwiseProduct(y_K_alpha);
     datafit_grad(hyp_index + 2) /= sn3;
-    std::cout << "par data grad efs:" << datafit_grad.segment(hyp_index, 3) << std::endl;
 
     likelihood_gradient(hyp_index + 0) += complexity_grad(hyp_index + 0) + datafit_grad(hyp_index + 0);
     likelihood_gradient(hyp_index + 1) += complexity_grad(hyp_index + 1) + datafit_grad(hyp_index + 1);
@@ -934,7 +925,6 @@ double ParallelSGP ::compute_likelihood_gradient_stable() {
   // finalize BLACS
   std::cout << "finalize" << std::endl;
   //blacs::finalize();
-  std::cout << "finalized" << std::endl;
   
   return log_marginal_likelihood;
 }
@@ -985,12 +975,5 @@ Eigen::MatrixXd ParallelSGP ::compute_dKnK(DistMatrix<double> Kfu_dist, int i, E
 
   Eigen::MatrixXd dKnK = Eigen::MatrixXd::Zero(u_size, u_size);
   dKnK_dist.gather(&dKnK(0, 0));
-
-  //Eigen::MatrixXd dKuf_local_large = Eigen::MatrixXd::Zero(u_size, f_size);
-  //dKuf_local_large.block(count, 0, size, f_size) = dnK_local.transpose();
-  //dKnK = dKuf_local_large * Kuf_local.transpose();
-  if (blacs::mpirank == 0) {
-      std::cout << "par dKnK=" << dKnK.col(0) << std::endl;
-  }
   return dKnK;
 }
