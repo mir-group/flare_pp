@@ -166,3 +166,15 @@ utils::read_xyz(std::string filename, std::map<std::string, int> species_map) {
   sparse_inds_list.push_back(sparse_inds_0);
   return std::make_tuple(structure_list, sparse_inds_list);
 }
+
+utils::Timer::Timer() {}
+
+void utils::Timer::tic() {
+  t_start = std::chrono::high_resolution_clock::now();
+}
+
+void utils::Timer::toc(const char* code_name) {
+  t_end = std::chrono::high_resolution_clock::now();
+  duration = (double) std::chrono::duration_cast<std::chrono::milliseconds>( t_end - t_start ).count();
+  std::cout << "Time: " << code_name << " " << duration << " ms" << std::endl;
+}

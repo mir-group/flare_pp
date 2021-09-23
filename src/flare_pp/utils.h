@@ -2,6 +2,7 @@
 #include <tuple>
 #include <vector>
 #include <string>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -44,6 +45,18 @@ namespace utils {
    @return A list of strings separated by the delimiter.
    */
   std::vector<std::string> split(const std::string &s, char delim);
+
+  class Timer;
 }
+
+class utils::Timer {
+public:
+  Timer();
+
+  double duration = 0;
+  std::chrono::high_resolution_clock::time_point t_start, t_end;
+  void tic();
+  void toc(const char*);
+};
 
 #endif
