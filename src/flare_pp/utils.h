@@ -57,6 +57,7 @@ public:
   std::chrono::high_resolution_clock::time_point t_start, t_end;
   void tic();
   void toc(const char*);
+  void toc(const char*, int rank);
 };
 
 #endif

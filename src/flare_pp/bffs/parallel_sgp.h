@@ -8,6 +8,7 @@
 #include <vector>
 #include <nlohmann/json.hpp>
 #include "json.h"
+#include "utils.h"
 #include <distmatrix.h>
 
 class ParallelSGP : public SparseGP {
@@ -26,6 +27,8 @@ public:
   int nmin_struc, nmax_struc, nmin_envs, nmax_envs;
   std::vector<std::vector<Eigen::VectorXi>> n_struc_clusters_by_type;
   int global_n_labels, global_n_energy_labels, global_n_force_labels, global_n_stress_labels;
+
+  utils::Timer timer;
 
   Eigen::MatrixXd Kuf_local;
 

@@ -217,8 +217,7 @@ void ParallelSGP::build(const std::vector<Structure> &training_strucs,
   // initialize BLACS
   blacs::initialize();
 
-  double duration = 0;
-  std::chrono::high_resolution_clock::time_point t1 = std::chrono::high_resolution_clock::now();
+  timer.tic();
 
   // Get the number of processes
   int world_size;
@@ -270,17 +269,12 @@ void ParallelSGP::build(const std::vector<Structure> &training_strucs,
 
   // load and distribute training structures, compute descriptors
   load_local_training_data(training_strucs, cutoff, descriptor_calculators, training_sparse_indices, n_types);
-  std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
-  duration += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2 - t1 ).count();
-  std::cout << "Rank: " << blacs::mpirank << ", load_local_training_data: " << duration << " ms" << std::endl;
+  timer.toc("load_local_training_data", blacs::mpirank);
 
   // compute kernel matrices from training data
-  duration = 0;
-  t1 = std::chrono::high_resolution_clock::now();
+  timer.tic();
   compute_matrices(training_strucs);
-  t2 = std::chrono::high_resolution_clock::now();
-  duration += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2 - t1 ).count();
-  std::cout << "Rank: " << blacs::mpirank << ", compute_matrices: " << duration << " ms" << std::endl;
+  timer.toc("compute_matrice", blacs::mpirank);
 
   // TODO: finalize BLACS
   //blacs::finalize();
@@ -291,11 +285,6 @@ void ParallelSGP::load_local_training_data(const std::vector<Structure> &trainin
         double cutoff, std::vector<Descriptor *> descriptor_calculators,
         const std::vector<std::vector<std::vector<int>>> &training_sparse_indices,
         int n_types) {
-
-  double duration = 0;
-  std::chrono::high_resolution_clock::time_point t1 = std::chrono::high_resolution_clock::now();
-  double time_build, time_noise, time_add_struc, time_add_env;
-  std::chrono::high_resolution_clock::time_point t1_inner, t2_inner, t3_inner, t4_inner, t5_inner;
 
   // Distribute the training structures and sparse envs
   Structure struc;
@@ -314,7 +303,6 @@ void ParallelSGP::load_local_training_data(const std::vector<Structure> &trainin
   }
 
   for (int t = 0; t < training_strucs.size(); t++) {
-    t1_inner = std::chrono::high_resolution_clock::now();
 
     int label_size = training_strucs[t].n_labels();
     int noa = training_strucs[t].noa;
@@ -484,6 +472,8 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
   std::chrono::high_resolution_clock::time_point t1 = std::chrono::high_resolution_clock::now();
   std::chrono::high_resolution_clock::time_point t1_inner, t2_inner;
 
+  timer.tic();
+
   // Build block of A, y, Kuu using distributed training structures
   std::vector<Eigen::MatrixXd> kuf, kuu;
   int cum_f = 0;
@@ -492,7 +482,6 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
   Kuf_local = Eigen::MatrixXd::Zero(u_size, local_f_size);
 
   for (int i = 0; i < n_kernels; i++) {
-    t1_inner = std::chrono::high_resolution_clock::now();
     int u_kern = u_size_single_kernel[i]; // sparse set size of kernel i
     assert(u_kern == sparse_descriptors[i].n_clusters);
     Eigen::MatrixXd kuf_i = Eigen::MatrixXd::Zero(u_kern, local_f_size);
@@ -520,23 +509,12 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
     //kuf.push_back(kuf_i);
     Kuf_local.block(cum_u, 0, u_kern, local_f_size) = kuf_i; 
     Kuf_kernels[i] = kuf_i;
-    t2_inner = std::chrono::high_resolution_clock::now();
-    duration += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2_inner - t1_inner ).count();
-    std::cout << "Rank: " << blacs::mpirank << ", build local kuf: " << duration << " ms" << std::endl;
-
-
-    t1_inner = std::chrono::high_resolution_clock::now();
 
     Kuu_kernels[i] = kernels[i]->envs_envs(
               sparse_descriptors[i], 
               sparse_descriptors[i],
               kernels[i]->kernel_hyperparameters);
     cum_u += u_kern;
-
-    t2_inner = std::chrono::high_resolution_clock::now();
-    duration += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2_inner - t1_inner ).count();
-    std::cout << "Rank: " << blacs::mpirank << ", build local kuu: " << duration << " ms" << std::endl;
-
   }
 
   // Only keep the chunk of noise_vector assigned to the current proc
@@ -562,22 +540,17 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
     cum_f_struc += training_strucs[t].n_labels();
   }
 
-  std::cout << "get global noise" << std::endl;
   // Store square root of noise vector.
   Eigen::VectorXd noise_vector_sqrt = sqrt(local_noise_vector.array());
   Eigen::VectorXd global_noise_vector_sqrt = sqrt(global_noise_vector.array());
 
-  std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
-  duration += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2 - t1 ).count();
-  std::cout << "Rank: " << blacs::mpirank << ", build local kuf kuu: " << duration << " ms" << std::endl;
-
   // Synchronize, wait until all training structures are ready on all processors
   blacs::barrier();
+  timer.toc("build local kuf kuu", blacs::mpirank);
 
   // Create distributed matrices
   // specify the scope of the DistMatrix
-  duration = 0;
-  t1 = std::chrono::high_resolution_clock::now();
+  timer.tic();
 
   std::cout << "f_size=" << f_size << " , u_size=" << u_size << std::endl;
   DistMatrix<double> A(f_size + u_size, u_size); // use the default blocking
@@ -588,7 +561,6 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
   b = [](int i, int j){return 0.0;};
   Kuu_dist = [](int i, int j){return 0.0;};
   blacs::barrier();
-  std::cout << "Initialize with 0" << std::endl;
 
   bool lock = true;
   cum_u = 0;
@@ -605,28 +577,16 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
   }
   Kuu_dist.fence();
 
-  t2 = std::chrono::high_resolution_clock::now();
-  duration += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2 - t1 ).count();
-  std::cout << "Rank: " << blacs::mpirank << ", build Kuu_dist: " << duration << " ms" << std::endl;
-
-  duration = 0;
-  t1 = std::chrono::high_resolution_clock::now();
-
   // TODO: Kuu is only needed for debug and unit test 
   Matrix<double> Kuu_array(u_size, u_size);
-  std::cout << "Begin allgather Kuu" << std::endl;
   Kuu_dist.allgather(Kuu_array.array.get());
   Kuu = Eigen::Map<Eigen::MatrixXd>(Kuu_array.array.get(), u_size, u_size);
   std::cout << "Allgathered Kuu" << std::endl;
 
-  t2 = std::chrono::high_resolution_clock::now();
-  duration += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2 - t1 ).count();
-  std::cout << "Rank: " << blacs::mpirank << ", set Kuu_dist: " << duration << " ms" << std::endl;
-
-  duration = 0;
-  t1 = std::chrono::high_resolution_clock::now();
+  timer.toc("build Kuu_dist", blacs::mpirank);
 
   // Cholesky decomposition of Kuu and its inverse.
+  timer.tic();
   Eigen::LLT<Eigen::MatrixXd> chol(
       Kuu + Kuu_jitter * Eigen::MatrixXd::Identity(Kuu.rows(), Kuu.cols()));
 
@@ -637,18 +597,14 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
   Kuu_inverse = L_inv.transpose() * L_inv;
   L_diag = L_inv.diagonal();
 
-  t2 = std::chrono::high_resolution_clock::now();
-  duration += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2 - t1 ).count();
-  std::cout << "Rank: " << blacs::mpirank << ", cholestky, tri_inv, matmul: " << duration << " ms" << std::endl;
+  timer.toc("cholestky, tri_inv, matmul", blacs::mpirank);
 
-
-  duration = 0;
-  t1 = std::chrono::high_resolution_clock::now();
+  // Assign Lambda * Kfu to A
+  timer.tic();
 
   cum_f = 0;
   int local_f_full = 0;
   int local_f = 0;
-  // Assign Lambda * Kfu to A
   Eigen::MatrixXd noise_kfu = noise_vector_sqrt.asDiagonal() * Kuf_local.transpose();
   A.collect(&noise_kfu(0, 0), 0, 0, f_size, u_size, f_size_per_proc, u_size, nmax_struc - nmin_struc); 
   Eigen::VectorXd noise_labels = noise_vector_sqrt.asDiagonal() * local_labels;
@@ -669,16 +625,10 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
       Kuf(r, c) = A(c, r, lock);
     }
   }
-
-
-  t2 = std::chrono::high_resolution_clock::now();
-  duration += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2 - t1 ).count();
-  std::cout << "Rank: " << blacs::mpirank << ", set A & b: " << duration << " ms" << std::endl;
-
-  duration = 0;
-  t1 = std::chrono::high_resolution_clock::now();
+  timer.toc("set A & b", blacs::mpirank);
 
   // Copy L.T to A using scatter function
+  timer.tic();
   Eigen::MatrixXd L_T;
   int mb, nb, lld;
   if (blacs::mpirank == 0) {
@@ -691,25 +641,18 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
 
   A.fence();
 
-  t2 = std::chrono::high_resolution_clock::now();
-  duration += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2 - t1 ).count();
-  std::cout << "Rank: " << blacs::mpirank << ", set L.T to A: " << duration << " ms" << std::endl;
-
-  duration = 0;
-  t1 = std::chrono::high_resolution_clock::now();
+  timer.toc("set L.T to A", blacs::mpirank);
 
   // QR factorize A to compute alpha
+  timer.tic();
   DistMatrix<double> QR(u_size + f_size, u_size);
   std::vector<double> tau;
   std::tie(QR, tau) = A.qr();
   QR.fence();
 
-  t2 = std::chrono::high_resolution_clock::now();
-  duration += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2 - t1 ).count();
-  std::cout << "Rank: " << blacs::mpirank << ", QR: " << duration << " ms" << std::endl;
+  timer.toc("QR", blacs::mpirank);
 
-  duration = 0;
-  t1 = std::chrono::high_resolution_clock::now();
+  timer.tic();
 
   DistMatrix<double> R_dist(u_size, u_size);                                 // Upper triangular R from QR
   R_dist = [&QR](int i, int j) {return i > j ? 0 : QR(i, j, true);};
@@ -735,10 +678,7 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
   R_inv_diag = R_inv.diagonal();
   alpha = R_inv * Q_b;
 
-  t2 = std::chrono::high_resolution_clock::now();
-  duration += (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2 - t1 ).count();
-  std::cout << "Rank: " << blacs::mpirank << ", get alpha: " << duration << " ms" << std::endl;
-
+  timer.toc("get alpha", blacs::mpirank);
 }
 
 void ParallelSGP ::predict_local_uncertainties(Structure &test_structure) {
@@ -748,7 +688,6 @@ void ParallelSGP ::predict_local_uncertainties(Structure &test_structure) {
   int n_sparse = Kuu_inverse.rows();
   Eigen::MatrixXd kernel_mat = Eigen::MatrixXd::Zero(n_sparse, n_out);
   int count = 0;
-  std::cout << "In predict: sparse_desc size " << sparse_descriptors.size() << std::endl;
   for (int i = 0; i < Kuu_kernels.size(); i++) {
     int size = sparse_descriptors[i].n_clusters; 
     kernel_mat.block(count, 0, size, n_out) = kernels[i]->envs_struc(
@@ -756,11 +695,8 @@ void ParallelSGP ::predict_local_uncertainties(Structure &test_structure) {
         kernels[i]->kernel_hyperparameters);
     count += size;
   }
-  std::cout << "kernel_mat size " << kernel_mat.rows() << " " << kernel_mat.cols() << std::endl;
-  std::cout << "alpha size " << alpha.size() << std::endl;
 
   test_structure.mean_efs = kernel_mat.transpose() * alpha;
-  std::cout << "Begin compute_cluster" << std::endl;
   std::vector<Eigen::VectorXd> local_uncertainties =
     this->compute_cluster_uncertainties(test_structure);
   test_structure.local_uncertainties = local_uncertainties;
