@@ -784,10 +784,8 @@ double ParallelSGP ::compute_likelihood_gradient_stable() {
 
   std::cout << "build K_alpha_dist" << std::endl;
   DistMatrix<double> K_alpha_dist(f_size, 1);
-  std::cout << "matmul" << std::endl;
   K_alpha_dist = Kfu_dist.matmul(alpha_dist, 1.0, 'N', 'N');
   Eigen::VectorXd K_alpha = Eigen::VectorXd::Zero(f_size);
-  std::cout << "gather" << std::endl;
   K_alpha_dist.gather(&K_alpha(0));
 
   std::cout << "build y_dist" << std::endl;
@@ -796,8 +794,9 @@ double ParallelSGP ::compute_likelihood_gradient_stable() {
   Eigen::VectorXd y_global = Eigen::VectorXd::Zero(f_size);
   y_dist.gather(&y_global(0));
 
+  Eigen::VectorXd y_K_alpha = Eigen::VectorXd::Zero(f_size);
+
   // Compute log marginal likelihood
-  Eigen::VectorXd y_K_alpha;
   log_marginal_likelihood = 0;
   if (blacs::mpirank == 0) {
     y_K_alpha = y_global - K_alpha;
@@ -850,12 +849,14 @@ double ParallelSGP ::compute_likelihood_gradient_stable() {
       Eigen::MatrixXd dKuu = Eigen::MatrixXd::Zero(u_size, u_size);
       dKuu.block(count, count, size, size) = Kuu_grad[j + 1];
       Eigen::MatrixXd dK_noise_K = compute_dKnK(Kfu_dist, i, hyps_curr, count);
-      Eigen::MatrixXd Pi_mat = dK_noise_K + dK_noise_K.transpose() + dKuu;
+      if (blacs::mpirank == 0) {
+        Eigen::MatrixXd Pi_mat = dK_noise_K + dK_noise_K.transpose() + dKuu;
 
-      // Derivative of complexity over sigma
-      // TODO: the 2nd term is not very stable numerically, because dK_noise_K is very large, and Kuu_grads is small
-      complexity_grad(hyp_index + j) += 1./2. * (Kuu_i.inverse() * Kuu_grad[j + 1]).trace() - 1./2. * (Pi_mat * Sigma).trace(); 
-      std::cout << "par comp grad 1:" << 1./2. * (Kuu_i.inverse() * Kuu_grad[j + 1]).trace() << - 1./2. * (Pi_mat * Sigma).trace() << std::endl;
+        // Derivative of complexity over sigma
+        // TODO: the 2nd term is not very stable numerically, because dK_noise_K is very large, and Kuu_grads is small
+        complexity_grad(hyp_index + j) += 1./2. * (Kuu_i.inverse() * Kuu_grad[j + 1]).trace() - 1./2. * (Pi_mat * Sigma).trace(); 
+        std::cout << "par comp grad 1:" << 1./2. * (Kuu_i.inverse() * Kuu_grad[j + 1]).trace() << - 1./2. * (Pi_mat * Sigma).trace() << std::endl;
+      }
 
       // Derivative of data_fit over sigma
       Eigen::MatrixXd dKfu_local = Kuf_grad[j + 1].transpose();
@@ -891,20 +892,37 @@ double ParallelSGP ::compute_likelihood_gradient_stable() {
   blacs::barrier(); 
 
   if (blacs::mpirank == 0) {
-    complexity_grad(hyp_index + 0) = - e_noise_one.sum() / energy_noise 
+    complexity_grad(hyp_index + 0) = - global_n_energy_labels / energy_noise 
         + (KnK_e * Sigma).trace() / en3;
-    complexity_grad(hyp_index + 1) = - f_noise_one.sum() / force_noise 
+    complexity_grad(hyp_index + 1) = - global_n_force_labels / force_noise 
         + (KnK_f * Sigma).trace() / fn3;
-    complexity_grad(hyp_index + 2) = - s_noise_one.sum() / stress_noise 
+    complexity_grad(hyp_index + 2) = - global_n_stress_labels / stress_noise 
         + (KnK_s * Sigma).trace() / sn3;
     std::cout << "par comp grad efs:" << complexity_grad.segment(hyp_index, 3) << std::endl;
+  }
  
-    // Derivative of data_fit over noise  
-    datafit_grad(hyp_index + 0) = y_K_alpha.transpose() * e_noise_one.cwiseProduct(y_K_alpha);
+  // Derivative of data_fit over noise  
+  DistMatrix<double> e_noise_one_dist(f_size, 1);
+  e_noise_one_dist.collect(&local_e_noise_one(0), 0, 0, f_size, 1, f_size_per_proc, 1, nmax_struc - nmin_struc);
+  Eigen::VectorXd global_e_noise_one = Eigen::VectorXd::Zero(f_size);
+  e_noise_one_dist.gather(&global_e_noise_one(0));
+
+  DistMatrix<double> f_noise_one_dist(f_size, 1);
+  f_noise_one_dist.collect(&local_f_noise_one(0), 0, 0, f_size, 1, f_size_per_proc, 1, nmax_struc - nmin_struc);
+  Eigen::VectorXd global_f_noise_one = Eigen::VectorXd::Zero(f_size);
+  f_noise_one_dist.gather(&global_f_noise_one(0));
+
+  DistMatrix<double> s_noise_one_dist(f_size, 1);
+  s_noise_one_dist.collect(&local_s_noise_one(0), 0, 0, f_size, 1, f_size_per_proc, 1, nmax_struc - nmin_struc);
+  Eigen::VectorXd global_s_noise_one = Eigen::VectorXd::Zero(f_size);
+  s_noise_one_dist.gather(&global_s_noise_one(0));
+
+  if (blacs::mpirank == 0) {
+    datafit_grad(hyp_index + 0) = y_K_alpha.transpose() * global_e_noise_one.cwiseProduct(y_K_alpha);
     datafit_grad(hyp_index + 0) /= en3;
-    datafit_grad(hyp_index + 1) = y_K_alpha.transpose() * f_noise_one.cwiseProduct(y_K_alpha);
+    datafit_grad(hyp_index + 1) = y_K_alpha.transpose() * global_f_noise_one.cwiseProduct(y_K_alpha);
     datafit_grad(hyp_index + 1) /= fn3;
-    datafit_grad(hyp_index + 2) = y_K_alpha.transpose() * s_noise_one.cwiseProduct(y_K_alpha);
+    datafit_grad(hyp_index + 2) = y_K_alpha.transpose() * global_s_noise_one.cwiseProduct(y_K_alpha);
     datafit_grad(hyp_index + 2) /= sn3;
     std::cout << "par data grad efs:" << datafit_grad.segment(hyp_index, 3) << std::endl;
 
@@ -960,17 +978,19 @@ Eigen::MatrixXd ParallelSGP ::compute_dKnK(DistMatrix<double> Kfu_dist, int i, E
       local_s_noise_one / (stress_noise * stress_noise);
   Eigen::MatrixXd dnK_local = noise_one_local.asDiagonal() * dKuf_local.transpose();
 
-  DistMatrix<double> dnK_dist(f_size, size);
-  dnK_dist.collect(&dnK_local(0, 0), 0, 0, f_size, size, f_size_per_proc, size, nmax_struc - nmin_struc);
-  DistMatrix<double> dKnK_dist(size, u_size);
+  DistMatrix<double> dnK_dist(f_size, u_size); // Build a large matrix
+  dnK_dist.collect(&dnK_local(0, 0), 0, count, f_size, size, f_size_per_proc, size, nmax_struc - nmin_struc);
+  DistMatrix<double> dKnK_dist(u_size, u_size);
   dKnK_dist = dnK_dist.matmul(Kfu_dist, 1.0, 'T', 'N');
 
   Eigen::MatrixXd dKnK = Eigen::MatrixXd::Zero(u_size, u_size);
-  //dKnK_dist.gather(&dKnK(0, 0));
+  dKnK_dist.gather(&dKnK(0, 0));
 
-  Eigen::MatrixXd dKuf_local_large = Eigen::MatrixXd::Zero(u_size, f_size);
-  dKuf_local_large.block(count, 0, size, f_size) = dnK_local.transpose();
-  dKnK = dKuf_local_large * Kuf_local.transpose();
-  std::cout << "par dKnK=" << dKnK.col(0) << std::endl;
+  //Eigen::MatrixXd dKuf_local_large = Eigen::MatrixXd::Zero(u_size, f_size);
+  //dKuf_local_large.block(count, 0, size, f_size) = dnK_local.transpose();
+  //dKnK = dKuf_local_large * Kuf_local.transpose();
+  if (blacs::mpirank == 0) {
+      std::cout << "par dKnK=" << dKnK.col(0) << std::endl;
+  }
   return dKnK;
 }
