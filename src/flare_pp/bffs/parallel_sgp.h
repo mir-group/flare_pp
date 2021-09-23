@@ -26,7 +26,10 @@ public:
   int f_size, f_size_single_kernel, f_size_per_proc;
   int nmin_struc, nmax_struc, nmin_envs, nmax_envs;
   std::vector<std::vector<Eigen::VectorXi>> n_struc_clusters_by_type;
-  int global_n_labels, global_n_energy_labels, global_n_force_labels, global_n_stress_labels;
+  int global_n_labels = 0;
+  int global_n_energy_labels = 0;
+  int global_n_force_labels = 0;
+  int global_n_stress_labels = 0;
 
   utils::Timer timer;
 
