@@ -206,4 +206,11 @@ PYBIND11_MODULE(_C_flare, m) {
       .def_readonly("y", &SparseGP::y)
       .def_static("to_json", &SparseGP::to_json)
       .def_static("from_json", &SparseGP::from_json);
+
+  py::class_<ParallelSGP, SparseGP>(m, "Parallel_SGP")
+      .def(py::init<>())
+      .def(py::init<std::vector<Kernel *>, double, double, double>())
+      .def("build", &ParallelSGP::build)
+      .def("compute_likelihood_stable", &ParallelSGP::compute_likelihood_stable)
+      .def("compute_likelihood_gradient_stable", &ParallelSGP::compute_likelihood_gradient_stable);
 }
