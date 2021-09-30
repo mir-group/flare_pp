@@ -115,19 +115,18 @@ endif()
 # Greatly reduces the code bloat
 target_compile_options(pybind11 INTERFACE "-fvisibility=hidden")
 
-# dist matrix
+# Distmatrix
+###############################################################################
 FetchContent_Declare(
     distmatrix
     GIT_REPOSITORY https://github.com/mir-group/distmatrix.git
 )
 FetchContent_MakeAvailable(distmatrix)
 
-link_directories(
-    ${CMAKE_CURRENT_BINARY_DIR}/distmatrix_build
-)
-include_directories(
-    ${CMAKE_CURRENT_BINARY_DIR}/distmatrix_src/include
-)
+link_directories(${distmatrix_BINARY_DIR})
+link_directories(${distmatrix_BINARY_DIR}/scalapack_build/lib)
+
+include_directories(${distmatrix_SOURCE_DIR}/include)
 
 
 #target_link_libraries(flare PUBLIC distmatrix)
@@ -208,6 +207,8 @@ if (DEFINED ENV{MKL_INCLUDE} AND DEFINED ENV{MKL_LIBS})
   include_directories($ENV{MKL_INCLUDE})
   target_link_libraries(flare PUBLIC $ENV{MKL_LIBS})
   target_compile_definitions(flare PUBLIC EIGEN_USE_MKL_ALL=1)
+  target_include_directories(flare PUBLIC $ENV{MKL_MPI})
+  message(MKL_MPI=$ENV{MKL_MPI})
 # Give the option to do a "bare-bones" build without Lapack/Lapacke.
 elseif(DEFINED ENV{NO_LAPACK})
   message(STATUS "Building without Lapack.")

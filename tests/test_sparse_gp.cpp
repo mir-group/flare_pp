@@ -4,15 +4,6 @@
 #include <chrono>
 #include <numeric> // Iota
 
-// TEST(TestPar, TestPar){
-//   std::cout << omp_get_max_threads() << std::endl;
-//   #pragma omp parallel for
-//   for (int atom = 0; atom < 4; atom++) {
-//     std::cout << omp_get_thread_num() << std::endl;
-//     std::this_thread::sleep_for(std::chrono::milliseconds(2000));
-//   }
-// }
-
 TEST_F(StructureTest, SortTest){
   double sigma_e = 1;
   double sigma_f = 2;

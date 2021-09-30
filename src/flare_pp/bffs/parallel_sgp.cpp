@@ -215,15 +215,19 @@ void ParallelSGP::build(const std::vector<Structure> &training_strucs,
         int n_types) {
  
   // initialize BLACS
+  std::cout << "start blacs" << std::endl;
   blacs::initialize();
+  std::cout << "done blacs" << std::endl;
 
   timer.tic();
 
   // Get the number of processes
+  std::cout << "MPI comm size" << std::endl;
   int world_size;
   MPI_Comm_size(MPI_COMM_WORLD, &world_size);
 
   // Get the rank of the process
+  std::cout << "MPI comm rank" << std::endl;
   int world_rank;
   MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
 

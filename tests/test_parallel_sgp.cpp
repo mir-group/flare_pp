@@ -8,7 +8,6 @@
 #include <numeric> // Iota
 #include <blacs.h>
 
-
 TEST_F(StructureTest, BuildPMatrix){
   double sigma_e = 1;
   double sigma_f = 2;
