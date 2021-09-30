@@ -567,6 +567,9 @@ def optimize_hyperparameters(
     """Optimize the hyperparameters of a sparse GP model."""
 
     initial_guess = sparse_gp.hyperparameters
+
+    # If all kernels are NormalizedDotProduct, then some matrices can be 
+    # pre-computed and stored
     precompute = True
     for kern in sparse_gp.kernels:
         if not isinstance(kern, NormalizedDotProduct):

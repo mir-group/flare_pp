@@ -277,8 +277,12 @@ void ParallelSGP::build(const std::vector<Structure> &training_strucs,
 
   // compute kernel matrices from training data
   timer.tic();
-  compute_matrices(training_strucs);
-  timer.toc("compute_matrice", blacs::mpirank);
+  compute_kernel_matrices(training_strucs);
+  timer.toc("compute_kernel_matrice", blacs::mpirank);
+
+  timer.tic();
+  update_matrices_QR(); 
+  timer.toc("update_matrices_QR", blacs::mpirank);
 
   // TODO: finalize BLACS
   //blacs::finalize();
@@ -531,7 +535,10 @@ void ParallelSGP::compute_kernel_matrices(const std::vector<Structure> &training
     }
     std::cout << "push back" << std::endl;
     //kuf.push_back(kuf_i);
+
+    // TODO: change here into stack_Kuf
     Kuf_local.block(cum_u, 0, u_kern, local_f_size) = kuf_i; 
+
     Kuf_kernels[i] = kuf_i;
 
     Kuu_kernels[i] = kernels[i]->envs_envs(
@@ -729,18 +736,29 @@ void ParallelSGP ::set_hyperparameters(Eigen::VectorXd hyps) {
     kernels[i]->set_hyperparameters(new_hyps);
     hyp_index += n_hyps;
   }
-
   timer.toc("set_hyp: update Kuf Kuu");
 
+  // Stack Kuf_local
+  timer.tic();
+  stack_Kuf();
+  timer.toc("set_hyp: stack Kuf Kuu");
+
+  // Update noise vector
   timer.tic();
   hyperparameters = hyps;
   energy_noise = hyps(hyp_index);
   force_noise = hyps(hyp_index + 1);
   stress_noise = hyps(hyp_index + 2);
 
-  noise_vector = 1 / (energy_noise * energy_noise) * e_noise_one 
-               + 1 / (force_noise * force_noise) * f_noise_one 
-               + 1 / (stress_noise * stress_noise) * s_noise_one; 
+  Eigen::VectorXd local_noise_vector = 1 / (energy_noise * energy_noise) * local_e_noise_one 
+               + 1 / (force_noise * force_noise) * local_f_noise_one 
+               + 1 / (stress_noise * stress_noise) * local_s_noise_one; 
+   
+  // TODO: global_n_labels == f_size
+  global_noise_vector = Eigen::VectorXd::Zero(global_n_labels);
+  DistMatrix<double> noise_vector_dist(f_size, 1);
+  noise_vector_dist.collect(&local_noise_vector(0), 0, 0, f_size, 1, f_size_per_proc, 1, nmax_struc - nmin_struc);
+  noise_vector_dist.gather(&global_noise_vector(0));
 
   timer.toc("set_hyp: update noise");
 
@@ -837,7 +855,7 @@ void ParallelSGP ::compute_likelihood_stable() {
  *              Compute likelihood gradient of hyperparameters
  * ------------------------------------------------------------------------- */
 
-double ParallelSGP ::compute_likelihood_gradient_stable() {
+double ParallelSGP ::compute_likelihood_gradient_stable(bool precomputed_KnK) {
   // initialize BLACS
   blacs::initialize();
 

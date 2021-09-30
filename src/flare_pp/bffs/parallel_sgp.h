@@ -116,7 +116,7 @@ public:
 
   Eigen::MatrixXd varmap_coeffs; // for debugging. TODO: remove this line 
 
-  double compute_likelihood_gradient_stable();
+  double compute_likelihood_gradient_stable(bool precomputed_KnK);
   Eigen::VectorXd y_K_alpha;
   void compute_likelihood_stable();
   void compute_KnK();
