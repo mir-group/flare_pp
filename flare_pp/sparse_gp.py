@@ -1,14 +1,15 @@
 import json
 from time import time
 import numpy as np
-from flare_pp import _C_flare
-from flare_pp._C_flare import SparseGP, Structure, NormalizedDotProduct
 from scipy.optimize import minimize
 from typing import List
 import warnings
 from flare import struc
 from flare.ase.atoms import FLARE_Atoms
 from flare.utils.element_coder import NumpyEncoder
+
+from flare_pp._C_flare import SparseGP, Structure, NormalizedDotProduct, Bk
+from flare_pp.utils import convert_to_flarepp_structure
 
 
 class SGP_Wrapper:
@@ -133,7 +134,7 @@ class SGP_Wrapper:
         out_dict["descriptor_calculators"] = []
         desc_calc = self.descriptor_calculators
         for dc in self.descriptor_calculators:
-            assert isinstance(dc, _C_flare.Bk)
+            assert isinstance(dc, Bk)
             dc_dict = {
                 "type": "Bk",
                 "radial_basis": dc.radial_basis,
@@ -216,7 +217,7 @@ class SGP_Wrapper:
 
         for dc_dict in desc_calc:
             if dc_dict["type"] == "Bk":
-                calc = _C_flare.Bk(
+                calc = Bk(
                     dc_dict["radial_basis"],
                     dc_dict["cutoff_function"],
                     dc_dict["radial_hyps"],
@@ -296,42 +297,20 @@ class SGP_Wrapper:
         atom_indices=[-1],
     ):
 
-        # Convert coded species to 0, 1, 2, etc.
-        if isinstance(structure, (struc.Structure, FLARE_Atoms)):
-            coded_species = []
-            for spec in structure.coded_species:
-                coded_species.append(self.species_map[spec])
-        elif isinstance(structure, Structure):
-            coded_species = structure.species
-        else:
-            raise Exception
-
-        # Convert flare structure to structure descriptor.
-        structure_descriptor = Structure(
-            structure.cell,
-            coded_species,
-            structure.positions,
+        # Convert flare Structure or FLARE_Atoms to flare_pp Structure
+        structure_descriptor = convert_to_flarepp_structure(
+            structure,
+            self.species_map,
+            energy,
+            forces,
+            stress,
+            self.energy_training,
+            self.force_training,
+            self.stress_training,
+            self.single_atom_energies,
             self.cutoff,
             self.descriptor_calculators,
         )
-
-        # Add labels to structure descriptor.
-        if (energy is not None) and (self.energy_training):
-            # Sum up single atom energies.
-            single_atom_sum = 0
-            if self.single_atom_energies is not None:
-                for spec in coded_species:
-                    single_atom_sum += self.single_atom_energies[spec]
-
-            # Correct the energy label and assign to structure.
-            corrected_energy = energy - single_atom_sum
-            structure_descriptor.energy = np.array([[corrected_energy]])
-
-        if (forces is not None) and (self.force_training):
-            structure_descriptor.forces = forces.reshape(-1)
-
-        if (stress is not None) and (self.stress_training):
-            structure_descriptor.stresses = stress
 
         # Update the sparse GP.
         if sgp is None:
@@ -385,7 +364,9 @@ class SGP_Wrapper:
         )
 
     def write_mapping_coefficients(self, filename, contributor, kernel_idx):
-        self.sparse_gp.write_mapping_coefficients(filename, contributor, kernel_idx, "potential")
+        self.sparse_gp.write_mapping_coefficients(
+            filename, contributor, kernel_idx, "potential"
+        )
 
     def write_varmap_coefficients(self, filename, contributor, kernel_idx):
         old_kernels = self.sparse_gp.kernels
@@ -409,7 +390,7 @@ class SGP_Wrapper:
         )
         n_sgp = len(self.training_data)
         n_sgp_var = len(self.sgp_var.training_structures)
-        is_same_data = n_sgp == n_sgp_var 
+        is_same_data = n_sgp == n_sgp_var
 
         # Add new data if sparse_gp has more data than sgp_var
         if not is_same_data:
@@ -419,12 +400,12 @@ class SGP_Wrapper:
             for s in range(n_add):
                 custom_range = self.sparse_gp.sparse_indices[0][s + n_sgp_var]
                 struc_cpp = self.training_data[s + n_sgp_var]
-    
+
                 if len(struc_cpp.energy) > 0:
                     energy = struc_cpp.energy[0]
                 else:
                     energy = None
-    
+
                 self.update_db(
                     struc_cpp,
                     struc_cpp.forces,
@@ -435,9 +416,9 @@ class SGP_Wrapper:
                     sgp=self.sgp_var,
                     update_qr=False,
                 )
-    
+
             self.sgp_var.update_matrices_QR()
-      
+
         if not is_same_hyps:
             print("Hyps not match, set hyperparameters")
             self.sgp_var.set_hyperparameters(self.sparse_gp.hyperparameters)
@@ -445,9 +426,11 @@ class SGP_Wrapper:
 
         new_kernels = self.sgp_var.kernels
         print("Map with current sgp_var")
-       
-        self.sgp_var.write_mapping_coefficients(filename, contributor, kernel_idx, "uncertainty")
-        
+
+        self.sgp_var.write_mapping_coefficients(
+            filename, contributor, kernel_idx, "uncertainty"
+        )
+
         return new_kernels
 
     def duplicate(self, new_hyps=None, new_kernels=None, new_powers=None):
@@ -534,7 +517,10 @@ def compute_negative_likelihood_grad(hyperparameters, sparse_gp):
 
     return negative_likelihood, negative_likelihood_gradient
 
-def compute_negative_likelihood_grad_stable(hyperparameters, sparse_gp, precomputed=False):
+
+def compute_negative_likelihood_grad_stable(
+    hyperparameters, sparse_gp, precomputed=False
+):
     """Compute the negative log likelihood and gradient with respect to the
     hyperparameters."""
 
