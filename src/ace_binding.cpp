@@ -207,7 +207,7 @@ PYBIND11_MODULE(_C_flare, m) {
       .def_static("to_json", &SparseGP::to_json)
       .def_static("from_json", &SparseGP::from_json);
 
-  py::class_<ParallelSGP, SparseGP>(m, "Parallel_SGP")
+  py::class_<ParallelSGP, SparseGP>(m, "ParallelSGP")
       .def(py::init<>())
       .def(py::init<std::vector<Kernel *>, double, double, double>())
       .def("build", &ParallelSGP::build)
