@@ -596,7 +596,7 @@ void ParallelSGP::update_matrices_QR() {
   blacs::barrier();
 
   bool lock = true;
-  cum_u = 0;
+  int cum_u = 0;
   // Assign sparse set kernel matrix Kuu
   for (int i = 0; i < n_kernels; i++) { 
     for (int r = 0; r < Kuu_kernels[i].rows(); r++) {
@@ -635,7 +635,7 @@ void ParallelSGP::update_matrices_QR() {
   // Assign Lambda * Kfu to A
   timer.tic();
 
-  cum_f = 0;
+  int cum_f = 0;
   int local_f_full = 0;
   int local_f = 0;
   Eigen::MatrixXd noise_kfu = noise_vector_sqrt.asDiagonal() * Kuf_local.transpose();

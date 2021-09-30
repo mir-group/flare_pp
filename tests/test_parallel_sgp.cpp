@@ -301,7 +301,7 @@ TEST_F(StructureTest, ParLikeGrad){
   std::vector<Structure> training_strucs = {struc_1, struc_2};
   parallel_sgp.build(training_strucs, cutoff, dc, sparse_indices, n_types);
 
-  double likelihood_parallel = parallel_sgp.compute_likelihood_gradient_stable();
+  double likelihood_parallel = parallel_sgp.compute_likelihood_gradient_stable(false);
   Eigen::VectorXd like_grad_parallel = parallel_sgp.likelihood_gradient;
   std::cout << "computed likelihood" << std::endl;
   blacs::finalize();

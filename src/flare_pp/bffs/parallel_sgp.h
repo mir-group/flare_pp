@@ -9,9 +9,6 @@
 #include <nlohmann/json.hpp>
 #include "json.h"
 #include "utils.h"
-#include "../../../build/External/CppNumericalSolvers/include/cppoptlib/problem.h"
-#include "../../../build/External/CppNumericalSolvers/include/cppoptlib/meta.h"
-#include "../../../build/External/CppNumericalSolvers/include/cppoptlib/solver/bfgssolver.h"
 
 class ParallelSGP : public SparseGP {
 public:
