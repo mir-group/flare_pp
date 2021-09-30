@@ -105,7 +105,11 @@ public:
  
    @param training_strucs A list of Structure objects
    */
-  void compute_matrices(const std::vector<Structure> &training_strucs);
+  void compute_kernel_matrices(const std::vector<Structure> &training_strucs);
+
+  void set_hyperparameters(Eigen::VectorXd hyps);
+  void stack_Kuf();
+  void update_matrices_QR();
 
   Eigen::MatrixXd varmap_coeffs; // for debugging. TODO: remove this line 
 

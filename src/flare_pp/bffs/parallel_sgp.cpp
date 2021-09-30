@@ -478,12 +478,20 @@ void ParallelSGP::gather_sparse_descriptors(std::vector<std::vector<int>> n_clus
 /* -------------------------------------------------------------------------
  *                   Compute kernel matrices and alpha 
  * ------------------------------------------------------------------------- */
+void ParallelSGP ::stack_Kuf() {
+  // Update Kuf kernels.
+  int local_f_size = nmax_struc - nmin_struc;
+  Kuf_local = Eigen::MatrixXd::Zero(u_size, local_f_size);
 
-void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs) {
-  double duration = 0;
-  std::chrono::high_resolution_clock::time_point t1 = std::chrono::high_resolution_clock::now();
-  std::chrono::high_resolution_clock::time_point t1_inner, t2_inner;
+  int count = 0;
+  for (int i = 0; i < Kuf_kernels.size(); i++) {
+    int size = Kuf_kernels[i].rows();
+    Kuf_local.block(count, 0, size, local_f_size) = Kuf_kernels[i];
+    count += size;
+  }
+}
 
+void ParallelSGP::compute_kernel_matrices(const std::vector<Structure> &training_strucs) {
   timer.tic();
 
   // Build block of A, y, Kuu using distributed training structures
@@ -551,7 +559,9 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
     cum_f += f_size_i;
     cum_f_struc += training_strucs[t].n_labels();
   }
+}
 
+void ParallelSGP::update_matrices_QR() {
   // Store square root of noise vector.
   Eigen::VectorXd noise_vector_sqrt = sqrt(local_noise_vector.array());
   Eigen::VectorXd global_noise_vector_sqrt = sqrt(global_noise_vector.array());
@@ -691,6 +701,49 @@ void ParallelSGP::compute_matrices(const std::vector<Structure> &training_strucs
   alpha = R_inv * Q_b;
 
   timer.toc("get alpha", blacs::mpirank);
+}
+
+void ParallelSGP ::set_hyperparameters(Eigen::VectorXd hyps) {
+  timer.tic();
+
+  // Reset Kuu and Kuf matrices.
+  int n_hyps, hyp_index = 0;
+  Eigen::VectorXd new_hyps;
+
+  std::vector<Eigen::MatrixXd> Kuu_grad, Kuf_grad;
+  for (int i = 0; i < n_kernels; i++) {
+    n_hyps = kernels[i]->kernel_hyperparameters.size();
+    new_hyps = hyps.segment(hyp_index, n_hyps);
+
+    Kuu_grad = kernels[i]->Kuu_grad(sparse_descriptors[i], Kuu_kernels[i], new_hyps);
+    Kuf_grad = kernels[i]->Kuf_grad(sparse_descriptors[i], training_structures,
+                                    i, Kuf_kernels[i], new_hyps);
+
+    Kuu_kernels[i] = Kuu_grad[0];
+    Kuf_kernels[i] = Kuf_grad[0];
+
+    kernels[i]->set_hyperparameters(new_hyps);
+    hyp_index += n_hyps;
+  }
+
+  timer.toc("set_hyp: update Kuf Kuu");
+
+  timer.tic();
+  hyperparameters = hyps;
+  energy_noise = hyps(hyp_index);
+  force_noise = hyps(hyp_index + 1);
+  stress_noise = hyps(hyp_index + 2);
+
+  noise_vector = 1 / (energy_noise * energy_noise) * e_noise_one 
+               + 1 / (force_noise * force_noise) * f_noise_one 
+               + 1 / (stress_noise * stress_noise) * s_noise_one; 
+
+  timer.toc("set_hyp: update noise");
+
+  // Update remaining matrices.
+  timer.tic();
+  update_matrices_QR();
+  timer.toc("set_hyp: update_matrices_QR");
 }
 
 /* -------------------------------------------------------------------------
