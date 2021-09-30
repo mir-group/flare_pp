@@ -7,6 +7,7 @@
 #include <chrono>
 #include <numeric> // Iota
 #include <blacs.h>
+#include "../build/External/CppNumericalSolvers/include/cppoptlib/solver/bfgssolver.h"
 
 
 TEST_F(StructureTest, BuildPMatrix){
@@ -342,4 +343,13 @@ TEST_F(StructureTest, ParLikeGrad){
       EXPECT_NEAR(like_grad_serial(i), like_grad_parallel(i), 1e-6);
     }
   }
+}
+
+TEST_F(StructureTest, ParLikeOpt){
+  Parallel_Likelihood f;
+  BfgsSolver<Parallel_Likelihood> solver;
+  Eigen::VectorXd x(2); x << -1, 2;
+  solver.minimize(f, x);
+  std::cout << "argmin      " << x.transpose() << std::endl;
+  std::cout << "f in argmin " << f(x) << std::endl;
 }

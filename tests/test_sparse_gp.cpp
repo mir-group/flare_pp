@@ -3,6 +3,8 @@
 #include <thread>
 #include <chrono>
 #include <numeric> // Iota
+//#include "../build/External/CppNumericalSolvers/include/cppoptlib/solver/bfgssolver.h"
+//#include <cppoptlib/solver/bfgssolver.h>
 
 // TEST(TestPar, TestPar){
 //   std::cout << omp_get_max_threads() << std::endl;

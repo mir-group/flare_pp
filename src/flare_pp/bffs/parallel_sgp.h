@@ -9,6 +9,9 @@
 #include <nlohmann/json.hpp>
 #include "json.h"
 #include "utils.h"
+#include "../../../build/External/CppNumericalSolvers/include/cppoptlib/problem.h"
+#include "../../../build/External/CppNumericalSolvers/include/cppoptlib/meta.h"
+#include "../../../build/External/CppNumericalSolvers/include/cppoptlib/solver/bfgssolver.h"
 
 class ParallelSGP : public SparseGP {
 public:
@@ -116,6 +119,32 @@ public:
   Eigen::VectorXd compute_like_grad_of_kernel_hyps();
   Eigen::VectorXd compute_like_grad_of_noise();
 
+};
+
+using namespace cppoptlib;
+using Eigen::VectorXd;
+
+class Parallel_Likelihood : public Problem<double> {
+public:
+    using typename cppoptlib::Problem<double>::Scalar;
+    using typename cppoptlib::Problem<double>::TVector;
+
+    Parallel_Likelihood();
+    Parallel_Likelihood(ParallelSGP gp);
+
+    double value(const TVector &hyps) {
+      if (hyps != gp.hyps) {
+        gp.set_hyperparameters(hyps);
+        gp.compute_matrices();
+      
+        const double t1 = (1 - x[0]);
+        const double t2 = (x[1] - x[0] * x[0]);
+        return   t1 * t1 + 100 * t2 * t2;
+    }
+    void gradient(const TVector &x, TVector &grad) {
+        grad[0]  = -2 * (1 - x[0]) + 200 * (x[1] - x[0] * x[0]) * (-2 * x[0]);
+        grad[1]  = 200 * (x[1] - x[0] * x[0]);
+    }
 };
 
 #endif

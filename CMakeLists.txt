@@ -115,19 +115,55 @@ endif()
 # Greatly reduces the code bloat
 target_compile_options(pybind11 INTERFACE "-fvisibility=hidden")
 
-# dist matrix
+
+### OptimLib
+##################################################################################
+#
+#ExternalProject_Add(
+#    optimlib_project 
+#    SOURCE_DIR "${CMAKE_BINARY_DIR}/External/OptimLib"
+#    GIT_REPOSITORY "https://github.com/kthohr/optim.git"
+#    URL_HASH "" 
+#    #    CONFIGURE_COMMAND ${CMAKE_COMMAND} -E env EIGEN_INCLUDE_PATH=${CMAKE_BINARY_DIR}/External/Eigen3 ${CMAKE_BINARY_DIR}/External/OptimLib/configure -l eigen -p
+#    CONFIGURE_COMMAND ${CMAKE_BINARY_DIR}/External/OptimLib/configure --header-only-version
+#    BUILD_COMMAND make
+#    INSTALL_COMMAND make install
+#)
+##ExternalProject_Get_Property(optimlib_project SOURCE_DIR)
+##add_library(OptimLib INTERFACE)
+##target_include_directories(OptimLib SYSTEM INTERFACE ${SOURCE_DIR})
+##include_directories(${SOURCE_DIR})
+
+# CppOptimizationLibrary
+###############################################################################
+
+FetchContent_Declare(cppoptlib
+    GIT_REPOSITORY https://github.com/PatWie/CppNumericalSolvers
+    SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/External/CppNumericalSolvers
+    GIT_TAG 1.0.0
+)
+FetchContent_MakeAvailable(cppoptlib)
+
+#FetchContent_GetProperties(optlib)
+#FetchContent_Populate(optlib)
+#add_subdirectory(${optlib_SOURCE_DIR} ${optlib_BINARY_DIR})
+#include_directories(${optlib_SOURCE_DIR})
+
+add_library(cppoptlib INTERFACE)
+target_include_directories(cppoptlib SYSTEM INTERFACE ${SOURCE_DIR}/include)
+
+# Distmatrix
+###############################################################################
 FetchContent_Declare(
     distmatrix
     GIT_REPOSITORY https://github.com/mir-group/distmatrix.git
 )
 FetchContent_MakeAvailable(distmatrix)
 
-link_directories(
-    ${CMAKE_CURRENT_BINARY_DIR}/distmatrix_build
-)
-include_directories(
-    ${CMAKE_CURRENT_BINARY_DIR}/distmatrix_src/include
-)
+link_directories(${distmatrix_BINARY_DIR})
+link_directories(${distmatrix_BINARY_DIR}/scalapack_build/lib)
+
+include_directories(${distmatrix_SOURCE_DIR}/include)
 
 
 #target_link_libraries(flare PUBLIC distmatrix)
@@ -178,6 +214,7 @@ add_library(flare STATIC ${FLARE_SOURCES})
 set_target_properties(flare PROPERTIES POSITION_INDEPENDENT_CODE ON)
 add_dependencies(flare eigen_project)
 add_dependencies(flare distmatrix)
+add_dependencies(flare cppoptlib)
 
 # Link to MPI
 find_package(MPI REQUIRED)
@@ -188,6 +225,9 @@ target_link_libraries(flare PUBLIC distmatrix -lgfortran)
 
 # Link to json.
 target_link_libraries(flare PUBLIC nlohmann_json::nlohmann_json)
+
+# Link to CppOptimizationLibrary.
+target_link_libraries(flare PUBLIC cppoptlib)
 
 # Link to OpenMP.
 if (DEFINED ENV{OMP_LOC})
@@ -208,6 +248,8 @@ if (DEFINED ENV{MKL_INCLUDE} AND DEFINED ENV{MKL_LIBS})
   include_directories($ENV{MKL_INCLUDE})
   target_link_libraries(flare PUBLIC $ENV{MKL_LIBS})
   target_compile_definitions(flare PUBLIC EIGEN_USE_MKL_ALL=1)
+  target_include_directories(flare PUBLIC $ENV{MKL_MPI})
+  message(MKL_MPI=$ENV{MKL_MPI})
 # Give the option to do a "bare-bones" build without Lapack/Lapacke.
 elseif(DEFINED ENV{NO_LAPACK})
   message(STATUS "Building without Lapack.")
