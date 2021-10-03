@@ -304,6 +304,7 @@ void ParallelSGP::load_local_training_data(const std::vector<Structure> &trainin
   global_n_labels = 0;
 
   // Compute the total number of clusters of each type of each kernel
+  std::cout << "find n_clusters_by_type" << std::endl;
   std::vector<std::vector<int>> n_clusters_by_type;
   for (int i = 0; i < n_kernels; i++) {
     std::vector<int> n_clusters_kern;
@@ -314,6 +315,7 @@ void ParallelSGP::load_local_training_data(const std::vector<Structure> &trainin
     n_struc_clusters_by_type.push_back({});
   }
 
+  std::cout << "add_global_noise" << std::endl;
   for (int t = 0; t < training_strucs.size(); t++) {
 
     int label_size = training_strucs[t].n_labels();
@@ -326,6 +328,7 @@ void ParallelSGP::load_local_training_data(const std::vector<Structure> &trainin
     add_global_noise(n_energy, n_forces, n_stress); // for b
 
     // Compute the total number of clusters of each type
+    std::cout << "sparse_indices_by_type" << std::endl;
     for (int i = 0; i < n_kernels; i++) {
       Eigen::VectorXi n_envs_by_type = sparse_indices_by_type(n_types,
               training_strucs[t].species, training_sparse_indices[i][t]);
@@ -334,6 +337,7 @@ void ParallelSGP::load_local_training_data(const std::vector<Structure> &trainin
     }
 
     // Collect local training structures for A, Kuf
+    std::cout << "add_training_structure" << std::endl;
     if (nmin_struc < cum_f + label_size && cum_f < nmax_struc) {
       std::cout << "Rank: " << blacs::mpirank << ", training struc " << t << std::endl;
       struc = Structure(training_strucs[t].cell, training_strucs[t].species, 
@@ -356,6 +360,7 @@ void ParallelSGP::load_local_training_data(const std::vector<Structure> &trainin
 
       if (nmin_struc <= cum_f && cum_f < nmax_struc) {
         // avoid multiple procs add the same sparse envs
+        std::cout << "add_specific_environments" << std::endl;
         add_specific_environments(struc, training_sparse_indices[0][t]);
       }
     }
@@ -390,6 +395,8 @@ void ParallelSGP::gather_sparse_descriptors(std::vector<std::vector<int>> n_clus
     std::vector<Eigen::VectorXd> descriptor_norms, cutoff_values;
     std::cout << "begin distmat" << std::endl;
     for (int s = 0; s < n_types; s++) {
+      std::cout << "building dist_descriptors" << std::endl;
+      std::cout << "n_clusters_by_type[i][s]=" << n_clusters_by_type[i][s] << ", n_descriptors=" << n_descriptors << std::endl;
       DistMatrix<double> dist_descriptors(n_clusters_by_type[i][s], n_descriptors);
       DistMatrix<double> dist_descriptor_norms(n_clusters_by_type[i][s], 1);
       DistMatrix<double> dist_cutoff_values(n_clusters_by_type[i][s], 1);
@@ -458,7 +465,7 @@ void ParallelSGP::gather_sparse_descriptors(std::vector<std::vector<int>> n_clus
       descriptors.push_back(type_descriptors);
       descriptor_norms.push_back(type_descriptor_norms);
       cutoff_values.push_back(type_cutoff_values);
-      std::cout << "added to local descriptor" << std::endl;
+      std::cout << "Rank: " << blacs::mpirank << ", added to local descriptor" << std::endl;
 
     }
 
@@ -489,8 +496,8 @@ void ParallelSGP::gather_sparse_descriptors(std::vector<std::vector<int>> n_clus
 void ParallelSGP ::stack_Kuf() {
   // Update Kuf kernels.
   int local_f_size = nmax_struc - nmin_struc;
-  Kuf_local = Eigen::MatrixXd::Zero(u_size, local_f_size);
   std::cout << "u_size=" << u_size << ", local_f_size=" << local_f_size << std::endl;
+  Kuf_local = Eigen::MatrixXd::Zero(u_size, local_f_size);
 
   int count = 0;
   for (int i = 0; i < Kuf_kernels.size(); i++) {
@@ -1021,6 +1028,8 @@ Eigen::VectorXd ParallelSGP ::compute_like_grad_of_noise() {
     likelihood_grad(1) += complexity_grad(1) + datafit_grad(1);
     likelihood_grad(2) += complexity_grad(2) + datafit_grad(2);
   }
+  MPI_Bcast(&log_marginal_likelihood, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD); 
+  MPI_Bcast(likelihood_grad.data(), likelihood_grad.size(), MPI_DOUBLE, 0, MPI_COMM_WORLD); 
   return likelihood_grad;
 }
 
