@@ -526,8 +526,11 @@ def compute_negative_likelihood_grad_stable(
 
     assert len(hyperparameters) == len(sparse_gp.hyperparameters)
 
+    print("******************* set_hyps ***********************")
+    print(hyperparameters)
     sparse_gp.set_hyperparameters(hyperparameters)
 
+    print("******************* sparse_gp.compute_likelihood_gradient_stable ***********************")
     negative_likelihood = -sparse_gp.compute_likelihood_gradient_stable(precomputed)
     negative_likelihood_gradient = -sparse_gp.likelihood_gradient
 

@@ -490,10 +490,12 @@ void ParallelSGP ::stack_Kuf() {
   // Update Kuf kernels.
   int local_f_size = nmax_struc - nmin_struc;
   Kuf_local = Eigen::MatrixXd::Zero(u_size, local_f_size);
+  std::cout << "u_size=" << u_size << ", local_f_size=" << local_f_size << std::endl;
 
   int count = 0;
   for (int i = 0; i < Kuf_kernels.size(); i++) {
     int size = Kuf_kernels[i].rows();
+    std::cout << "Kuf_kernels[i] size=" << Kuf_kernels[i].cols() << std::endl;
     Kuf_local.block(count, 0, size, local_f_size) = Kuf_kernels[i];
     count += size;
   }
@@ -715,23 +717,29 @@ void ParallelSGP::update_matrices_QR() {
 }
 
 void ParallelSGP ::set_hyperparameters(Eigen::VectorXd hyps) {
+    std::cout << "timer " << std::endl;
   timer.tic();
 
   // Reset Kuu and Kuf matrices.
   int n_hyps, hyp_index = 0;
   Eigen::VectorXd new_hyps;
 
+  std::cout << "entering for loop" << std::endl;
   std::vector<Eigen::MatrixXd> Kuu_grad, Kuf_grad;
   for (int i = 0; i < n_kernels; i++) {
+    std::cout << "get kernel_hyps" << std::endl;
     n_hyps = kernels[i]->kernel_hyperparameters.size();
     new_hyps = hyps.segment(hyp_index, n_hyps);
 
+    std::cout << "kernel Kuu_grad" << std::endl;
     Kuu_grad = kernels[i]->Kuu_grad(sparse_descriptors[i], Kuu_kernels[i], new_hyps);
+    std::cout << "kernel Kuf_grad" << std::endl;
     Kuf_grad = kernels[i]->Kuf_grad(sparse_descriptors[i], training_structures,
                                     i, Kuf_kernels[i], new_hyps);
 
     Kuu_kernels[i] = Kuu_grad[0];
     Kuf_kernels[i] = Kuf_grad[0];
+    std::cout << "kernel set_hyps" << std::endl;
 
     kernels[i]->set_hyperparameters(new_hyps);
     hyp_index += n_hyps;
@@ -851,7 +859,7 @@ void ParallelSGP ::compute_likelihood_stable() {
   }
 }
 
-/* -------------------------------------------------------------------------
+/* -----------------------------------------------------------------------
  *              Compute likelihood gradient of hyperparameters
  * ------------------------------------------------------------------------- */
 
@@ -1055,4 +1063,8 @@ void ParallelSGP ::compute_KnK() {
 
   KnK_s = Eigen::MatrixXd::Zero(u_size, u_size);
   KnK_s_dist.gather(&KnK_s(0,0));
+}
+
+
+void ParallelSGP ::precompute_KnK() {
 }

@@ -117,6 +117,7 @@ public:
   Eigen::VectorXd y_K_alpha;
   void compute_likelihood_stable();
   void compute_KnK();
+  void precompute_KnK();
   Eigen::VectorXd compute_like_grad_of_kernel_hyps();
   Eigen::VectorXd compute_like_grad_of_noise();
 

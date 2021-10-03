@@ -109,3 +109,4 @@ class ParSGP_Wrapper(SGP_Wrapper):
             training_sparse_indices,
             n_types,
         )
+
