@@ -436,7 +436,7 @@ void SparseGP ::update_Kuf(
 
         if (training_structures[j].forces.size() != 0) {
           std::vector<int> atom_indices = training_atom_indices[j];
-          for (int a = 0; a < atom_indices.size(); a++) {
+          for (int a = 0; a < atom_indices.size(); a++) {  // Allow adding a subset of force labels
             kern_mat.block(u_ind, label_count(j) + current_count, n3, 3) =
                 Kuf_kernels[i].block(n1, label_count(j) + current_count, n3, 3);
             kern_mat.block(u_ind + n3, label_count(j) + current_count, n4, 3) =
@@ -462,6 +462,7 @@ void SparseGP ::update_Kuf(
 
 void SparseGP ::add_training_structure(const Structure &structure,
                                        const std::vector<int> atom_indices) {
+  // Allow adding a subset of force labels
   initialize_sparse_descriptors(structure);
 
   int n_atoms = structure.noa;
@@ -508,7 +509,7 @@ void SparseGP ::add_training_structure(const Structure &structure,
   label_count(training_structures.size() + 1) = n_labels + n_struc_labels;
   y.conservativeResize(n_labels + n_struc_labels);
   y.segment(n_labels, n_energy) = structure.energy;
-  y.segment(n_labels + n_energy + n_force, n_stress) = structure.stresses;
+  y.segment(n_labels + n_energy + n_force, n_stress) = structure.stresses; // Allow adding a subset of force labels
   for (int a = 0; a < atoms.size(); a++) {
     y.segment(n_labels + n_energy + a * 3, 3) = structure.forces.segment(atoms[a] * 3, 3);
   }
@@ -813,7 +814,7 @@ SparseGP ::compute_likelihood_gradient(const Eigen::VectorXd &hyperparameters) {
     }
 
     if (training_structures[i].forces.size() != 0) {
-      for (int a = 0; a < training_atom_indices[i].size(); a++) {
+      for (int a = 0; a < training_atom_indices[i].size(); a++) { // Allow adding a subset of force labels
         noise_vec.segment(current_count, 3) =
             Eigen::VectorXd::Constant(3, sigma_f * sigma_f);
         f_noise_grad.segment(current_count, 3) =
@@ -926,7 +927,7 @@ void SparseGP ::set_hyperparameters(Eigen::VectorXd hyps) {
       current_count += 1;
     }
 
-    if (training_structures[i].forces.size() != 0) {
+    if (training_structures[i].forces.size() != 0) { // Allow adding a subset of force labels
       for (int a = 0; a < training_atom_indices[i].size(); a++) {
         noise_vector.segment(current_count, 3) =
             Eigen::VectorXd::Constant(3, 1 / (force_noise * force_noise));
@@ -966,6 +967,7 @@ void SparseGP::write_mapping_coefficients(std::string file_name,
   // Write the number of kernels/descriptors to map
   coeff_file << kernel_indices.size();
 
+  // Write coefficients from different kernels serially
   for (int k = 0; k < kernel_indices.size(); k++) {
     int kernel_index = kernel_indices[k];
 
