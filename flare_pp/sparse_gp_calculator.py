@@ -89,7 +89,7 @@ class SGP_Calculator(Calculator):
         elif self.gp_model.variance_type == "local":
             n_kern = len(structure_descriptor.local_uncertainties)
             stds_full = np.zeros((len(atoms), 3))
-            assert n_kern <= 3, NotImplementedError # now only print out 3 components
+            assert n_kern <= 3, NotImplementedError  # now only print out 3 components
 
             for k in range(n_kern):
                 variances = structure_descriptor.local_uncertainties[k]
