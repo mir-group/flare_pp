@@ -22,7 +22,7 @@ B3 ::B3(const std::string &radial_basis, const std::string &cutoff_function,
   this->cutoff_hyps = cutoff_hyps;
   this->descriptor_settings = descriptor_settings;
 
-  wigner3j_coeffs = compute_coeffs(3, descriptor_settings[2]);
+  wigner3j_coeffs = compute_coeffs(3, descriptor_settings[2]); // 3 represents B3
 
   set_radial_basis(radial_basis, this->radial_pointer);
   set_cutoff(cutoff_function, this->cutoff_pointer);

@@ -437,7 +437,7 @@ void SparseGP ::update_Kuf(
 
         if (training_structures[j].forces.size() != 0) {
           std::vector<int> atom_indices = training_atom_indices[j];
-          for (int a = 0; a < atom_indices.size(); a++) {
+          for (int a = 0; a < atom_indices.size(); a++) {  // Allow adding a subset of force labels
             kern_mat.block(u_ind, label_count(j) + current_count, n3, 3) =
                 Kuf_kernels[i].block(n1, label_count(j) + current_count, n3, 3);
             kern_mat.block(u_ind + n3, label_count(j) + current_count, n4, 3) =
@@ -463,6 +463,7 @@ void SparseGP ::update_Kuf(
 
 void SparseGP ::add_training_structure(const Structure &structure,
                                        const std::vector<int> atom_indices) {
+  // Allow adding a subset of force labels
   initialize_sparse_descriptors(structure);
 
   int n_atoms = structure.noa;
@@ -736,6 +737,7 @@ double SparseGP ::compute_likelihood_gradient_stable(bool precomputed_KnK) {
   std::chrono::high_resolution_clock::time_point t1, t2;
   t1 = std::chrono::high_resolution_clock::now();
 
+  // Compute training data fitting loss
   Eigen::VectorXd K_alpha = Kuf.transpose() * alpha;
   Eigen::VectorXd y_K_alpha = y - K_alpha;
   data_fit =
@@ -816,7 +818,7 @@ double SparseGP ::compute_likelihood_gradient_stable(bool precomputed_KnK) {
       std::cout << "Time: Kuu_grad Kuf_grad " << duration << std::endl;
       t1 = std::chrono::high_resolution_clock::now();
 
-      // Compute Pi matrix and save as an intermediate variable
+      // Compute Pi matrix and save as an intermediate variable for derivative of complexity
       Eigen::MatrixXd dK_noise_K;
       if (precomputed_KnK) {
         dK_noise_K = compute_dKnK(i);
@@ -900,6 +902,9 @@ double SparseGP ::compute_likelihood_gradient_stable(bool precomputed_KnK) {
 }
 
 void SparseGP ::precompute_KnK() {
+  // For NormalizedDotProduct kernel, since the signal variance is just a prefactor, we can
+  // save some intermediate matrices without the prefactor. Here we save
+  // Kuf * energy_noise_vector_one * Kfu / sig^4
   Kuf_e_noise_Kfu = {};
   Kuf_f_noise_Kfu = {};
   Kuf_s_noise_Kfu = {};
@@ -921,6 +926,7 @@ void SparseGP ::precompute_KnK() {
 }
 
 void SparseGP ::compute_KnK(bool precomputed) {
+  // Compute Kuf * noise_vector * Kfu sperately for energy, force and stress noises
   if (precomputed) {
     KnK_e = Eigen::MatrixXd::Zero(n_sparse, n_sparse); 
     KnK_f = Eigen::MatrixXd::Zero(n_sparse, n_sparse); 
@@ -956,6 +962,7 @@ void SparseGP ::compute_KnK(bool precomputed) {
 }
 
 Eigen::MatrixXd SparseGP ::compute_dKnK(int i) {
+  // Compute Kuf_gra * noise_vector * Kfu sperately for energy, force and stress noises
   Eigen::MatrixXd dKnK = Eigen::MatrixXd::Zero(n_sparse, n_sparse);
 
   int count_ij = i * n_kernels;
@@ -1072,7 +1079,9 @@ SparseGP ::compute_likelihood_gradient(const Eigen::VectorXd &hyperparameters) {
   double sigma_f = hyperparameters(hyp_index + 1);
   double sigma_s = hyperparameters(hyp_index + 2);
 
-  Eigen::VectorXd noise_vec = sigma_e * sigma_e * e_noise_one + sigma_f * sigma_f * f_noise_one + sigma_s * sigma_s * s_noise_one; 
+  Eigen::VectorXd noise_vec = sigma_e * sigma_e * e_noise_one 
+                            + sigma_f * sigma_f * f_noise_one 
+                            + sigma_s * sigma_s * s_noise_one; 
   Eigen::VectorXd e_noise_grad = 2 * sigma_e * e_noise_one;
   Eigen::VectorXd f_noise_grad = 2 * sigma_f * f_noise_one;
   Eigen::VectorXd s_noise_grad = 2 * sigma_s * s_noise_one;
@@ -1219,6 +1228,7 @@ void SparseGP::write_mapping_coefficients(std::string file_name,
   // Write the number of kernels/descriptors to map
   coeff_file << kernel_indices.size();
 
+  // Write coefficients from different kernels serially
   for (int k = 0; k < kernel_indices.size(); k++) {
     int kernel_index = kernel_indices[k];
 
