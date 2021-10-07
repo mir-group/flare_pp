@@ -112,12 +112,28 @@ void PairFLARE::compute(int eflag, int vflag) {
       }
 
       double norm_squared;
-      Eigen::VectorXcd single_bond_vals, u;
       Eigen::VectorXd vals, env_dot, partial_forces, beta_p;
-      Eigen::MatrixXcd single_bond_env_dervs;
       Eigen::MatrixXd env_dervs;
+      Eigen::VectorXd single_bond_vals_2, u2;
+      Eigen::MatrixXd single_bond_env_dervs_2;
+      Eigen::VectorXcd single_bond_vals, u;
+      Eigen::MatrixXcd single_bond_env_dervs;
 
-      if (K[kern] == 2) {
+      if (K[kern] == 2) { // Compute with the real basis functions for B2
+        single_bond_multiple_cutoffs(x, type, jnum, n_inner, i, xtmp, ytmp, ztmp,
+                                     jlist, basis_function[kern], cutoff_function[kern],
+                                     n_species, n_max[kern], l_max[kern], radial_hyps[kern],
+                                     cutoff_hyps[kern], single_bond_vals_2,
+                                     single_bond_env_dervs_2, cutoff_matrix);
+    
+        // Compute invariant descriptors.
+        B2_descriptor(vals, env_dervs, norm_squared, env_dot,
+                      single_bond_vals_2, single_bond_env_dervs_2, n_species, n_max[kern],
+                      l_max[kern], beta_matrices[kern][itype - 1], u2, &evdwl);
+    
+        // Continue if the environment is empty.
+        if (norm_squared < empty_thresh)
+          continue;
       } else {
         // Compute covariant descriptors.
         // TODO: this function call is duplicated for multiple kernels
@@ -158,14 +174,22 @@ void PairFLARE::compute(int eflag, int vflag) {
         rsq = delx * delx + dely * dely + delz * delz;
   
         if (rsq < (cutoff_val * cutoff_val)) {
-          double fx = -partial_forces(n_count * 3);
-          double fy = -partial_forces(n_count * 3 + 1);
-          double fz = -partial_forces(n_count * 3 + 2);
+          double fx, fy, fz;
+          if (K[kern] == 2) {
+            // Compute partial force f_ij = u * dA/dr_ij
+            fx = single_bond_env_dervs_2.row(n_count * 3).dot(u2);
+            fy = single_bond_env_dervs_2.row(n_count * 3 + 1).dot(u2);
+            fz = single_bond_env_dervs_2.row(n_count * 3 + 2).dot(u2);
+          } else {
+            fx = -partial_forces(n_count * 3);
+            fy = -partial_forces(n_count * 3 + 1);
+            fz = -partial_forces(n_count * 3 + 2);
 
 //          // Compute partial force f_ij = u * dA/dr_ij
 //          double fx = real(single_bond_env_dervs.row(n_count * 3 + 0).dot(u));
 //          double fy = real(single_bond_env_dervs.row(n_count * 3 + 1).dot(u));
 //          double fz = real(single_bond_env_dervs.row(n_count * 3 + 2).dot(u));
+          }
 
           f[i][0] += fx;
           f[i][1] += fy;
