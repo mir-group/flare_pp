@@ -106,7 +106,7 @@ def test_update_db():
     sgp_py.update_db(
         train_structure,
         forces,
-        custom_range=[3],
+        custom_range=[3] * len(kernel_list),
         energy=energy,
         stress=stress,
         mode="uncertain",
@@ -182,6 +182,7 @@ def test_coeff():
 def test_lammps():
     # create ASE calc
     lmp_command = os.environ.get("lmp")
+    print(lmp_command)
     specorder = ["H", "He"]
     pot_file = "lmp.flare"
     params = {
