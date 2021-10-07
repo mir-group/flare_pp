@@ -154,7 +154,7 @@ void compute_b2_norm(
   for (int i = 0; i < n_atoms; i++){
     double norm_val = B2_norms_1(i);
     double norm_val_3 = norm_val * norm_val * norm_val;
-    B2_vals.row(i) = B2_vals_1.row(i) / norm_val;
+    B2_vals.row(i) = B2_vals_1.row(i) / norm_val; // TODO: norm_val can be 0
     B2_norms(i) = 1;
     int n_atom_neighbors = unique_neighbor_count(i);
     int force_start = cumulative_neighbor_count(i) * 3;

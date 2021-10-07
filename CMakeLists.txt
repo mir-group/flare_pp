@@ -122,11 +122,14 @@ set(FLARE_SOURCES
     src/flare_pp/bffs/sparse_gp.cpp
     src/flare_pp/bffs/gp.cpp
     src/flare_pp/descriptors/descriptor.cpp
+    src/flare_pp/descriptors/b1.cpp
     src/flare_pp/descriptors/b2.cpp
     src/flare_pp/descriptors/b2_norm.cpp
     src/flare_pp/descriptors/b2_simple.cpp
     src/flare_pp/descriptors/b3.cpp
-    src/flare_pp/descriptors/wigner3j.cpp
+    src/flare_pp/descriptors/bk.cpp
+    src/flare_pp/descriptors/indices.cpp
+    src/flare_pp/descriptors/coeffs.cpp
     src/flare_pp/descriptors/two_body.cpp
     src/flare_pp/descriptors/three_body.cpp
     src/flare_pp/descriptors/three_body_wide.cpp

@@ -5,7 +5,7 @@
 #include "b2.h"
 #include "b2_simple.h"
 #include "b2_norm.h"
-#include "b3.h"
+#include "bk.h"
 #include "two_body.h"
 #include "three_body.h"
 #include "three_body_wide.h"
@@ -102,21 +102,6 @@ PYBIND11_MODULE(_C_flare, m) {
       .def(py::init<double, int, const std::string &,
                     const std::vector<double> &>());
 
-  py::class_<B2, Descriptor>(m, "B2")
-      .def(py::init<const std::string &, const std::string &,
-                    const std::vector<double> &, const std::vector<double> &,
-                    const std::vector<int> &>())
-      .def(py::init<const std::string &, const std::string &,
-                    const std::vector<double> &, const std::vector<double> &,
-                    const std::vector<int> &,
-                    const Eigen::MatrixXd &>())
-      .def_readonly("radial_basis", &B2::radial_basis)
-      .def_readonly("cutoff_function", &B2::cutoff_function)
-      .def_readonly("radial_hyps", &B2::radial_hyps)
-      .def_readonly("cutoff_hyps", &B2::cutoff_hyps)
-      .def_readonly("cutoffs", &B2::cutoffs)
-      .def_readonly("descriptor_settings", &B2::descriptor_settings);
-
   py::class_<B2_Simple, Descriptor>(m, "B2_Simple")
       .def(py::init<const std::string &, const std::string &,
                     const std::vector<double> &, const std::vector<double> &,
@@ -127,10 +112,20 @@ PYBIND11_MODULE(_C_flare, m) {
                     const std::vector<double> &, const std::vector<double> &,
                     const std::vector<int> &>());
 
-  py::class_<B3, Descriptor>(m, "B3")
+  py::class_<Bk, Descriptor>(m, "Bk")
       .def(py::init<const std::string &, const std::string &,
                     const std::vector<double> &, const std::vector<double> &,
-                    const std::vector<int> &>());
+                    const std::vector<int> &>())
+      .def(py::init<const std::string &, const std::string &,
+                    const std::vector<double> &, const std::vector<double> &,
+                    const std::vector<int> &,
+                    const Eigen::MatrixXd &>())
+      .def_readonly("radial_basis", &Bk::radial_basis)
+      .def_readonly("cutoff_function", &Bk::cutoff_function)
+      .def_readonly("radial_hyps", &Bk::radial_hyps)
+      .def_readonly("cutoff_hyps", &Bk::cutoff_hyps)
+      .def_readonly("cutoffs", &Bk::cutoffs)
+      .def_readonly("descriptor_settings", &Bk::descriptor_settings);
 
   // Kernel functions
   py::class_<Kernel>(m, "Kernel");
@@ -173,9 +168,7 @@ PYBIND11_MODULE(_C_flare, m) {
       .def("compute_likelihood_gradient",
            &SparseGP::compute_likelihood_gradient)
       .def("write_mapping_coefficients", &SparseGP::write_mapping_coefficients)
-      .def_readonly("varmap_coeffs", &SparseGP::varmap_coeffs) // for debugging and unit test
       .def("compute_cluster_uncertainties", &SparseGP::compute_cluster_uncertainties) // for debugging and unit test
-      .def("write_varmap_coefficients", &SparseGP::write_varmap_coefficients)
       .def_readwrite("Kuu_jitter", &SparseGP::Kuu_jitter)
       .def_readonly("complexity_penalty", &SparseGP::complexity_penalty)
       .def_readonly("data_fit", &SparseGP::data_fit)

@@ -1,8 +1,33 @@
-#include "wigner3j.h"
+#include "coeffs.h"
 #include <iostream>
 
-// See compute_wigner.py for the calculation of these coefficients.
-Eigen::VectorXd compute_coeffs(int lmax) {
+Eigen::VectorXd compute_coeffs(int K, int lmax) {
+  if (K == 1) { 
+    return coeffs_K1(lmax);
+  } else if (K == 2) { 
+    return coeffs_K2(lmax);
+  } else if (K == 3) {
+    return coeffs_K3(lmax);
+  } else {
+    std::cout << "Not implemented." << std::endl;
+  }
+
+}
+
+Eigen::VectorXd coeffs_K1(int lmax){ 
+  Eigen::VectorXd k1_coef = Eigen::VectorXd::Ones(1);
+  return k1_coef;
+}
+
+Eigen::VectorXd coeffs_K2(int lmax){ 
+  Eigen::VectorXd k2_coef = Eigen::VectorXd::Zero(2);
+  k2_coef(0) = 1; // TODO: need to check this
+  k2_coef(1) = -1;
+  return k2_coef;
+}
+
+Eigen::VectorXd coeffs_K3(int lmax) {
+  // See compute_wigner.py for the calculation of these coefficients.
   Eigen::VectorXd wigner3j_coeffs = Eigen::VectorXd::Zero(pow((lmax + 1), 6));
   if (lmax == 0) {
     wigner3j_coeffs(0) = 1;

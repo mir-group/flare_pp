@@ -1,7 +1,7 @@
 #include "b2.h"
 #include "b2_norm.h"
 #include "b2_simple.h"
-#include "b3.h"
+#include "bk.h"
 #include "structure.h"
 #include "four_body.h"
 #include "normalized_dot_product.h"

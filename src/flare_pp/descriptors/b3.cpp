@@ -1,9 +1,10 @@
 #include "b3.h"
+#include "bk.h"
 #include "cutoffs.h"
 #include "descriptor.h"
 #include "radial.h"
 #include "structure.h"
-#include "wigner3j.h"
+#include "coeffs.h"
 #include "y_grad.h"
 #include <iostream>
 
@@ -20,7 +21,7 @@ B3 ::B3(const std::string &radial_basis, const std::string &cutoff_function,
   this->cutoff_hyps = cutoff_hyps;
   this->descriptor_settings = descriptor_settings;
 
-  wigner3j_coeffs = compute_coeffs(descriptor_settings[2]);
+  wigner3j_coeffs = compute_coeffs(3, descriptor_settings[2]); // 3 represents B3
 
   set_radial_basis(radial_basis, this->radial_pointer);
   set_cutoff(cutoff_function, this->cutoff_pointer);
@@ -40,11 +41,13 @@ DescriptorValues B3 ::compute_struc(Structure &structure) {
   int nos = descriptor_settings[0];
   int N = descriptor_settings[1];
   int lmax = descriptor_settings[2];
+  double cutoff = radial_hyps[1];
+  Eigen::MatrixXd cutoffs = Eigen::MatrixXd::Constant(nos, nos, cutoff);
 
   complex_single_bond(single_bond_vals, force_dervs, neighbor_coords,
                       unique_neighbor_count, cumulative_neighbor_count,
                       descriptor_indices, radial_pointer, cutoff_pointer, nos,
-                      N, lmax, radial_hyps, cutoff_hyps, structure);
+                      N, lmax, radial_hyps, cutoff_hyps, structure, cutoffs);
 
   // Compute descriptor values.
   Eigen::MatrixXd B3_vals, B3_force_dervs;
@@ -234,150 +237,6 @@ void compute_B3(Eigen::MatrixXd &B3_vals, Eigen::MatrixXd &B3_force_dervs,
     B3_force_dots.segment(force_start, n_atom_neighbors * 3) =
         B3_force_dervs.block(force_start, 0, n_atom_neighbors * 3, n_d) *
         B3_vals.row(atom).transpose();
-  }
-}
-
-void complex_single_bond(
-    Eigen::MatrixXcd &single_bond_vals, Eigen::MatrixXcd &force_dervs,
-    Eigen::MatrixXd &neighbor_coordinates, Eigen::VectorXi &neighbor_count,
-    Eigen::VectorXi &cumulative_neighbor_count,
-    Eigen::VectorXi &neighbor_indices,
-    std::function<void(std::vector<double> &, std::vector<double> &, double,
-                       int, std::vector<double>)>
-        radial_function,
-    std::function<void(std::vector<double> &, double, double,
-                       std::vector<double>)>
-        cutoff_function,
-    int nos, int N, int lmax, const std::vector<double> &radial_hyps,
-    const std::vector<double> &cutoff_hyps, const Structure &structure) {
-
-  int n_atoms = structure.noa;
-  int n_neighbors = structure.n_neighbors;
-
-  // TODO: Make rcut an attribute of the descriptor calculator.
-  double rcut = radial_hyps[1];
-
-  // Count atoms inside the descriptor cutoff.
-  neighbor_count = Eigen::VectorXi::Zero(n_atoms);
-  Eigen::VectorXi store_neighbors = Eigen::VectorXi::Zero(n_neighbors);
-#pragma omp parallel for
-  for (int i = 0; i < n_atoms; i++) {
-    int i_neighbors = structure.neighbor_count(i);
-    int rel_index = structure.cumulative_neighbor_count(i);
-    for (int j = 0; j < i_neighbors; j++) {
-      int current_count = neighbor_count(i);
-      int neigh_index = rel_index + j;
-      double r = structure.relative_positions(neigh_index, 0);
-      // Check that atom is within descriptor cutoff.
-      if (r <= rcut) {
-        int struc_index = structure.structure_indices(neigh_index);
-        // Update neighbor list.
-        store_neighbors(rel_index + current_count) = struc_index;
-        neighbor_count(i)++;
-      }
-    }
-  }
-
-  // Count cumulative number of unique neighbors.
-  cumulative_neighbor_count = Eigen::VectorXi::Zero(n_atoms + 1);
-  for (int i = 1; i < n_atoms + 1; i++) {
-    cumulative_neighbor_count(i) +=
-        cumulative_neighbor_count(i - 1) + neighbor_count(i - 1);
-  }
-
-  // Record neighbor indices.
-  int bond_neighbors = cumulative_neighbor_count(n_atoms);
-  neighbor_indices = Eigen::VectorXi::Zero(bond_neighbors);
-#pragma omp parallel for
-  for (int i = 0; i < n_atoms; i++) {
-    int i_neighbors = neighbor_count(i);
-    int ind1 = cumulative_neighbor_count(i);
-    int ind2 = structure.cumulative_neighbor_count(i);
-    for (int j = 0; j < i_neighbors; j++) {
-      neighbor_indices(ind1 + j) = store_neighbors(ind2 + j);
-    }
-  }
-
-  // Initialize single bond arrays.
-  int number_of_harmonics = (lmax + 1) * (lmax + 1);
-  int no_bond_vals = N * number_of_harmonics;
-  int single_bond_size = no_bond_vals * nos;
-
-  single_bond_vals = Eigen::MatrixXcd::Zero(n_atoms, single_bond_size);
-  force_dervs = Eigen::MatrixXcd::Zero(bond_neighbors * 3, single_bond_size);
-  neighbor_coordinates = Eigen::MatrixXd::Zero(bond_neighbors, 3);
-
-#pragma omp parallel for
-  for (int i = 0; i < n_atoms; i++) {
-    int i_neighbors = structure.neighbor_count(i);
-    int rel_index = structure.cumulative_neighbor_count(i);
-    int neighbor_index = cumulative_neighbor_count(i);
-
-    // Initialize radial and spherical harmonic vectors.
-    std::vector<double> g = std::vector<double>(N, 0);
-    std::vector<double> gx = std::vector<double>(N, 0);
-    std::vector<double> gy = std::vector<double>(N, 0);
-    std::vector<double> gz = std::vector<double>(N, 0);
-
-    Eigen::VectorXcd h, hx, hy, hz;
-
-    double x, y, z, r, g_val, gx_val, gy_val, gz_val;
-    std::complex<double> bond, bond_x, bond_y, bond_z, h_val;
-    int s, neigh_index, descriptor_counter, unique_ind;
-    for (int j = 0; j < i_neighbors; j++) {
-      neigh_index = rel_index + j;
-      r = structure.relative_positions(neigh_index, 0);
-      if (r > rcut)
-        continue; // Skip if outside cutoff.
-      x = structure.relative_positions(neigh_index, 1);
-      y = structure.relative_positions(neigh_index, 2);
-      z = structure.relative_positions(neigh_index, 3);
-      s = structure.neighbor_species(neigh_index);
-
-      // Store neighbor coordinates.
-      neighbor_coordinates(neighbor_index, 0) = x;
-      neighbor_coordinates(neighbor_index, 1) = y;
-      neighbor_coordinates(neighbor_index, 2) = z;
-
-      // Compute radial basis values and spherical harmonics.
-      calculate_radial(g, gx, gy, gz, radial_function, cutoff_function, x, y, z,
-                       r, rcut, N, radial_hyps, cutoff_hyps);
-      get_complex_Y(h, hx, hy, hz, x, y, z, lmax);
-
-      // Store the products and their derivatives.
-      descriptor_counter = s * no_bond_vals;
-
-      for (int radial_counter = 0; radial_counter < N; radial_counter++) {
-        // Retrieve radial values.
-        g_val = g[radial_counter];
-        gx_val = gx[radial_counter];
-        gy_val = gy[radial_counter];
-        gz_val = gz[radial_counter];
-
-        for (int angular_counter = 0; angular_counter < number_of_harmonics;
-             angular_counter++) {
-
-          // Compute single bond value.
-          h_val = h(angular_counter);
-          bond = g_val * h_val;
-
-          // Calculate derivatives with the product rule.
-          bond_x = gx_val * h_val + g_val * hx(angular_counter);
-          bond_y = gy_val * h_val + g_val * hy(angular_counter);
-          bond_z = gz_val * h_val + g_val * hz(angular_counter);
-
-          // Update single bond arrays.
-          single_bond_vals(i, descriptor_counter) += bond;
-
-          force_dervs(neighbor_index * 3, descriptor_counter) += bond_x;
-          force_dervs(neighbor_index * 3 + 1, descriptor_counter) += bond_y;
-          force_dervs(neighbor_index * 3 + 2, descriptor_counter) += bond_z;
-
-          descriptor_counter++;
-        }
-      }
-      neighbor_index++;
-    }
   }
 }
 

@@ -116,7 +116,16 @@ class SGP_Wrapper:
 
     def write_model(self, name: str):
         """
-        Write to .json file
+        Write the model to a .json file. The settings of descriptors and kernels,
+        hyperparameters, and training data (including structures with positions,
+        cell and species) and indices of selected sparse environments will be
+        dumped. While the descriptors and their derivatives of each training
+        structure, and the kernel matrices are NOT dumped. Therefore, when calling
+        `SGP_Wrapper.from_file()` the program will recalculate all the descriptors
+        and kernel matrices to construct SGP.
+
+        Args:
+            name (str): the filename of the .json
         """
         if ".json" != name[-5:]:
             name += ".json"
@@ -125,23 +134,26 @@ class SGP_Wrapper:
 
     def as_dict(self):
         out_dict = {}
+
+        # pop up SGP c++ object, such that the big kernel matrices are not dumped
         for key in vars(self):
             if key not in ["sparse_gp", "sgp_var", "descriptor_calculators"]:
                 out_dict[key] = getattr(self, key, None)
 
-        # save descriptor_settings
+        # save settings of descriptor calculators
+        out_dict["descriptor_calculators"] = []
         desc_calc = self.descriptor_calculators
-        assert (len(desc_calc) == 1) and (isinstance(desc_calc[0], _C_flare.B2))
-        b2_calc = desc_calc[0]
-        b2_dict = {
-            "type": "B2",
-            "radial_basis": b2_calc.radial_basis,
-            "cutoff_function": b2_calc.cutoff_function,
-            "radial_hyps": b2_calc.radial_hyps,
-            "cutoff_hyps": b2_calc.cutoff_hyps,
-            "descriptor_settings": b2_calc.descriptor_settings,
-        }
-        out_dict["descriptor_calculators"] = [b2_dict]
+        for dc in self.descriptor_calculators:
+            assert isinstance(dc, _C_flare.Bk)
+            dc_dict = {
+                "type": "Bk",
+                "radial_basis": dc.radial_basis,
+                "cutoff_function": dc.cutoff_function,
+                "radial_hyps": dc.radial_hyps,
+                "cutoff_hyps": dc.cutoff_hyps,
+                "descriptor_settings": dc.descriptor_settings,
+            }
+            out_dict["descriptor_calculators"].append(dc_dict)
 
         # save hyps
         out_dict["hyps"], out_dict["hyp_labels"] = self.hyps_and_labels
@@ -155,6 +167,7 @@ class SGP_Wrapper:
                 raise NotImplementedError
         out_dict["kernels"] = kernel_list
 
+        # only support NormalizedDotProduct for now
         kernel_list = []
         if getattr(self, "sgp_var_kernels", None):
             for kern in self.sgp_var_kernels:
@@ -164,6 +177,8 @@ class SGP_Wrapper:
                     raise NotImplementedError
             out_dict["sgp_var_kernels"] = kernel_list
 
+        # save training structures, only including positions, cell, species, and labels
+        # descriptors and their derivatives are not included to save memory
         out_dict["training_structures"] = []
         for s in range(len(self.training_data)):
             custom_range = self.sparse_gp.sparse_indices[0][s]
@@ -192,6 +207,7 @@ class SGP_Wrapper:
 
             out_dict["training_structures"].append(train_struc.as_dict())
 
+        # save the indices of sparse environments
         out_dict["sparse_indice"] = self.sparse_gp.sparse_indices
         return out_dict
 
@@ -211,27 +227,31 @@ class SGP_Wrapper:
 
         # recover descriptors from checkpoint
         desc_calc = in_dict["descriptor_calculators"]
-        assert len(desc_calc) == 1
-        b2_dict = desc_calc[0]
-        assert b2_dict["type"] == "B2"
-        calc = _C_flare.B2(
-            b2_dict["radial_basis"],
-            b2_dict["cutoff_function"],
-            b2_dict["radial_hyps"],
-            b2_dict["cutoff_hyps"],
-            b2_dict["descriptor_settings"],
-        )
+        desc_calc_list = []
+
+        for dc_dict in desc_calc:
+            if dc_dict["type"] == "Bk":
+                calc = _C_flare.Bk(
+                    dc_dict["radial_basis"],
+                    dc_dict["cutoff_function"],
+                    dc_dict["radial_hyps"],
+                    dc_dict["cutoff_hyps"],
+                    dc_dict["descriptor_settings"],
+                )
+            else:
+                raise NotImplementedError
+            desc_calc_list.append(calc)
 
         # change the keys of single_atom_energies and species_map to int
         if in_dict["single_atom_energies"] is not None:
-             sae_dict = {int(k): v for k, v in in_dict["single_atom_energies"].items()}
+            sae_dict = {int(k): v for k, v in in_dict["single_atom_energies"].items()}
         else:
-             sae_dict = None
+            sae_dict = None
         species_map = {int(k): v for k, v in in_dict["species_map"].items()}
 
         gp = SGP_Wrapper(
             kernels=kernels,
-            descriptor_calculators=[calc],
+            descriptor_calculators=desc_calc_list,
             cutoff=in_dict["cutoff"],
             sigma_e=in_dict["hyps"][-3],
             sigma_f=in_dict["hyps"][-2],
@@ -274,6 +294,15 @@ class SGP_Wrapper:
 
     @staticmethod
     def from_file(filename: str):
+        """
+        While the descriptors and their derivatives of each training structure,
+        and the kernel matrices are NOT dumped. Therefore, this method will
+        recalculate all the descriptors and kernel matrices to construct SGP.
+
+        Args:
+            name (str): the filename of the .json
+        """
+
         with open(filename, "r") as f:
             in_dict = json.loads(f.readline())
         return SGP_Wrapper.from_dict(in_dict)
@@ -288,7 +317,42 @@ class SGP_Wrapper:
         mode: str = "specific",
         sgp: SparseGP = None,  # for creating sgp_var
         update_qr=True,
+        atom_indices=[-1],
     ):
+        """
+        Add a structure to the training data set.
+
+        Args:
+            structure (Structure, struc.Structure, FLARE_Atoms): an object of any
+                of the three types, which contains position, cell and species
+                information.
+            forces (np.ndarray): atomic forces of shape (n_atoms, 3)
+            custom_range (list): specify how to add sparse environments.
+                - If `mode="all"` then set to empty list or None.
+                - If `mode="random"` or `mode="uncertain"`, set to a list of
+                  integers specifying the numbers of sparse environments added
+                  to each kernel, e.g. when we have three kernels and
+                  `custom_range=[n1, n2, n3]`, then there will be n1 envs added
+                  to kernel1, n2 envs added to kernel2, etc.
+                - If 'mode="specific"`, set to a list of integers specifying the
+                  specific atomic indices that are to be added to sparse set.
+            energy (float): the total potential energy of the current structure.
+            stress (np.ndarray): an array of length 6, of order xx, xy, xz, yy, yz, zz.
+                And there should be a minus sign compared to the convention of other
+                code like ASE.
+            mode (str): mechanism to add sparse environments. Options are "all" (add
+                all atoms to the sparse set), "random" (randomly pick up atoms to add),
+                "uncertain" (pick up atoms of highest uncertainty predicted by SGP),
+                "specific" (pick up atoms specified by user).
+            sgp (SparseGP): by default None, then the training data will be added to
+                self.sparse_gp. Otherwise, the training data will be added to `sgp`
+                specified here.
+            update_qr (bool): by default True, then the QR decomposition and alpha vector
+                will be calculated after the training data is added.
+            atom_indices (list): by default [-1], then all the atoms (force labels)
+                will be added to the full set. Can be set to a list of atomic indices,
+                and then only these force labels will be added to the full set.
+        """
 
         # Convert coded species to 0, 1, 2, etc.
         if isinstance(structure, (struc.Structure, FLARE_Atoms)):
@@ -331,7 +395,7 @@ class SGP_Wrapper:
         if sgp is None:
             sgp = self.sparse_gp
 
-        sgp.add_training_structure(structure_descriptor)
+        sgp.add_training_structure(structure_descriptor, atom_indices)
         if mode == "all":
             if not custom_range:
                 sgp.add_all_environments(structure_descriptor)
@@ -363,6 +427,7 @@ class SGP_Wrapper:
         else:
             raise NotImplementedError
 
+        # Run QR decomposition to compute alpha vector (for energy/force/stress prediction)
         if update_qr:
             sgp.update_matrices_QR()
 
@@ -379,17 +444,36 @@ class SGP_Wrapper:
         )
 
     def write_mapping_coefficients(self, filename, contributor, kernel_idx):
-        self.sparse_gp.write_mapping_coefficients(filename, contributor, kernel_idx)
+        """
+        Dump the coefficient file for LAMMPS pair_style.
+
+        Args:
+            filename (str): name of the coefficient file.
+            contributor (str): your name.
+            kernel_idx (list): a list of integers specifying the kernels that
+                are to be dumped.
+        """
+        self.sparse_gp.write_mapping_coefficients(
+            filename, contributor, kernel_idx, "potential"
+        )
 
     def write_varmap_coefficients(self, filename, contributor, kernel_idx):
-        old_kernels = self.sparse_gp.kernels
-        assert (len(old_kernels) == 1) and (
-            kernel_idx == 0
-        ), "Not support multiple kernels"
-        assert isinstance(old_kernels[0], NormalizedDotProduct)
+        """
+        Dump the coefficient file for LAMMPS compute (for uncertainty prediction).
 
+        Args:
+            filename (str): name of the coefficient file.
+            contributor (str): your name.
+            kernel_idx (list): a list of integers specifying the kernels that
+                are to be dumped.
+        """
+
+        old_kernels = self.sparse_gp.kernels
         power = 1
-        new_kernels = [NormalizedDotProduct(old_kernels[0].sigma, power)]
+        new_kernels = []
+        for kern in old_kernels:
+            assert isinstance(kern, NormalizedDotProduct)
+            new_kernels.append(NormalizedDotProduct(kern.sigma, power))
 
         # Build a power=1 SGP from scratch
         if self.sgp_var is None:
@@ -398,14 +482,14 @@ class SGP_Wrapper:
             self.sgp_var_kernels = new_kernels
 
         # Check hyperparameters and training data, if not match, construct a new SGP
-        assert len(self.sgp_var.kernels) == 1
-        assert np.allclose(self.sgp_var.kernels[0].power, 1.0)
+        for kern in self.sgp_var.kernels:
+            assert np.allclose(kern.power, 1.0)
         is_same_hyps = np.allclose(
             self.sgp_var.hyperparameters, self.sparse_gp.hyperparameters
         )
         n_sgp = len(self.training_data)
         n_sgp_var = len(self.sgp_var.training_structures)
-        is_same_data = n_sgp == n_sgp_var 
+        is_same_data = n_sgp == n_sgp_var
 
         # Add new data if sparse_gp has more data than sgp_var
         if not is_same_data:
@@ -415,12 +499,12 @@ class SGP_Wrapper:
             for s in range(n_add):
                 custom_range = self.sparse_gp.sparse_indices[0][s + n_sgp_var]
                 struc_cpp = self.training_data[s + n_sgp_var]
-    
+
                 if len(struc_cpp.energy) > 0:
                     energy = struc_cpp.energy[0]
                 else:
                     energy = None
-    
+
                 self.update_db(
                     struc_cpp,
                     struc_cpp.forces,
@@ -431,9 +515,9 @@ class SGP_Wrapper:
                     sgp=self.sgp_var,
                     update_qr=False,
                 )
-    
+
             self.sgp_var.update_matrices_QR()
-      
+
         if not is_same_hyps:
             print("Hyps not match, set hyperparameters")
             self.sgp_var.set_hyperparameters(self.sparse_gp.hyperparameters)
@@ -441,9 +525,11 @@ class SGP_Wrapper:
 
         new_kernels = self.sgp_var.kernels
         print("Map with current sgp_var")
-       
-        self.sgp_var.write_varmap_coefficients(filename, contributor, kernel_idx)
-        
+
+        self.sgp_var.write_mapping_coefficients(
+            filename, contributor, kernel_idx, "uncertainty"
+        )
+
         return new_kernels
 
     def duplicate(self, new_hyps=None, new_kernels=None, new_powers=None):
