@@ -117,31 +117,34 @@ void PairFLARE::compute(int eflag, int vflag) {
       Eigen::MatrixXcd single_bond_env_dervs;
       Eigen::MatrixXd env_dervs;
 
-      // Compute covariant descriptors.
-      // TODO: this function call is duplicated for multiple kernels
-      complex_single_bond(x, type, jnum, n_inner, i, xtmp, ytmp, ztmp, jlist,
-                          basis_function[kern], cutoff_function[kern], 
-                          n_species, n_max[kern], l_max[kern], 
-                          radial_hyps[kern], cutoff_hyps[kern], 
-                          single_bond_vals, single_bond_env_dervs, cutoff_matrix);
-
-      // Compute invariant descriptors.
-      compute_Bk(vals, env_dervs, norm_squared, env_dot,
-                 single_bond_vals, single_bond_env_dervs, nu[kern],
-                 n_species, K[kern], n_max[kern], l_max[kern], coeffs[kern],
-                 beta_matrices[kern][itype - 1], u, &evdwl);
-
-      // Continue if the environment is empty.
-      if (norm_squared < empty_thresh)
-        continue;
+      if (K[kern] == 2) {
+      } else {
+        // Compute covariant descriptors.
+        // TODO: this function call is duplicated for multiple kernels
+        complex_single_bond(x, type, jnum, n_inner, i, xtmp, ytmp, ztmp, jlist,
+                            basis_function[kern], cutoff_function[kern], 
+                            n_species, n_max[kern], l_max[kern], 
+                            radial_hyps[kern], cutoff_hyps[kern], 
+                            single_bond_vals, single_bond_env_dervs, cutoff_matrix);
   
-      // Compute local energy and partial forces.
-      // TODO: not needed if using "u"
-      beta_p = beta_matrices[kern][itype - 1] * vals;
-      evdwl = vals.dot(beta_p) / norm_squared;
- 
-      partial_forces =
-          2 * (- env_dervs * beta_p + evdwl * env_dot) / norm_squared;
+        // Compute invariant descriptors.
+        compute_Bk(vals, env_dervs, norm_squared, env_dot,
+                   single_bond_vals, single_bond_env_dervs, nu[kern],
+                   n_species, K[kern], n_max[kern], l_max[kern], coeffs[kern],
+                   beta_matrices[kern][itype - 1], u, &evdwl);
+  
+        // Continue if the environment is empty.
+        if (norm_squared < empty_thresh)
+          continue;
+    
+        // Compute local energy and partial forces.
+        // TODO: not needed if using "u"
+        beta_p = beta_matrices[kern][itype - 1] * vals;
+        evdwl = vals.dot(beta_p) / norm_squared;
+   
+        partial_forces =
+            2 * (- env_dervs * beta_p + evdwl * env_dot) / norm_squared;
+      }
 
       // Update energy, force and stress arrays.
       n_count = 0;
