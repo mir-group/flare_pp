@@ -61,7 +61,7 @@ public:
   void add_training_structure(const Structure &structure);
   
   Eigen::VectorXi sparse_indices_by_type(int n_types, std::vector<int> species, const std::vector<int> atoms);    
-  void add_specific_environments(const Structure&, std::vector<int>);
+  void add_specific_environments(const Structure&, std::vector<std::vector<int>>);
   void add_local_specific_environments(const Structure &structure, const std::vector<int> atoms);
   void add_global_specific_environments(const Structure &structure, const std::vector<int> atoms);
   void predict_local_uncertainties(Structure &structure);

@@ -154,7 +154,7 @@ Eigen::VectorXi ParallelSGP ::sparse_indices_by_type(int n_types,
 }
 
 void ParallelSGP ::add_specific_environments(const Structure &structure,
-                                      const std::vector<int> atoms) {
+                                      const std::vector<std::vector<int>> atoms) {
 
   // Gather clusters with central atom in the given list.
   std::vector<std::vector<std::vector<int>>> indices_1;
@@ -166,8 +166,8 @@ void ParallelSGP ::add_specific_environments(const Structure &structure,
       std::vector<int> indices_3;
       for (int k = 0; k < n_clusters; k++){
         int atom_index_1 = structure.descriptors[i].atom_indices[j](k);
-        for (int l = 0; l < atoms.size(); l++){
-          int atom_index_2 = atoms[l];
+        for (int l = 0; l < atoms[i].size(); l++){
+          int atom_index_2 = atoms[i][l];
           if (atom_index_1 == atom_index_2){
             indices_3.push_back(k);
           }
@@ -184,6 +184,13 @@ void ParallelSGP ::add_specific_environments(const Structure &structure,
     ClusterDescriptor cluster_descriptor =
         ClusterDescriptor(structure.descriptors[i], indices_1[i]);
     cluster_descriptors.push_back(cluster_descriptor);
+
+    int n_types = structure.descriptors[i].n_types;
+    for (int s = 0; s < n_types; s++){
+      std::cout << "------- cluster_descriptor " << cluster_descriptor.descriptors[s].rows() << std::endl;
+      int n_size = n_struc_clusters_by_type[i].size();
+      std::cout << "------- n_struc_clusters_by_type " << n_struc_clusters_by_type[i][n_size - 1](s) << std::endl;
+    }
   }
   local_sparse_descriptors.push_back(cluster_descriptors);
 
@@ -361,7 +368,11 @@ void ParallelSGP::load_local_training_data(const std::vector<Structure> &trainin
       if (nmin_struc <= cum_f && cum_f < nmax_struc) {
         // avoid multiple procs add the same sparse envs
         std::cout << "add_specific_environments" << std::endl;
-        add_specific_environments(struc, training_sparse_indices[0][t]);
+        std::vector<std::vector<int>> sparse_atoms = {};
+        for (int i = 0; i < n_kernels; i++) {
+          sparse_atoms.push_back(training_sparse_indices[i][t]);
+        }
+        add_specific_environments(struc, sparse_atoms);
       }
     }
 
@@ -414,9 +425,20 @@ void ParallelSGP::gather_sparse_descriptors(std::vector<std::vector<int>> n_clus
       std::cout << "begin set element" << std::endl;
       for (int t = 0; t < training_strucs.size(); t++) {
         if (nmin_struc <= cum_f && cum_f < nmax_struc) {
+          std::cout << "get cluster desc " << t << std::endl;
           ClusterDescriptor cluster_descriptor = local_sparse_descriptors[local_u][i];
+          std::cout << n_struc_clusters_by_type[i][t](s) << " " << cluster_descriptor.descriptors[s].rows() << std::endl;
+          std::cout << n_struc_clusters_by_type[i][t](s) << " " << n_descriptors << std::endl;
+          //std::cout << cluster_descriptor.descriptors[s](0, 0) << std::endl;
+          //std::cout << cluster_descriptor.descriptor_norms[s](0) << std::endl;
+          //std::cout << cluster_descriptor.cutoff_values[s](0) << std::endl;
           for (int j = 0; j < n_struc_clusters_by_type[i][t](s); j++) {
+            std::cout << j << "/" << n_struc_clusters_by_type[i][t](s) << std::endl;
             for (int d = 0; d < n_descriptors; d++) {
+              //std::cout << "dist_desc " << j << " " << d << std::endl;
+              //std::cout << cluster_descriptor.descriptors[s](j, d) << std::endl;
+              //std::cout << cluster_descriptor.descriptor_norms[s](j) << std::endl;
+              //std::cout << cluster_descriptor.cutoff_values[s](j) << std::endl;
               dist_descriptors.set(cum_u + j, d, 
                       cluster_descriptor.descriptors[s](j, d), lock);
               dist_descriptor_norms.set(cum_u + j, 0, 
@@ -427,6 +449,7 @@ void ParallelSGP::gather_sparse_descriptors(std::vector<std::vector<int>> n_clus
           }
           local_u += 1;
         }
+        std::cout << "cum_u, cum_f " << t << std::endl;
         cum_u += n_struc_clusters_by_type[i][t](s);
         int label_size = training_strucs[t].n_labels();
         cum_f += label_size;
@@ -660,13 +683,13 @@ void ParallelSGP::update_matrices_QR() {
   A.fence();
   b.fence();
 
-  // TODO: Kuf is for debugging
-  Kuf = Eigen::MatrixXd::Zero(u_size, f_size);
-  for (int r = 0; r < u_size; r++) {
-    for (int c = 0; c < f_size; c++) {
-      Kuf(r, c) = A(c, r, lock);
-    }
-  }
+//  // TODO: Kuf is for debugging
+//  Kuf = Eigen::MatrixXd::Zero(u_size, f_size);
+//  for (int r = 0; r < u_size; r++) {
+//    for (int c = 0; c < f_size; c++) {
+//      Kuf(r, c) = A(c, r, lock);
+//    }
+//  }
   timer.toc("set A & b", blacs::mpirank);
 
   // Copy L.T to A using scatter function
