@@ -296,6 +296,7 @@ class SGP_Wrapper:
         update_qr=True,
         atom_indices=[-1],
     ):
+        # TODO: simplify the interface, remove forces, energy, and stress
 
         # Convert flare Structure or FLARE_Atoms to flare_pp Structure
         structure_descriptor = convert_to_flarepp_structure(
@@ -526,11 +527,8 @@ def compute_negative_likelihood_grad_stable(
 
     assert len(hyperparameters) == len(sparse_gp.hyperparameters)
 
-    print("******************* set_hyps ***********************")
-    print(hyperparameters)
     sparse_gp.set_hyperparameters(hyperparameters)
 
-    print("******************* sparse_gp.compute_likelihood_gradient_stable ***********************")
     negative_likelihood = -sparse_gp.compute_likelihood_gradient_stable(precomputed)
     negative_likelihood_gradient = -sparse_gp.likelihood_gradient
 
@@ -571,7 +569,7 @@ def optimize_hyperparameters(
 
     initial_guess = sparse_gp.hyperparameters
 
-    # If all kernels are NormalizedDotProduct, then some matrices can be 
+    # If all kernels are NormalizedDotProduct, then some matrices can be
     # pre-computed and stored
     precompute = True
     for kern in sparse_gp.kernels:

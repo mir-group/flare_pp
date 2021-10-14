@@ -11,15 +11,15 @@ from ase.calculators.singlepoint import SinglePointCalculator
 def convert_to_flarepp_structure(
     structure: Union[struc.Structure, FLARE_Atoms, Structure],
     species_map: dict,
-    energy: float=None,
-    forces: np.ndarray=None,
-    stress: np.ndarray=None,
-    enable_energy: bool=False,
-    enable_forces: bool=False,
-    enable_stress: bool=False,
-    single_atom_energies: dict=None,
-    cutoff: float=None,
-    descriptor_calculators: List=None,
+    energy: float = None,
+    forces: np.ndarray = None,
+    stress: np.ndarray = None,
+    enable_energy: bool = False,
+    enable_forces: bool = False,
+    enable_stress: bool = False,
+    single_atom_energies: dict = None,
+    cutoff: float = None,
+    descriptor_calculators: List = None,
 ):
     """
     Assume the stress has been converted to the order xx, xy, xz, yy, yz, zz

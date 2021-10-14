@@ -116,6 +116,9 @@ for n in range(5):
     energy = np.random.rand()
     forces = np.random.rand(n_atoms, 3) * 10
     stress = np.random.rand(6)
+    train_structure.energy = energy
+    train_structure.forces = forces
+    train_structure.stress = stress
     
     training_strucs.append(train_structure)
     for k in range(len(kernel_list)):
