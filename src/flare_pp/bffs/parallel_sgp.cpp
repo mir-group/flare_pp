@@ -828,6 +828,8 @@ void ParallelSGP ::compute_likelihood_stable() {
     complexity_penalty = (1. / 2.) * (noise_det + Kuu_inv_det + sigma_inv_det);
     log_marginal_likelihood = complexity_penalty + data_fit + constant_term;
   }
+  blacs::barrier();
+  MPI_Bcast(&log_marginal_likelihood, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD); 
 }
 
 /* -----------------------------------------------------------------------
@@ -964,6 +966,10 @@ Eigen::VectorXd ParallelSGP ::compute_like_grad_of_kernel_hyps() {
     hyp_index += n_hyps;
   } 
   assert(hyp_index == n_hyps_total - 3);
+
+  blacs::barrier();
+  MPI_Bcast(likelihood_grad.data(), likelihood_grad.size(), MPI_DOUBLE, 0, MPI_COMM_WORLD); 
+
   return likelihood_grad;
 }
 
@@ -1019,8 +1025,9 @@ Eigen::VectorXd ParallelSGP ::compute_like_grad_of_noise() {
     std::cout << "datafit_grad " << datafit_grad << std::endl;
     std::cout << "complex_grad " << complexity_grad << std::endl;
   }
-  MPI_Bcast(&log_marginal_likelihood, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD); 
+  blacs::barrier();
   MPI_Bcast(likelihood_grad.data(), likelihood_grad.size(), MPI_DOUBLE, 0, MPI_COMM_WORLD); 
+
   return likelihood_grad;
 }
 
