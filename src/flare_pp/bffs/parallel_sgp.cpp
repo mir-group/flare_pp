@@ -61,34 +61,6 @@ ParallelSGP ::ParallelSGP(std::vector<Kernel *> kernels, double energy_noise,
   }
 }
 
-//void ParallelSGP ::initialize_local_sparse_descriptors(const Structure &structure) {
-//  if (local_sparse_descriptors.size() != 0)
-//    return;
-//
-//  for (int i = 0; i < structure.descriptors.size(); i++) {
-//    ClusterDescriptor empty_descriptor;
-//    empty_descriptor.initialize_cluster(structure.descriptors[i].n_types,
-//                                        structure.descriptors[i].n_descriptors);
-//    local_sparse_descriptors.push_back(empty_descriptor);
-//    std::vector<std::vector<int>> empty_indices;
-//    sparse_indices.push_back(empty_indices); // NOTE: the sparse_indices should be of size n_kernels
-//  }
-//};
-
-
-void ParallelSGP ::initialize_global_sparse_descriptors(const Structure &structure) {
-  if (global_sparse_descriptors.size() != 0)
-    return;
-
-  for (int i = 0; i < structure.descriptors.size(); i++) {
-    ClusterDescriptor empty_descriptor;
-    empty_descriptor.initialize_cluster(structure.descriptors[i].n_types,
-                                        structure.descriptors[i].n_descriptors);
-    global_sparse_descriptors.push_back(empty_descriptor);
-    std::vector<std::vector<int>> empty_indices;
-    global_sparse_indices.push_back(empty_indices); // NOTE: the sparse_indices should be of size n_kernels
-  }
-};
 
 void ParallelSGP ::add_training_structure(const Structure &structure) {
 
@@ -187,9 +159,7 @@ void ParallelSGP ::add_specific_environments(const Structure &structure,
 
     int n_types = structure.descriptors[i].n_types;
     for (int s = 0; s < n_types; s++){
-      std::cout << "------- cluster_descriptor " << cluster_descriptor.descriptors[s].rows() << std::endl;
       int n_size = n_struc_clusters_by_type[i].size();
-      std::cout << "------- n_struc_clusters_by_type " << n_struc_clusters_by_type[i][n_size - 1](s) << std::endl;
     }
   }
   local_sparse_descriptors.push_back(cluster_descriptors);
@@ -221,25 +191,58 @@ void ParallelSGP::build(const std::vector<Structure> &training_strucs,
         const std::vector<std::vector<std::vector<int>>> &training_sparse_indices,
         int n_types) {
  
+  // initialization
+  training_structures = {};
+  local_sparse_descriptors = {};
+  local_label_indices = {};
+  local_label_size = 0;
+
+  sparse_descriptors = {};
+
+  global_n_labels = 0;
+  global_n_energy_labels = 0;
+  global_n_force_labels = 0;
+  global_n_stress_labels = 0;
+  global_noise_vector = Eigen::VectorXd::Zero(0);
+
+  n_struc_clusters_by_type = {};
+
+  n_energy_labels = 0;
+  n_force_labels = 0;
+  n_stress_labels = 0;
+  n_labels = 0;
+  n_strucs = 0;
+
+  label_count = Eigen::VectorXd::Zero(1);
+  y = Eigen::VectorXd::Zero(0);
+  noise_vector = Eigen::VectorXd::Zero(0);
+  e_noise_one = Eigen::VectorXd::Zero(0);
+  f_noise_one = Eigen::VectorXd::Zero(0);
+  s_noise_one = Eigen::VectorXd::Zero(0);
+
+  // Initialize kernel lists.
+  Eigen::MatrixXd empty_matrix;
+  Kuu_kernels = {};
+  Kuf_kernels = {};
+  for (int i = 0; i < kernels.size(); i++) {
+    Kuu_kernels.push_back(empty_matrix);
+    Kuf_kernels.push_back(empty_matrix);
+  }
+
   // initialize BLACS
-  std::cout << "start blacs" << std::endl;
   blacs::initialize();
-  std::cout << "done blacs" << std::endl;
 
   timer.tic();
 
   // Get the number of processes
-  std::cout << "MPI comm size" << std::endl;
   int world_size;
   MPI_Comm_size(MPI_COMM_WORLD, &world_size);
 
   // Get the rank of the process
-  std::cout << "MPI comm rank" << std::endl;
   int world_rank;
   MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
 
   // Compute the dimensions of the matrices Kuf and Kuu
-  std::cout << "start computing f_size" << std::endl;
   f_size = 0;
   for (int i = 0; i < training_strucs.size(); i++) {
      f_size += training_strucs[i].energy.size() + training_strucs[i].forces.size() + training_strucs[i].stresses.size();
@@ -250,21 +253,16 @@ void ParallelSGP::build(const std::vector<Structure> &training_strucs,
     f_size_per_proc = f_size / world_size + 1;
   }
 
-  std::cout << "start computing u_size" << std::endl;
   u_size = 0;
   for (int k = 0; k < n_kernels; k++) {
-    std::cout << "start kernel " << k << std::endl;
     int u_kern = 0;
     for (int i = 0; i < training_sparse_indices[k].size(); i++) {
       u_kern += training_sparse_indices[k][i].size();
     }
-    std::cout << "get u_kern" << std::endl;
     u_size += u_kern;
     u_size_single_kernel.push_back(u_kern);
-    std::cout << "push_back " << u_kern << std::endl;
   }
   u_size_per_proc = u_size / world_size;
-  std::cout << "done computing u_size" << std::endl;
 
   // Compute the range of structures covered by the current rank
   nmin_struc = world_rank * f_size_per_proc;
@@ -276,7 +274,6 @@ void ParallelSGP::build(const std::vector<Structure> &training_strucs,
     nmax_struc = (world_rank + 1) * f_size_per_proc;
     nmax_envs = (world_rank + 1) * u_size_per_proc;
   }
-  std::cout << "Start loading data" << std::endl;
 
   // load and distribute training structures, compute descriptors
   load_local_training_data(training_strucs, cutoff, descriptor_calculators, training_sparse_indices, n_types);
@@ -311,7 +308,6 @@ void ParallelSGP::load_local_training_data(const std::vector<Structure> &trainin
   global_n_labels = 0;
 
   // Compute the total number of clusters of each type of each kernel
-  std::cout << "find n_clusters_by_type" << std::endl;
   std::vector<std::vector<int>> n_clusters_by_type;
   for (int i = 0; i < n_kernels; i++) {
     std::vector<int> n_clusters_kern;
@@ -322,9 +318,7 @@ void ParallelSGP::load_local_training_data(const std::vector<Structure> &trainin
     n_struc_clusters_by_type.push_back({});
   }
 
-  std::cout << "add_global_noise" << std::endl;
   for (int t = 0; t < training_strucs.size(); t++) {
-
     int label_size = training_strucs[t].n_labels();
     int noa = training_strucs[t].noa;
     assert (label_size == 1 + 3 * noa + 6); 
@@ -335,7 +329,6 @@ void ParallelSGP::load_local_training_data(const std::vector<Structure> &trainin
     add_global_noise(n_energy, n_forces, n_stress); // for b
 
     // Compute the total number of clusters of each type
-    std::cout << "sparse_indices_by_type" << std::endl;
     for (int i = 0; i < n_kernels; i++) {
       Eigen::VectorXi n_envs_by_type = sparse_indices_by_type(n_types,
               training_strucs[t].species, training_sparse_indices[i][t]);
@@ -344,9 +337,7 @@ void ParallelSGP::load_local_training_data(const std::vector<Structure> &trainin
     }
 
     // Collect local training structures for A, Kuf
-    std::cout << "add_training_structure" << std::endl;
     if (nmin_struc < cum_f + label_size && cum_f < nmax_struc) {
-      std::cout << "Rank: " << blacs::mpirank << ", training struc " << t << std::endl;
       struc = Structure(training_strucs[t].cell, training_strucs[t].species, 
               training_strucs[t].positions, cutoff, descriptor_calculators);
 
@@ -367,7 +358,6 @@ void ParallelSGP::load_local_training_data(const std::vector<Structure> &trainin
 
       if (nmin_struc <= cum_f && cum_f < nmax_struc) {
         // avoid multiple procs add the same sparse envs
-        std::cout << "add_specific_environments" << std::endl;
         std::vector<std::vector<int>> sparse_atoms = {};
         for (int i = 0; i < n_kernels; i++) {
           sparse_atoms.push_back(training_sparse_indices[i][t]);
@@ -404,41 +394,24 @@ void ParallelSGP::gather_sparse_descriptors(std::vector<std::vector<int>> n_clus
     int cum_f, local_u, cum_u;
     std::vector<Eigen::MatrixXd> descriptors;
     std::vector<Eigen::VectorXd> descriptor_norms, cutoff_values;
-    std::cout << "begin distmat" << std::endl;
     for (int s = 0; s < n_types; s++) {
-      std::cout << "building dist_descriptors" << std::endl;
-      std::cout << "n_clusters_by_type[i][s]=" << n_clusters_by_type[i][s] << ", n_descriptors=" << n_descriptors << std::endl;
       DistMatrix<double> dist_descriptors(n_clusters_by_type[i][s], n_descriptors);
       DistMatrix<double> dist_descriptor_norms(n_clusters_by_type[i][s], 1);
       DistMatrix<double> dist_cutoff_values(n_clusters_by_type[i][s], 1);
-      std::cout << "create distmat" << std::endl;
       dist_descriptors = [](int i, int j){return 0.0;};
       dist_descriptor_norms = [](int i, int j){return 0.0;};
       dist_cutoff_values = [](int i, int j){return 0.0;};
       blacs::barrier();
-      std::cout << "barrier" << std::endl;
 
       cum_f = 0;
       cum_u = 0;
       local_u = 0;
       bool lock = true;
-      std::cout << "begin set element" << std::endl;
       for (int t = 0; t < training_strucs.size(); t++) {
         if (nmin_struc <= cum_f && cum_f < nmax_struc) {
-          std::cout << "get cluster desc " << t << std::endl;
           ClusterDescriptor cluster_descriptor = local_sparse_descriptors[local_u][i];
-          std::cout << n_struc_clusters_by_type[i][t](s) << " " << cluster_descriptor.descriptors[s].rows() << std::endl;
-          std::cout << n_struc_clusters_by_type[i][t](s) << " " << n_descriptors << std::endl;
-          //std::cout << cluster_descriptor.descriptors[s](0, 0) << std::endl;
-          //std::cout << cluster_descriptor.descriptor_norms[s](0) << std::endl;
-          //std::cout << cluster_descriptor.cutoff_values[s](0) << std::endl;
           for (int j = 0; j < n_struc_clusters_by_type[i][t](s); j++) {
-            std::cout << j << "/" << n_struc_clusters_by_type[i][t](s) << std::endl;
             for (int d = 0; d < n_descriptors; d++) {
-              //std::cout << "dist_desc " << j << " " << d << std::endl;
-              //std::cout << cluster_descriptor.descriptors[s](j, d) << std::endl;
-              //std::cout << cluster_descriptor.descriptor_norms[s](j) << std::endl;
-              //std::cout << cluster_descriptor.cutoff_values[s](j) << std::endl;
               dist_descriptors.set(cum_u + j, d, 
                       cluster_descriptor.descriptors[s](j, d), lock);
               dist_descriptor_norms.set(cum_u + j, 0, 
@@ -449,16 +422,13 @@ void ParallelSGP::gather_sparse_descriptors(std::vector<std::vector<int>> n_clus
           }
           local_u += 1;
         }
-        std::cout << "cum_u, cum_f " << t << std::endl;
         cum_u += n_struc_clusters_by_type[i][t](s);
         int label_size = training_strucs[t].n_labels();
         cum_f += label_size;
       }
-      std::cout << "finish setting" << std::endl;
       dist_descriptors.fence();
       dist_descriptor_norms.fence();
       dist_cutoff_values.fence();
-      std::cout << "fence" << std::endl;
 
       int nrows = n_clusters_by_type[i][s];
       int ncols = n_descriptors;
@@ -466,17 +436,14 @@ void ParallelSGP::gather_sparse_descriptors(std::vector<std::vector<int>> n_clus
       Eigen::VectorXd type_descriptor_norms = Eigen::VectorXd::Zero(nrows);
       Eigen::VectorXd type_cutoff_values = Eigen::VectorXd::Zero(nrows);
 
-      std::cout << "Rank: " << blacs::mpirank << ", descriptor size: " << s << " " << n_clusters_by_type[i][s] << " " << n_descriptors << " " << std::endl;
       Matrix<double> descriptors_array(nrows, ncols);
       Matrix<double> descriptor_norms_array(nrows, 1);
       Matrix<double> cutoff_values_array(nrows, 1);
-      std::cout << "created serial matrix" << std::endl;
 
       // TODO: change to &type_descriptors(0, 0) 
       dist_descriptors.allgather(descriptors_array.array.get());
       dist_descriptor_norms.allgather(descriptor_norms_array.array.get());
       dist_cutoff_values.allgather(cutoff_values_array.array.get());
-      std::cout << "done allgather" << std::endl;
       for (int r = 0; r < n_clusters_by_type[i][s]; r++) {
         for (int c = 0; c < n_descriptors; c++) {
           type_descriptors(r, c) = descriptors_array(r, c);
@@ -484,12 +451,9 @@ void ParallelSGP::gather_sparse_descriptors(std::vector<std::vector<int>> n_clus
         type_descriptor_norms(r) = descriptor_norms_array(r, 0); 
         type_cutoff_values(r) = cutoff_values_array(r, 0);
       }
-      std::cout << "begin push_back" << std::endl;
       descriptors.push_back(type_descriptors);
       descriptor_norms.push_back(type_descriptor_norms);
       cutoff_values.push_back(type_cutoff_values);
-      std::cout << "Rank: " << blacs::mpirank << ", added to local descriptor" << std::endl;
-
     }
 
     // Store sparse environments. 
@@ -519,13 +483,11 @@ void ParallelSGP::gather_sparse_descriptors(std::vector<std::vector<int>> n_clus
 void ParallelSGP ::stack_Kuf() {
   // Update Kuf kernels.
   int local_f_size = nmax_struc - nmin_struc;
-  std::cout << "u_size=" << u_size << ", local_f_size=" << local_f_size << std::endl;
   Kuf_local = Eigen::MatrixXd::Zero(u_size, local_f_size);
 
   int count = 0;
   for (int i = 0; i < Kuf_kernels.size(); i++) {
     int size = Kuf_kernels[i].rows();
-    std::cout << "Kuf_kernels[i] size=" << Kuf_kernels[i].cols() << std::endl;
     Kuf_local.block(count, 0, size, local_f_size) = Kuf_kernels[i];
     count += size;
   }
@@ -545,17 +507,14 @@ void ParallelSGP::compute_kernel_matrices(const std::vector<Structure> &training
     int u_kern = u_size_single_kernel[i]; // sparse set size of kernel i
     assert(u_kern == sparse_descriptors[i].n_clusters);
     Eigen::MatrixXd kuf_i = Eigen::MatrixXd::Zero(u_kern, local_f_size);
-    std::cout << "Rank: " << blacs::mpirank << ", starting computing kern_t" << std::endl;
     cum_f = 0;
     for (int t = 0; t < training_structures.size(); t++) {
-      std::cout << "start training data " << t << std::endl;
       int f_size_i = local_label_indices[t].size();
       Eigen::MatrixXd kern_t = kernels[i]->envs_struc(
                   sparse_descriptors[i], 
                   training_structures[t].descriptors[i], 
                   kernels[i]->kernel_hyperparameters);
 
-      std::cout << "Rank: " << blacs::mpirank << ", starting assigning kern_local" << std::endl;
       // Remove columns of kern_t that is not assigned to the current processor
       Eigen::MatrixXd kern_local = Eigen::MatrixXd::Zero(u_kern, f_size_i);
       for (int l = 0; l < f_size_i; l++) {
@@ -563,9 +522,7 @@ void ParallelSGP::compute_kernel_matrices(const std::vector<Structure> &training
       }
       kuf_i.block(0, cum_f, u_kern, f_size_i) = kern_local; 
       cum_f += f_size_i;
-      std::cout << "Rank: " << blacs::mpirank << ", done assigning kern_local" << std::endl;
     }
-    std::cout << "push back" << std::endl;
     //kuf.push_back(kuf_i);
 
     // TODO: change here into stack_Kuf
@@ -581,7 +538,6 @@ void ParallelSGP::compute_kernel_matrices(const std::vector<Structure> &training
   }
 
   // Only keep the chunk of noise_vector assigned to the current proc
-  std::cout << "get noise" << std::endl;
   cum_f = 0;
   cum_u = 0;
   int cum_f_struc = 0;
@@ -621,7 +577,6 @@ void ParallelSGP::update_matrices_QR() {
   DistMatrix<double> A(f_size + u_size, u_size); // use the default blocking
   DistMatrix<double> b(f_size + u_size, 1);
   DistMatrix<double> Kuu_dist(u_size, u_size);
-  std::cout << "Created A, b, Kuu_dist" << std::endl;
   A = [](int i, int j){return 0.0;};
   b = [](int i, int j){return 0.0;};
   Kuu_dist = [](int i, int j){return 0.0;};
@@ -646,7 +601,6 @@ void ParallelSGP::update_matrices_QR() {
   Matrix<double> Kuu_array(u_size, u_size);
   Kuu_dist.allgather(Kuu_array.array.get());
   Kuu = Eigen::Map<Eigen::MatrixXd>(Kuu_array.array.get(), u_size, u_size);
-  std::cout << "Allgathered Kuu" << std::endl;
 
   timer.toc("build Kuu_dist", blacs::mpirank);
 
@@ -677,7 +631,6 @@ void ParallelSGP::update_matrices_QR() {
   // TODO: for debug
   b_debug = Eigen::VectorXd::Zero(f_size+u_size);
   b.gather(&b_debug(0));
-  std::cout << "Collected Kuf to A" << std::endl;
 
   // Wait until the communication is done
   A.fence();
@@ -727,15 +680,12 @@ void ParallelSGP::update_matrices_QR() {
   DistMatrix<double> Qb_dist = QR.QT_matmul(b, tau);                        // Q_b = Q^T * b
 
   Matrix<double> Qb_array(f_size + u_size, 1);
-  std::cout << "Begin allgather Qb" << std::endl;
   Qb_dist.allgather(Qb_array.array.get());
   Q_b = Eigen::Map<Eigen::VectorXd>(Qb_array.array.get(), f_size + u_size).segment(0, u_size);
-  std::cout << "Allgathered Qb" << std::endl;
 
   Matrix<double> R_array(u_size, u_size);
   R_dist.allgather(R_array.array.get());
   R = Eigen::Map<Eigen::MatrixXd>(R_array.array.get(), u_size, u_size);
-  std::cout << "Allgathered R" << std::endl;
 
   // Using Lapack triangular solver to temporarily avoid the numerical issue 
   // with Scalapack block algorithm with ill-conditioned matrix
@@ -747,29 +697,23 @@ void ParallelSGP::update_matrices_QR() {
 }
 
 void ParallelSGP ::set_hyperparameters(Eigen::VectorXd hyps) {
-    std::cout << "timer " << std::endl;
   timer.tic();
 
   // Reset Kuu and Kuf matrices.
   int n_hyps, hyp_index = 0;
   Eigen::VectorXd new_hyps;
 
-  std::cout << "entering for loop" << std::endl;
   std::vector<Eigen::MatrixXd> Kuu_grad, Kuf_grad;
   for (int i = 0; i < n_kernels; i++) {
-    std::cout << "get kernel_hyps" << std::endl;
     n_hyps = kernels[i]->kernel_hyperparameters.size();
     new_hyps = hyps.segment(hyp_index, n_hyps);
 
-    std::cout << "kernel Kuu_grad" << std::endl;
     Kuu_grad = kernels[i]->Kuu_grad(sparse_descriptors[i], Kuu_kernels[i], new_hyps);
-    std::cout << "kernel Kuf_grad" << std::endl;
     Kuf_grad = kernels[i]->Kuf_grad(sparse_descriptors[i], training_structures,
                                     i, Kuf_kernels[i], new_hyps);
 
     Kuu_kernels[i] = Kuu_grad[0];
     Kuf_kernels[i] = Kuf_grad[0];
-    std::cout << "kernel set_hyps" << std::endl;
 
     kernels[i]->set_hyperparameters(new_hyps);
     hyp_index += n_hyps;
@@ -840,22 +784,18 @@ void ParallelSGP ::compute_likelihood_stable() {
   // initialize BLACS
   blacs::initialize();
 
-  std::cout << "build Kuf_dist" << std::endl;
   DistMatrix<double> Kfu_dist(f_size, u_size);
   Eigen::MatrixXd Kfu_local = Kuf_local.transpose();
   Kfu_dist.collect(&Kfu_local(0, 0), 0, 0, f_size, u_size, f_size_per_proc, u_size, nmax_struc - nmin_struc); 
 
-  std::cout << "build alpha_dist" << std::endl;
   DistMatrix<double> alpha_dist(u_size, 1);
   alpha_dist.scatter(&alpha(0), 0, 0, u_size, 1);
 
-  std::cout << "build K_alpha_dist" << std::endl;
   DistMatrix<double> K_alpha_dist(f_size, 1);
   K_alpha_dist = Kfu_dist.matmul(alpha_dist, 1.0, 'N', 'N');
   Eigen::VectorXd K_alpha = Eigen::VectorXd::Zero(f_size);
   K_alpha_dist.gather(&K_alpha(0));
 
-  std::cout << "build y_dist" << std::endl;
   DistMatrix<double> y_dist(f_size, 1);
   y_dist.collect(&local_labels(0), 0, 0, f_size, 1, f_size_per_proc, 1, nmax_struc - nmin_struc);
   Eigen::VectorXd y_global = Eigen::VectorXd::Zero(f_size);
@@ -918,12 +858,10 @@ double ParallelSGP ::compute_likelihood_gradient_stable(bool precomputed_KnK) {
 }
 
 Eigen::VectorXd ParallelSGP ::compute_like_grad_of_kernel_hyps() {
-  std::cout << "build Kuf_dist" << std::endl;
   DistMatrix<double> Kfu_dist(f_size, u_size);
   Eigen::MatrixXd Kfu_local = Kuf_local.transpose();
   Kfu_dist.collect(&Kfu_local(0, 0), 0, 0, f_size, u_size, f_size_per_proc, u_size, nmax_struc - nmin_struc); 
 
-  std::cout << "build alpha_dist" << std::endl;
   DistMatrix<double> alpha_dist(u_size, 1);
   alpha_dist.scatter(&alpha(0), 0, 0, u_size, 1);
 
@@ -941,6 +879,8 @@ Eigen::VectorXd ParallelSGP ::compute_like_grad_of_kernel_hyps() {
     n_hyps = kernels[i]->kernel_hyperparameters.size();
     hyps_curr = hyperparameters.segment(hyp_index, n_hyps);
     int size = Kuu_kernels[i].rows();
+
+    // Compute the kernel matrix and grad matrix of a single kernel. The size is not (u_size, u_size)
     Kuu_grad = kernels[i]->Kuu_grad(sparse_descriptors[i], Kuu_kernels[i], hyps_curr);
     Kuf_grad = kernels[i]->Kuf_grad(sparse_descriptors[i], 
               training_structures, i, Kuf_kernels[i], hyps_curr);
@@ -951,19 +891,24 @@ Eigen::VectorXd ParallelSGP ::compute_like_grad_of_kernel_hyps() {
       Eigen::MatrixXd dKuu = Eigen::MatrixXd::Zero(u_size, u_size);
       dKuu.block(count, count, size, size) = Kuu_grad[j + 1];
 
-      // Compute and return the derivative of Kuf_grad * e/f/s_noise_one * Kuf.transpose()
-      Eigen::MatrixXd dKuf_local = Kuf_grad[1]; // TODO: only apply for inner product kernel
+      // Compute locally noise_one * Kuf_grad.transpose()
+      // TODO: only apply for inner product kernel?
+      int local_f_size = nmax_struc - nmin_struc; 
+      Eigen::MatrixXd dKfu_local = Eigen::MatrixXd::Zero(local_f_size, u_size);
+      dKfu_local.block(0, count, local_f_size, size) = Kuf_grad[j + 1].transpose();
       Eigen::VectorXd noise_one_local = 
           local_e_noise_one / (energy_noise * energy_noise) + 
           local_f_noise_one / (force_noise * force_noise) + 
           local_s_noise_one / (stress_noise * stress_noise);
-      Eigen::MatrixXd dnK_local = noise_one_local.asDiagonal() * dKuf_local.transpose();
+      Eigen::MatrixXd dnK_local = noise_one_local.asDiagonal() * dKfu_local;
     
-      DistMatrix<double> dnK_dist(f_size, u_size); // Build a large matrix
+      // Compute distributedly Kuf_grad * noise_one * Kuf.transpose()
+      DistMatrix<double> dnK_dist(f_size, u_size);
       dnK_dist.collect(&dnK_local(0, 0), 0, count, f_size, size, f_size_per_proc, size, nmax_struc - nmin_struc);
       DistMatrix<double> dKnK_dist(u_size, u_size);
       dKnK_dist = dnK_dist.matmul(Kfu_dist, 1.0, 'T', 'N');
     
+      // Gather dK_noise_K to a single process because it's small (u_size x u_size)
       Eigen::MatrixXd dK_noise_K = Eigen::MatrixXd::Zero(u_size, u_size); 
       dKnK_dist.gather(&dK_noise_K(0, 0));
 
@@ -971,12 +916,14 @@ Eigen::VectorXd ParallelSGP ::compute_like_grad_of_kernel_hyps() {
       if (blacs::mpirank == 0) {
         Eigen::MatrixXd Pi_mat = dK_noise_K + dK_noise_K.transpose() + dKuu;
 
-        // TODO: the 2nd term is not very stable numerically, because dK_noise_K is very large, and Kuu_grads is small
+        std::cout << "complex grad 0 " << complexity_grad << std::endl;
         complexity_grad(hyp_index + j) += 1./2. * (Kuu_i.inverse() * Kuu_grad[j + 1]).trace() - 1./2. * (Pi_mat * Sigma).trace(); 
+        std::cout << "complex grad 1 " << 1./2. * (Kuu_i.inverse() * Kuu_grad[j + 1]).trace() << std::endl; 
+        std::cout << "complex grad 2 " << - 1./2. * (Pi_mat * Sigma).trace() << std::endl;
+
       }
 
       // Derivative of data_fit over sigma
-      Eigen::MatrixXd dKfu_local = Kuf_grad[j + 1].transpose();
       DistMatrix<double> dKfu_dist(f_size, u_size);
       dKfu_dist.collect(&dKfu_local(0, 0), 0, 0, f_size, u_size, f_size_per_proc, u_size, nmax_struc - nmin_struc); 
 
@@ -986,10 +933,18 @@ Eigen::VectorXd ParallelSGP ::compute_like_grad_of_kernel_hyps() {
       dK_alpha_dist.gather(&dK_alpha(0));
 
       if (blacs::mpirank == 0) {
+        std::cout << "datafit grad 0 " << datafit_grad << std::endl;
         datafit_grad(hyp_index + j) +=
             dK_alpha.transpose() * global_noise_vector.cwiseProduct(y_K_alpha);
         datafit_grad(hyp_index + j) += 
             - 1./2. * alpha.transpose() * dKuu * alpha;
+
+        std::cout << "datafit grad 1 " << dK_alpha.transpose() * global_noise_vector.cwiseProduct(y_K_alpha) << std::endl;
+        std::cout << "datafit grad 2 " << - 1./2. * alpha.transpose() * dKuu * alpha << std::endl;
+
+        std::cout << "datafit_grad signal " << datafit_grad << std::endl;
+        std::cout << "complex_grad signal " << complexity_grad << std::endl;
+
         likelihood_grad(hyp_index + j) += complexity_grad(hyp_index + j) + datafit_grad(hyp_index + j); 
       }
     }
@@ -1006,7 +961,6 @@ Eigen::VectorXd ParallelSGP ::compute_like_grad_of_noise() {
   double fn3 = force_noise * force_noise * force_noise;
   double sn3 = stress_noise * stress_noise * stress_noise;
  
-  std::cout << "compute_KnK" << std::endl;
   compute_KnK();
   blacs::barrier(); 
 
@@ -1050,6 +1004,8 @@ Eigen::VectorXd ParallelSGP ::compute_like_grad_of_noise() {
     likelihood_grad(0) += complexity_grad(0) + datafit_grad(0);
     likelihood_grad(1) += complexity_grad(1) + datafit_grad(1);
     likelihood_grad(2) += complexity_grad(2) + datafit_grad(2);
+    std::cout << "datafit_grad " << datafit_grad << std::endl;
+    std::cout << "complex_grad " << complexity_grad << std::endl;
   }
   MPI_Bcast(&log_marginal_likelihood, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD); 
   MPI_Bcast(likelihood_grad.data(), likelihood_grad.size(), MPI_DOUBLE, 0, MPI_COMM_WORLD); 
@@ -1058,7 +1014,6 @@ Eigen::VectorXd ParallelSGP ::compute_like_grad_of_noise() {
 
 void ParallelSGP ::compute_KnK() {
   // Compute and return Kuf * e/f/s_noise_one * Kuf.transpose()
-  std::cout << "build Kuf_dist" << std::endl;
   DistMatrix<double> Kfu_dist(f_size, u_size);
   Eigen::MatrixXd Kfu_local = Kuf_local.transpose();
   Kfu_dist.collect(&Kfu_local(0, 0), 0, 0, f_size, u_size, f_size_per_proc, u_size, nmax_struc - nmin_struc); 

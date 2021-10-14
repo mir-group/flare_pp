@@ -13,9 +13,7 @@
 class ParallelSGP : public SparseGP {
 public:
   // Training and sparse points.
-  std::vector<ClusterDescriptor> global_sparse_descriptors;
   std::vector<std::vector<ClusterDescriptor>> local_sparse_descriptors;
-  std::vector<std::vector<std::vector<int>>> global_sparse_indices;
   std::vector<std::vector<int>> local_label_indices;
   int local_label_size;
 
@@ -49,11 +47,6 @@ public:
    */
   ParallelSGP(std::vector<Kernel *> kernels, double energy_noise,
            double force_noise, double stress_noise);
-
-//  std::vector<ClusterDescriptor>
-//  initialize_sparse_descriptors(const Structure &structure, std::vector<ClusterDescriptor> sparse_desc);
-  void initialize_local_sparse_descriptors(const Structure &structure);
-  void initialize_global_sparse_descriptors(const Structure &structure);
 
   void add_global_noise(int n_energy, int n_force, int n_stress); 
   Eigen::VectorXd global_noise_vector, local_noise_vector, local_e_noise_one, local_f_noise_one, local_s_noise_one;

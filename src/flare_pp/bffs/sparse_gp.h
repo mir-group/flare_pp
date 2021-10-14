@@ -89,7 +89,7 @@ public:
   void predict_mean(Structure &structure);
   void predict_SOR(Structure &structure);
   void predict_DTC(Structure &structure);
-  void predict_local_uncertainties(Structure &structure);
+  virtual void predict_local_uncertainties(Structure &structure);
 
   void compute_likelihood_stable();
   double compute_likelihood_gradient_stable(bool precomputed_KnK = false);

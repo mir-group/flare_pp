@@ -211,9 +211,9 @@ TEST_F(StructureTest, BuildPMatrix){
 }
 
 TEST_F(StructureTest, ParLikeGrad){
-  double sigma_e = 1;
-  double sigma_f = 2;
-  double sigma_s = 3;
+  double sigma_e = 0.01;
+  double sigma_f = 0.01;
+  double sigma_s = 0.01;
   int n_atoms_1 = 10;
   int n_atoms_2 = 17;
   int n_atoms = 10;      
@@ -339,6 +339,7 @@ TEST_F(StructureTest, ParLikeGrad){
     EXPECT_EQ(like_grad_serial.size(), like_grad_parallel.size());
     for (int i = 0; i < like_grad_serial.size(); i++) {
       EXPECT_NEAR(like_grad_serial(i), like_grad_parallel(i), 1e-6);
+      std::cout << "like grad " << like_grad_serial(i) << " " << like_grad_parallel(i) << std::endl;
     }
   }
 }
