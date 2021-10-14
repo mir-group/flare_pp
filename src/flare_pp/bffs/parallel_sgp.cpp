@@ -192,6 +192,7 @@ void ParallelSGP::build(const std::vector<Structure> &training_strucs,
         int n_types) {
  
   // initialization
+  u_size_single_kernel = {};
   training_structures = {};
   local_sparse_descriptors = {};
   local_label_indices = {};
@@ -896,6 +897,10 @@ Eigen::VectorXd ParallelSGP ::compute_like_grad_of_kernel_hyps() {
       int local_f_size = nmax_struc - nmin_struc; 
       Eigen::MatrixXd dKfu_local = Eigen::MatrixXd::Zero(local_f_size, u_size);
       dKfu_local.block(0, count, local_f_size, size) = Kuf_grad[j + 1].transpose();
+      std::cout << "i=" << i << " j=" << j << std::endl;
+      std::cout << "u_kern=" << u_size_single_kernel[i] << std::endl;
+      std::cout << "count=" << count << " local_f_size=" << local_f_size << " size=" << size << std::endl;
+      std::cout << "Kuf_grad[j + 1] shape " << Kuf_grad[j + 1].rows() << " " << Kuf_grad[j + 1].cols() << std::endl;
       Eigen::VectorXd noise_one_local = 
           local_e_noise_one / (energy_noise * energy_noise) + 
           local_f_noise_one / (force_noise * force_noise) + 
@@ -934,6 +939,13 @@ Eigen::VectorXd ParallelSGP ::compute_like_grad_of_kernel_hyps() {
 
       if (blacs::mpirank == 0) {
         std::cout << "datafit grad 0 " << datafit_grad << std::endl;
+        //dK_alpha = Eigen::VectorXd::Ones(f_size); // debug
+        std::cout << "f_size_per_proc=" << f_size_per_proc << " nmax_struc - nmin_struc=" << nmax_struc - nmin_struc << std::endl;
+        std::cout << "dK_alpha(f_size_per_proc)=" << dK_alpha(f_size_per_proc) << std::endl;
+        std::cout << "dKfu_local * alpha(219)=" << dKfu_local.row(219) * alpha << std::endl;
+        std::cout << "dKfu_local.row(218)=" << dKfu_local.row(218) << std::endl;
+        std::cout << "dKfu_local.row(219)=" << dKfu_local.row(219) << std::endl;
+        std::cout << "dK_alpha=" << dK_alpha << std::endl;
         datafit_grad(hyp_index + j) +=
             dK_alpha.transpose() * global_noise_vector.cwiseProduct(y_K_alpha);
         datafit_grad(hyp_index + j) += 
