@@ -288,6 +288,22 @@ TEST_F(StructureTest, LikeGradStable) {
     EXPECT_NEAR(like_grad(i), fin_diff, 1e-6);
     EXPECT_NEAR(like_grad(i), like_grad_original(i), 1e-7);
   }
+
+  Eigen::VectorXd new_hyps = hyps + Eigen::VectorXd::Ones(hyps.size());
+  sparse_gp.set_hyperparameters(new_hyps);
+  double like_plus1 = sparse_gp.compute_likelihood_gradient_stable();
+  Eigen::VectorXd like_grad_plus1 = sparse_gp.likelihood_gradient;
+
+  sparse_gp.set_hyperparameters(hyps);
+  double like_plusminus1 = sparse_gp.compute_likelihood_gradient_stable();
+  Eigen::VectorXd like_grad_plusminus1 = sparse_gp.likelihood_gradient;
+
+  EXPECT_NEAR(like, like_plusminus1, 1e-7);
+  std::cout << like << " " << like_plusminus1 << std::endl;
+  for (int i = 0; i < n_hyps; i++) {
+    EXPECT_NEAR(like_grad(i), like_grad_plusminus1(i), 1e-7);
+    std::cout << like_grad(i) << " " << like_grad_plusminus1(i) << std::endl;
+  }
 }
 
 
