@@ -147,20 +147,20 @@ int main(int argc, char* argv[]) {
   }
   std::cout << "end R_inv" << std::endl;
 
-  std::cout << "start R" << std::endl;
-  for (int r = 0; r < sparse_gp.R.rows(); r++) {
-    for (int c = r; c < sparse_gp.R.cols(); c++) {
-      std::cout << r << " " << c << " " << std::setprecision (17) << sparse_gp.R(r, c) << std::endl;
-    }
-  }
-  std::cout << "end R" << std::endl;
-
-
-  std::cout << "Start Q_b" << std::endl;
-  for (int r = 0; r < sparse_gp.Q_b.size(); r++) {
-    std::cout << std::setprecision (17) << sparse_gp.Q_b(r) << std::endl;
-  }
-  std::cout << "End Q_b" << std::endl;
+//  std::cout << "start R" << std::endl;
+//  for (int r = 0; r < sparse_gp.R.rows(); r++) {
+//    for (int c = r; c < sparse_gp.R.cols(); c++) {
+//      std::cout << r << " " << c << " " << std::setprecision (17) << sparse_gp.R(r, c) << std::endl;
+//    }
+//  }
+//  std::cout << "end R" << std::endl;
+//
+//
+//  std::cout << "Start Q_b" << std::endl;
+//  for (int r = 0; r < sparse_gp.Q_b.size(); r++) {
+//    std::cout << std::setprecision (17) << sparse_gp.Q_b(r) << std::endl;
+//  }
+//  std::cout << "End Q_b" << std::endl;
 
   std::cout << "Start alpha" << std::endl;
   for (int r = 0; r < sparse_gp.alpha.size(); r++) {
