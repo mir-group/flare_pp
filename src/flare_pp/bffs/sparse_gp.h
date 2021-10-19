@@ -26,11 +26,6 @@ public:
   Eigen::MatrixXd Sigma, Kuu_inverse, R_inv, L_inv;
   Eigen::VectorXd alpha, R_inv_diag, L_diag;
 
-  // TODO: for debug
-  Eigen::VectorXd Q_b;
-  Eigen::MatrixXd R, dKuu, dK_noise_K;
-  Eigen::VectorXd b_debug;
-
   // Training and sparse points.
   std::vector<ClusterDescriptor> sparse_descriptors;
   std::vector<Structure> training_structures;

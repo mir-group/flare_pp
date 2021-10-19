@@ -634,21 +634,11 @@ void ParallelSGP::update_matrices_QR() {
   A.collect(&noise_kfu(0, 0), 0, 0, f_size, u_size, f_size_per_proc, u_size, nmax_struc - nmin_struc); 
   Eigen::VectorXd noise_labels = noise_vector_sqrt.asDiagonal() * local_labels;
   b.collect(&noise_labels(0), 0, 0, f_size, 1, f_size_per_proc, 1, nmax_struc - nmin_struc); 
-  // TODO: for debug
-  b_debug = Eigen::VectorXd::Zero(f_size+u_size);
-  b.gather(&b_debug(0));
 
   // Wait until the communication is done
   A.fence();
   b.fence();
 
-//  // TODO: Kuf is for debugging
-//  Kuf = Eigen::MatrixXd::Zero(u_size, f_size);
-//  for (int r = 0; r < u_size; r++) {
-//    for (int c = 0; c < f_size; c++) {
-//      Kuf(r, c) = A(c, r, lock);
-//    }
-//  }
   timer.toc("set A & b", blacs::mpirank);
 
   // Copy L.T to A using scatter function
@@ -687,11 +677,11 @@ void ParallelSGP::update_matrices_QR() {
 
   Matrix<double> Qb_array(f_size + u_size, 1);
   Qb_dist.allgather(Qb_array.array.get());
-  Q_b = Eigen::Map<Eigen::VectorXd>(Qb_array.array.get(), f_size + u_size).segment(0, u_size);
+  Eigen::VectorXd Q_b = Eigen::Map<Eigen::VectorXd>(Qb_array.array.get(), f_size + u_size).segment(0, u_size);
 
   Matrix<double> R_array(u_size, u_size);
   R_dist.allgather(R_array.array.get());
-  R = Eigen::Map<Eigen::MatrixXd>(R_array.array.get(), u_size, u_size);
+  Eigen::MatrixXd R = Eigen::Map<Eigen::MatrixXd>(R_array.array.get(), u_size, u_size);
 
   // Using Lapack triangular solver to temporarily avoid the numerical issue 
   // with Scalapack block algorithm with ill-conditioned matrix
@@ -896,8 +886,7 @@ Eigen::VectorXd ParallelSGP ::compute_like_grad_of_kernel_hyps() {
     Eigen::MatrixXd Kuu_i = Kuu_grad[0];
 
     for (int j = 0; j < n_hyps; j++) {
-      //Eigen::MatrixXd dKuu = Eigen::MatrixXd::Zero(u_size, u_size);
-      dKuu = Eigen::MatrixXd::Zero(u_size, u_size);
+      Eigen::MatrixXd dKuu = Eigen::MatrixXd::Zero(u_size, u_size);
       dKuu.block(count, count, size, size) = Kuu_grad[j + 1];
 
       // Compute locally noise_one * Kuf_grad.transpose()
@@ -905,10 +894,6 @@ Eigen::VectorXd ParallelSGP ::compute_like_grad_of_kernel_hyps() {
       int local_f_size = nmax_struc - nmin_struc; 
       Eigen::MatrixXd dKfu_local = Eigen::MatrixXd::Zero(local_f_size, u_size);
       dKfu_local.block(0, count, local_f_size, size) = Kuf_grad[j + 1].transpose();
-      std::cout << "i=" << i << " j=" << j << std::endl;
-      std::cout << "u_kern=" << u_size_single_kernel[i] << std::endl;
-      std::cout << "count=" << count << " local_f_size=" << local_f_size << " size=" << size << std::endl;
-      std::cout << "Kuf_grad[j + 1] shape " << Kuf_grad[j + 1].rows() << " " << Kuf_grad[j + 1].cols() << std::endl;
       Eigen::VectorXd noise_one_local = 
           local_e_noise_one / (energy_noise * energy_noise) + 
           local_f_noise_one / (force_noise * force_noise) + 
@@ -916,38 +901,21 @@ Eigen::VectorXd ParallelSGP ::compute_like_grad_of_kernel_hyps() {
       Eigen::MatrixXd dnK_local = noise_one_local.asDiagonal() * dKfu_local;
     
       // Compute distributedly Kuf_grad * noise_one * Kuf.transpose()
-      std::cout << "dnK_local" << std::endl;
-      std::cout << dnK_local << std::endl;
-
       DistMatrix<double> dnK_dist(f_size, u_size);
       dnK_dist = [](int i, int j){return 0.0;};
-      //dnK_dist.collect(&dnK_local(0, 0), 0, count, f_size, size, f_size_per_proc, size, nmax_struc - nmin_struc);
       dnK_dist.collect(&dnK_local(0, 0), 0, 0, f_size, u_size, f_size_per_proc, u_size, nmax_struc - nmin_struc);
-
-      // TODO: debug
-      Eigen::MatrixXd dnK_serial(f_size, u_size);
-      dnK_dist.gather(&dnK_serial(0, 0));
-      std::cout << "dnK_dist" << std::endl;
-      std::cout << dnK_serial << std::endl;
 
       DistMatrix<double> dKnK_dist(u_size, u_size);
       dKnK_dist = dnK_dist.matmul(Kfu_dist, 1.0, 'T', 'N');
     
       // Gather dK_noise_K to a single process because it's small (u_size x u_size)
-      //Eigen::MatrixXd dK_noise_K = Eigen::MatrixXd::Zero(u_size, u_size); 
-      dK_noise_K = Eigen::MatrixXd::Zero(u_size, u_size); 
+      Eigen::MatrixXd dK_noise_K = Eigen::MatrixXd::Zero(u_size, u_size); 
       dKnK_dist.gather(&dK_noise_K(0, 0));
 
       // Derivative of complexity over sigma
       if (blacs::mpirank == 0) {
         Eigen::MatrixXd Pi_mat = dK_noise_K + dK_noise_K.transpose() + dKuu;
-
-        std::cout << "complex grad 0 " << complexity_grad << std::endl;
         complexity_grad(hyp_index + j) += 1./2. * (Kuu_i.inverse() * Kuu_grad[j + 1]).trace() - 1./2. * (Pi_mat * Sigma).trace(); 
-        std::cout << "complex grad 1 " << 1./2. * (Kuu_i.inverse() * Kuu_grad[j + 1]).trace() << std::endl; 
-        std::cout << "complex grad 2 " << - 1./2. * (Pi_mat * Sigma).trace() << std::endl;
-
-        std::cout << Pi_mat << std::endl;
       }
 
       // Derivative of data_fit over sigma
@@ -960,25 +928,10 @@ Eigen::VectorXd ParallelSGP ::compute_like_grad_of_kernel_hyps() {
       dK_alpha_dist.gather(&dK_alpha(0));
 
       if (blacs::mpirank == 0) {
-        std::cout << "datafit grad 0 " << datafit_grad << std::endl;
-        ////dK_alpha = Eigen::VectorXd::Ones(f_size); // debug
-        //std::cout << "f_size_per_proc=" << f_size_per_proc << " nmax_struc - nmin_struc=" << nmax_struc - nmin_struc << std::endl;
-        //std::cout << "dK_alpha(f_size_per_proc)=" << dK_alpha(f_size_per_proc) << std::endl;
-        //std::cout << "dKfu_local * alpha(219)=" << dKfu_local.row(219) * alpha << std::endl;
-        //std::cout << "dKfu_local.row(218)=" << dKfu_local.row(218) << std::endl;
-        //std::cout << "dKfu_local.row(219)=" << dKfu_local.row(219) << std::endl;
-        //std::cout << "dK_alpha=" << dK_alpha << std::endl;
         datafit_grad(hyp_index + j) +=
             dK_alpha.transpose() * global_noise_vector.cwiseProduct(y_K_alpha);
         datafit_grad(hyp_index + j) += 
             - 1./2. * alpha.transpose() * dKuu * alpha;
-
-        std::cout << "datafit grad 1 " << dK_alpha.transpose() * global_noise_vector.cwiseProduct(y_K_alpha) << std::endl;
-        std::cout << "datafit grad 2 " << - 1./2. * alpha.transpose() * dKuu * alpha << std::endl;
-
-        std::cout << "datafit_grad signal " << datafit_grad << std::endl;
-        std::cout << "complex_grad signal " << complexity_grad << std::endl;
-
         likelihood_grad(hyp_index + j) += complexity_grad(hyp_index + j) + datafit_grad(hyp_index + j); 
       }
     }
@@ -1042,8 +995,6 @@ Eigen::VectorXd ParallelSGP ::compute_like_grad_of_noise() {
     likelihood_grad(0) += complexity_grad(0) + datafit_grad(0);
     likelihood_grad(1) += complexity_grad(1) + datafit_grad(1);
     likelihood_grad(2) += complexity_grad(2) + datafit_grad(2);
-    std::cout << "datafit_grad " << datafit_grad << std::endl;
-    std::cout << "complex_grad " << complexity_grad << std::endl;
   }
   blacs::barrier();
   MPI_Bcast(likelihood_grad.data(), likelihood_grad.size(), MPI_DOUBLE, 0, MPI_COMM_WORLD); 

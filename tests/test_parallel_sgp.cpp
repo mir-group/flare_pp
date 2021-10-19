@@ -178,22 +178,6 @@ TEST_F(StructureTest, BuildPMatrix){
     }
     std::cout << "Kuu_inverse matches" << std::endl;
   
-    for (int r = 0; r < parallel_sgp.Kuf.rows(); r++) {
-      for (int c = 0; c < parallel_sgp.Kuf.rows(); c++) {
-//        std::cout << "parallel_sgp.Kuu_inv(" << r << "," << c << ")=" << parallel_sgp.Kuu_inverse(r, c);
-//        std::cout << " " << sparse_gp.Kuu_inverse(r, c) << std::endl;
-        // Sometimes the accuracy is between 1e-6 ~ 1e-5        
-        EXPECT_NEAR(parallel_sgp.Kuf(r, c), sparse_gp.Kuf(r, c) * sqrt(sparse_gp.noise_vector(c)), 1e-5);
-      }
-    }
-    std::cout << "Kuf matches" << std::endl;
-
-    for (int r = 0; r < parallel_sgp.b_debug.size(); r++) {
-      EXPECT_NEAR(parallel_sgp.b_debug(r), sparse_gp.b_debug(r), 1e-6);
-    }
-    std::cout << "b matches" << std::endl;
-
-
     for (int r = 0; r < parallel_sgp.alpha.size(); r++) {
       EXPECT_NEAR(parallel_sgp.alpha(r), sparse_gp.alpha(r), 1e-6);
     }
@@ -220,23 +204,6 @@ TEST_F(StructureTest, BuildPMatrix){
     std::cout << "likelihood: " << likelihood_serial << " " << likelihood_parallel << std::endl;
     EXPECT_NEAR(likelihood_serial, likelihood_parallel, 1e-6);
 
-    // TODO: debug
-    for (int r = 0; r < parallel_sgp.dKuu.rows(); r++) {
-      for (int c = 0; c < parallel_sgp.dKuu.rows(); c++) {
-        EXPECT_NEAR(parallel_sgp.dKuu(r, c), sparse_gp.dKuu(r, c), 1e-5);
-      }
-    }
-    std::cout << "dKuu matches" << std::endl;
- 
-    // TODO: debug
-    for (int r = 0; r < parallel_sgp.dK_noise_K.rows(); r++) {
-      for (int c = 0; c < parallel_sgp.dK_noise_K.rows(); c++) {
-        std::cout << r << " " << c << " " << parallel_sgp.dK_noise_K(r, c) << " " << sparse_gp.dK_noise_K(r, c) << std::endl;
-        EXPECT_NEAR(parallel_sgp.dK_noise_K(r, c), sparse_gp.dK_noise_K(r, c), 1e-5);
-      }
-    }
-    std::cout << "dK_noise_K matches" << std::endl;
- 
     Eigen::VectorXd like_grad_serial = sparse_gp.likelihood_gradient;
     EXPECT_EQ(like_grad_serial.size(), like_grad_parallel.size());
     for (int i = 0; i < like_grad_serial.size(); i++) {
