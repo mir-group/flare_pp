@@ -48,6 +48,9 @@ public:
   ParallelSGP(std::vector<Kernel *> kernels, double energy_noise,
            double force_noise, double stress_noise);
 
+  // Destructor
+  ~ParallelSGP();
+  
   void add_global_noise(int n_energy, int n_force, int n_stress); 
   Eigen::VectorXd global_noise_vector, local_noise_vector, local_e_noise_one, local_f_noise_one, local_s_noise_one;
   Eigen::MatrixXd local_labels;

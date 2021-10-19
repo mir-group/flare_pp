@@ -28,7 +28,7 @@ public:
 
   // TODO: for debug
   Eigen::VectorXd Q_b;
-  Eigen::MatrixXd R;
+  Eigen::MatrixXd R, dKuu, dK_noise_K;
   Eigen::VectorXd b_debug;
 
   // Training and sparse points.

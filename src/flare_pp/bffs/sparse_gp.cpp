@@ -814,7 +814,8 @@ double SparseGP ::compute_likelihood_gradient_stable(bool precomputed_KnK) {
       t1 = std::chrono::high_resolution_clock::now();
 
       // Compute Pi matrix and save as an intermediate variable
-      Eigen::MatrixXd dK_noise_K;
+      
+      //Eigen::MatrixXd dK_noise_K;
       if (precomputed_KnK) {
         dK_noise_K = compute_dKnK(i);
       } else {
@@ -823,9 +824,19 @@ double SparseGP ::compute_likelihood_gradient_stable(bool precomputed_KnK) {
       }
       Eigen::MatrixXd Pi_mat = dK_noise_K + dK_noise_K.transpose() + Kuu_grads[hyp_index + j]; 
 
+      // TODO: debug
+      dKuu = Kuu_grads[hyp_index + j];
+
+
       // Derivative of complexity over sigma
       // TODO: the 2nd term is not very stable numerically, because dK_noise_K is very large, and Kuu_grads is small
       complexity_grad(hyp_index + j) += 1./2. * (Kuu_i.inverse() * Kuu_grad[j + 1]).trace() - 1./2. * (Pi_mat * Sigma).trace(); 
+
+      // TODO: debug
+        std::cout << "complex grad 1 " << 1./2. * (Kuu_i.inverse() * Kuu_grad[j + 1]).trace() << std::endl; 
+        std::cout << "complex grad 2 " << - 1./2. * (Pi_mat * Sigma).trace() << std::endl;
+        std::cout << "serial" << std::endl;
+        std::cout << Pi_mat << std::endl;
 
       t2 = std::chrono::high_resolution_clock::now();
       duration = (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2 - t1 ).count();
@@ -882,6 +893,10 @@ double SparseGP ::compute_likelihood_gradient_stable(bool precomputed_KnK) {
   datafit_grad(hyp_index + 1) /= fn3;
   datafit_grad(hyp_index + 2) = y_K_alpha.transpose() * s_noise_one.cwiseProduct(y_K_alpha);
   datafit_grad(hyp_index + 2) /= sn3;
+
+  // TODO: debug
+  std::cout << "datafit_grad " << datafit_grad << std::endl;
+  std::cout << "complex_grad " << complexity_grad << std::endl;
 
   t2 = std::chrono::high_resolution_clock::now();
   duration = (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2 - t1 ).count();

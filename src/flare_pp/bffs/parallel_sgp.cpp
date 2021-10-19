@@ -61,6 +61,11 @@ ParallelSGP ::ParallelSGP(std::vector<Kernel *> kernels, double energy_noise,
   }
 }
 
+// Destructor
+ParallelSGP ::~ParallelSGP() {
+  blacs::finalize();
+}
+
 
 void ParallelSGP ::add_training_structure(const Structure &structure) {
 
@@ -678,7 +683,7 @@ void ParallelSGP::update_matrices_QR() {
   blacs::barrier();
 
   // Directly use triangular_solve to get alpha: R * alpha = Q_b
-  DistMatrix<double> Qb_dist = QR.QT_matmul(b, tau);                        // Q_b = Q^T * b
+  DistMatrix<double> Qb_dist = QR.Q_matmul(b, tau, 'L', 'T');                // Q_b = Q^T * b
 
   Matrix<double> Qb_array(f_size + u_size, 1);
   Qb_dist.allgather(Qb_array.array.get());
@@ -891,7 +896,8 @@ Eigen::VectorXd ParallelSGP ::compute_like_grad_of_kernel_hyps() {
     Eigen::MatrixXd Kuu_i = Kuu_grad[0];
 
     for (int j = 0; j < n_hyps; j++) {
-      Eigen::MatrixXd dKuu = Eigen::MatrixXd::Zero(u_size, u_size);
+      //Eigen::MatrixXd dKuu = Eigen::MatrixXd::Zero(u_size, u_size);
+      dKuu = Eigen::MatrixXd::Zero(u_size, u_size);
       dKuu.block(count, count, size, size) = Kuu_grad[j + 1];
 
       // Compute locally noise_one * Kuf_grad.transpose()
@@ -910,13 +916,26 @@ Eigen::VectorXd ParallelSGP ::compute_like_grad_of_kernel_hyps() {
       Eigen::MatrixXd dnK_local = noise_one_local.asDiagonal() * dKfu_local;
     
       // Compute distributedly Kuf_grad * noise_one * Kuf.transpose()
+      std::cout << "dnK_local" << std::endl;
+      std::cout << dnK_local << std::endl;
+
       DistMatrix<double> dnK_dist(f_size, u_size);
-      dnK_dist.collect(&dnK_local(0, 0), 0, count, f_size, size, f_size_per_proc, size, nmax_struc - nmin_struc);
+      dnK_dist = [](int i, int j){return 0.0;};
+      //dnK_dist.collect(&dnK_local(0, 0), 0, count, f_size, size, f_size_per_proc, size, nmax_struc - nmin_struc);
+      dnK_dist.collect(&dnK_local(0, 0), 0, 0, f_size, u_size, f_size_per_proc, u_size, nmax_struc - nmin_struc);
+
+      // TODO: debug
+      Eigen::MatrixXd dnK_serial(f_size, u_size);
+      dnK_dist.gather(&dnK_serial(0, 0));
+      std::cout << "dnK_dist" << std::endl;
+      std::cout << dnK_serial << std::endl;
+
       DistMatrix<double> dKnK_dist(u_size, u_size);
       dKnK_dist = dnK_dist.matmul(Kfu_dist, 1.0, 'T', 'N');
     
       // Gather dK_noise_K to a single process because it's small (u_size x u_size)
-      Eigen::MatrixXd dK_noise_K = Eigen::MatrixXd::Zero(u_size, u_size); 
+      //Eigen::MatrixXd dK_noise_K = Eigen::MatrixXd::Zero(u_size, u_size); 
+      dK_noise_K = Eigen::MatrixXd::Zero(u_size, u_size); 
       dKnK_dist.gather(&dK_noise_K(0, 0));
 
       // Derivative of complexity over sigma
@@ -928,6 +947,7 @@ Eigen::VectorXd ParallelSGP ::compute_like_grad_of_kernel_hyps() {
         std::cout << "complex grad 1 " << 1./2. * (Kuu_i.inverse() * Kuu_grad[j + 1]).trace() << std::endl; 
         std::cout << "complex grad 2 " << - 1./2. * (Pi_mat * Sigma).trace() << std::endl;
 
+        std::cout << Pi_mat << std::endl;
       }
 
       // Derivative of data_fit over sigma
@@ -941,13 +961,13 @@ Eigen::VectorXd ParallelSGP ::compute_like_grad_of_kernel_hyps() {
 
       if (blacs::mpirank == 0) {
         std::cout << "datafit grad 0 " << datafit_grad << std::endl;
-        //dK_alpha = Eigen::VectorXd::Ones(f_size); // debug
-        std::cout << "f_size_per_proc=" << f_size_per_proc << " nmax_struc - nmin_struc=" << nmax_struc - nmin_struc << std::endl;
-        std::cout << "dK_alpha(f_size_per_proc)=" << dK_alpha(f_size_per_proc) << std::endl;
-        std::cout << "dKfu_local * alpha(219)=" << dKfu_local.row(219) * alpha << std::endl;
-        std::cout << "dKfu_local.row(218)=" << dKfu_local.row(218) << std::endl;
-        std::cout << "dKfu_local.row(219)=" << dKfu_local.row(219) << std::endl;
-        std::cout << "dK_alpha=" << dK_alpha << std::endl;
+        ////dK_alpha = Eigen::VectorXd::Ones(f_size); // debug
+        //std::cout << "f_size_per_proc=" << f_size_per_proc << " nmax_struc - nmin_struc=" << nmax_struc - nmin_struc << std::endl;
+        //std::cout << "dK_alpha(f_size_per_proc)=" << dK_alpha(f_size_per_proc) << std::endl;
+        //std::cout << "dKfu_local * alpha(219)=" << dKfu_local.row(219) * alpha << std::endl;
+        //std::cout << "dKfu_local.row(218)=" << dKfu_local.row(218) << std::endl;
+        //std::cout << "dKfu_local.row(219)=" << dKfu_local.row(219) << std::endl;
+        //std::cout << "dK_alpha=" << dK_alpha << std::endl;
         datafit_grad(hyp_index + j) +=
             dK_alpha.transpose() * global_noise_vector.cwiseProduct(y_K_alpha);
         datafit_grad(hyp_index + j) += 
