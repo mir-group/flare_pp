@@ -635,10 +635,6 @@ void ParallelSGP::update_matrices_QR() {
   Eigen::VectorXd noise_labels = noise_vector_sqrt.asDiagonal() * local_labels;
   b.collect(&noise_labels(0), 0, 0, f_size, 1, f_size_per_proc, 1, nmax_struc - nmin_struc); 
 
-  std::cout << "noise_vector_sqrt " << noise_vector_sqrt << std::endl;
-  std::cout << "local_labels " << local_labels << std::endl;
-  std::cout << "b " << noise_labels << std::endl;
-
   // Wait until the communication is done
   A.fence();
   b.fence();
@@ -691,7 +687,6 @@ void ParallelSGP::update_matrices_QR() {
   // with Scalapack block algorithm with ill-conditioned matrix
   R_inv = R.triangularView<Eigen::Upper>().solve(Kuu_eye);
   R_inv_diag = R_inv.diagonal();
-  std::cout << "Q_b " << Q_b << std::endl; 
   alpha = R_inv * Q_b;
 
   timer.toc("get alpha", blacs::mpirank);
@@ -810,11 +805,6 @@ void ParallelSGP ::compute_likelihood_stable() {
   // Compute log marginal likelihood
   log_marginal_likelihood = 0;
   if (blacs::mpirank == 0) {
-    // TODO: debug
-//    global_noise_vector = Eigen::VectorXd::Ones(f_size);
-//    y_global = Eigen::VectorXd::Ones(f_size);
-//    std::cout << "K_alpha " << K_alpha << std::endl;
-
     y_K_alpha = y_global - K_alpha;
     data_fit =
         -(1. / 2.) * y_global.transpose() * global_noise_vector.cwiseProduct(y_K_alpha);
@@ -833,8 +823,6 @@ void ParallelSGP ::compute_likelihood_stable() {
       sigma_inv_det += 2 * log(abs(R_inv_diag(i)));
     }
 
-    std::cout << "likelihood datafit " << data_fit << " " <<  "constant " << constant_term << std::endl;
-    std::cout << "complexity " << noise_det << " " << Kuu_inv_det << " " << sigma_inv_det << std::endl;
     complexity_penalty = (1. / 2.) * (noise_det + Kuu_inv_det + sigma_inv_det);
     log_marginal_likelihood = complexity_penalty + data_fit + constant_term;
   }
@@ -931,10 +919,6 @@ Eigen::VectorXd ParallelSGP ::compute_like_grad_of_kernel_hyps() {
       if (blacs::mpirank == 0) {
         Eigen::MatrixXd Pi_mat = dK_noise_K + dK_noise_K.transpose() + dKuu;
         complexity_grad(hyp_index + j) += 1./2. * (Kuu_i.inverse() * Kuu_grad[j + 1]).trace() - 1./2. * (Pi_mat * Sigma).trace(); 
-      std::cout << "complexity_grad kern 1 " << 1./2. * (Kuu_i.inverse() * Kuu_grad[j + 1]).trace() << std::endl;
-      std::cout << "complexity_grad kern 2 " << 1./2. * (Pi_mat * Sigma).trace() << std::endl;
-
-
       }
 
       // Derivative of data_fit over sigma
@@ -952,10 +936,6 @@ Eigen::VectorXd ParallelSGP ::compute_like_grad_of_kernel_hyps() {
         datafit_grad(hyp_index + j) += 
             - 1./2. * alpha.transpose() * dKuu * alpha;
         likelihood_grad(hyp_index + j) += complexity_grad(hyp_index + j) + datafit_grad(hyp_index + j); 
-      std::cout << "datafit_grad kern 1 " << dK_alpha.transpose() * global_noise_vector.cwiseProduct(y_K_alpha) << std::endl;
-      std::cout << "datafit_grad kern 2 " << - 1./2. * alpha.transpose() * dKuu * alpha << std::endl;
-
-
       }
     }
     count += size;

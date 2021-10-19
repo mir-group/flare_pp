@@ -597,10 +597,6 @@ void SparseGP ::update_matrices_QR() {
   Eigen::VectorXd b = Eigen::VectorXd::Zero(Kuf.cols() + Kuu.cols());
   b.segment(0, Kuf.cols()) = noise_vector_sqrt.asDiagonal() * y;
 
-  std::cout << "noise_vector_sqrt " << noise_vector_sqrt << std::endl;
-  std::cout << "local_labels " << y << std::endl;
-  std::cout << "b " << b << std::endl;
-
   // QR decompose A.
   Eigen::HouseholderQR<Eigen::MatrixXd> qr(A);
   Eigen::VectorXd Q_b = (qr.householderQ().transpose() * b).segment(0, Kuf.cols());
@@ -609,7 +605,6 @@ void SparseGP ::update_matrices_QR() {
                        .solve(Kuu_eye);
   R_inv_diag = R_inv.diagonal();
   alpha = R_inv * Q_b;
-  std::cout << "Q_b " << Q_b << std::endl; 
   Sigma = R_inv * R_inv.transpose();
 }
 
@@ -744,7 +739,6 @@ double SparseGP ::compute_likelihood_gradient_stable(bool precomputed_KnK) {
   data_fit =
       -(1. / 2.) * y.transpose() * noise_vector.cwiseProduct(y_K_alpha);
   constant_term = -(1. / 2.) * n_labels * log(2 * M_PI);
-  //  std::cout << "K_alpha " << K_alpha << std::endl;
 
   t2 = std::chrono::high_resolution_clock::now();
   duration = (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2 - t1 ).count();
@@ -765,9 +759,6 @@ double SparseGP ::compute_likelihood_gradient_stable(bool precomputed_KnK) {
     sigma_inv_det += 2 * log(abs(R_inv_diag(i)));
   }
 
-  std::cout << "likelihood datafit " << data_fit << " " <<  "constant " << constant_term << std::endl;
-  std::cout << "likelihood noise_det Kuu_inv_det sigma_inv_det: " << noise_det << " ";
-  std::cout << Kuu_inv_det << " " << sigma_inv_det << std::endl;
   complexity_penalty = (1. / 2.) * (noise_det + Kuu_inv_det + sigma_inv_det);
   log_marginal_likelihood = complexity_penalty + data_fit + constant_term;
 
@@ -835,8 +826,6 @@ double SparseGP ::compute_likelihood_gradient_stable(bool precomputed_KnK) {
       // Derivative of complexity over sigma
       // TODO: the 2nd term is not very stable numerically, because dK_noise_K is very large, and Kuu_grads is small
       complexity_grad(hyp_index + j) += 1./2. * (Kuu_i.inverse() * Kuu_grad[j + 1]).trace() - 1./2. * (Pi_mat * Sigma).trace(); 
-      std::cout << "complexity_grad kern 1 " << 1./2. * (Kuu_i.inverse() * Kuu_grad[j + 1]).trace() << std::endl;
-      std::cout << "complexity_grad kern 2 " << 1./2. * (Pi_mat * Sigma).trace() << std::endl;
 
       t2 = std::chrono::high_resolution_clock::now();
       duration = (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2 - t1 ).count();
@@ -855,8 +844,6 @@ double SparseGP ::compute_likelihood_gradient_stable(bool precomputed_KnK) {
 
       datafit_grad(hyp_index + j) += dK_alpha.transpose() * noise_vector.cwiseProduct(y_K_alpha);
       datafit_grad(hyp_index + j) += - 1./2. * alpha.transpose() * Kuu_grads[hyp_index + j] * alpha;
-      std::cout << "datafit_grad kern 1 " << dK_alpha.transpose() * noise_vector.cwiseProduct(y_K_alpha) << std::endl;
-      std::cout << "datafit_grad kern 2 " << - 1./2. * alpha.transpose() * Kuu_grads[hyp_index + j] * alpha << std::endl;
 
       t2 = std::chrono::high_resolution_clock::now();
       duration = (double) std::chrono::duration_cast<std::chrono::milliseconds>( t2 - t1 ).count();
