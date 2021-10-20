@@ -53,6 +53,9 @@ SparseGP ::SparseGP(std::vector<Kernel *> kernels, double energy_noise,
   }
 }
 
+// Destructor
+SparseGP ::~SparseGP() {}
+
 void SparseGP ::initialize_sparse_descriptors(const Structure &structure) {
   if (sparse_descriptors.size() != 0)
     return;

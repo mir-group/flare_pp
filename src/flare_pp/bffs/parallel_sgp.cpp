@@ -66,7 +66,6 @@ ParallelSGP ::~ParallelSGP() {
   blacs::finalize();
 }
 
-
 void ParallelSGP ::add_training_structure(const Structure &structure) {
 
   int n_energy = structure.energy.size();

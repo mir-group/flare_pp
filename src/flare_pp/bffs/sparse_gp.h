@@ -46,6 +46,9 @@ public:
   // Constructors.
   SparseGP();
 
+  // Destructors.
+  virtual ~SparseGP();
+
   /**
    Basic Sparse GP constructor.  
 
