@@ -2,7 +2,9 @@
 #include "structure.h"
 #include "y_grad.h"
 #include "sparse_gp.h"
+#include "b1.h"
 #include "b2.h"
+#include "b3.h"
 #include "b2_simple.h"
 #include "b2_norm.h"
 #include "bk.h"
@@ -111,6 +113,41 @@ PYBIND11_MODULE(_C_flare, m) {
       .def(py::init<const std::string &, const std::string &,
                     const std::vector<double> &, const std::vector<double> &,
                     const std::vector<int> &>());
+
+  py::class_<B1, Descriptor>(m, "B1")
+      .def(py::init<const std::string &, const std::string &,
+                    const std::vector<double> &, const std::vector<double> &,
+                    const std::vector<int> &>())
+      .def_readonly("radial_basis", &B1::radial_basis)
+      .def_readonly("cutoff_function", &B1::cutoff_function)
+      .def_readonly("radial_hyps", &B1::radial_hyps)
+      .def_readonly("cutoff_hyps", &B1::cutoff_hyps)
+      .def_readonly("descriptor_settings", &B1::descriptor_settings);
+
+  py::class_<B2, Descriptor>(m, "B2")
+      .def(py::init<const std::string &, const std::string &,
+                    const std::vector<double> &, const std::vector<double> &,
+                    const std::vector<int> &>())
+      .def(py::init<const std::string &, const std::string &,
+                    const std::vector<double> &, const std::vector<double> &,
+                    const std::vector<int> &,
+                    const Eigen::MatrixXd &>())
+      .def_readonly("radial_basis", &B2::radial_basis)
+      .def_readonly("cutoff_function", &B2::cutoff_function)
+      .def_readonly("radial_hyps", &B2::radial_hyps)
+      .def_readonly("cutoff_hyps", &B2::cutoff_hyps)
+      .def_readonly("cutoffs", &B2::cutoffs)
+      .def_readonly("descriptor_settings", &B2::descriptor_settings);
+
+  py::class_<B3, Descriptor>(m, "B3")
+      .def(py::init<const std::string &, const std::string &,
+                    const std::vector<double> &, const std::vector<double> &,
+                    const std::vector<int> &>())
+      .def_readonly("radial_basis", &B3::radial_basis)
+      .def_readonly("cutoff_function", &B3::cutoff_function)
+      .def_readonly("radial_hyps", &B3::radial_hyps)
+      .def_readonly("cutoff_hyps", &B3::cutoff_hyps)
+      .def_readonly("descriptor_settings", &B3::descriptor_settings);
 
   py::class_<Bk, Descriptor>(m, "Bk")
       .def(py::init<const std::string &, const std::string &,
