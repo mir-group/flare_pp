@@ -1,8 +1,10 @@
 from ase.calculators.calculator import Calculator, all_changes
+from flare.utils.element_coder import NumpyEncoder
 from flare_pp._C_flare import Structure
+from flare_pp.sparse_gp import SGP_Wrapper
 import numpy as np
-import time
-
+import time, json
+from copy import deepcopy
 
 class SGP_Calculator(Calculator):
 
@@ -52,11 +54,11 @@ class SGP_Calculator(Calculator):
             self.gp_model.sparse_gp.predict_local_uncertainties(structure_descriptor)
 
         # Set results.
-        self.results["energy"] = structure_descriptor.mean_efs[0]
-        self.results["forces"] = structure_descriptor.mean_efs[1:-6].reshape(-1, 3)
+        self.results["energy"] = deepcopy(structure_descriptor.mean_efs[0])
+        self.results["forces"] = deepcopy(structure_descriptor.mean_efs[1:-6].reshape(-1, 3))
 
         # Convert stress to ASE format.
-        flare_stress = structure_descriptor.mean_efs[-6:]
+        flare_stress = deepcopy(structure_descriptor.mean_efs[-6:])
         ase_stress = -np.array(
             [
                 flare_stress[0],
@@ -112,6 +114,35 @@ class SGP_Calculator(Calculator):
 
     def calculation_required(self, atoms, quantities):
         return True
+
+    def as_dict(self):
+        out_dict = dict(vars(self))
+        out_dict["gp_model"] = self.gp_model.as_dict()
+        out_dict.pop("atoms")
+        out_dict.pop("get_spin_polarized")
+        return out_dict
+
+    @staticmethod
+    def from_dict(dct):
+        sgp, _ = SGP_Wrapper.from_dict(dct["gp_model"])
+        calc = SGP_Calculator(sgp)
+        calc.results = dct["results"]
+        return calc
+
+    def write_model(self, name):
+        if ".json" != name[-5:]:
+            name += ".json"
+        with open(name, "w") as f:
+            json.dump(self.as_dict(), f, cls=NumpyEncoder)
+
+    @staticmethod
+    def from_file(name):
+        with open(name, "r") as f:
+            gp_dict = json.loads(f.readline())
+        sgp, _ = SGP_Wrapper.from_dict(gp_dict["gp_model"])
+        calc = SGP_Calculator(sgp)
+
+        return calc
 
 
 def sort_variances(structure_descriptor, variances):

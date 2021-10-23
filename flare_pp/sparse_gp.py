@@ -202,16 +202,17 @@ class SGP_Wrapper:
         """
         Need an initialized GP
         """
-        # recover kernels from checkpoint
+        # Recover kernel from checkpoint.
         kernel_list = in_dict["kernels"]
-        kernels = []
-        for k, kern in enumerate(kernel_list):
-            if kern[0] != "NormalizedDotProduct":
-                raise NotImplementedError
-            assert kern[1] == in_dict["hyps"][k]
-            kernels.append(NormalizedDotProduct(kern[1], kern[2]))
+        assert len(kernel_list) == 1
+        kernel_hyps = kernel_list[0]
+        assert kernel_hyps[0] == "NormalizedDotProduct"
+        sigma = float(kernel_hyps[1])
+        power = int(kernel_hyps[2])
+        kernel = NormalizedDotProduct(sigma, power)
+        kernels = [kernel]
 
-        # recover descriptors from checkpoint
+        # Recover descriptor from checkpoint.
         desc_calc = in_dict["descriptor_calculators"]
         desc_calc_list = []
 
@@ -428,9 +429,13 @@ class SGP_Wrapper:
         new_kernels = self.sgp_var.kernels
         print("Map with current sgp_var")
 
+<<<<<<< HEAD
         self.sgp_var.write_mapping_coefficients(
             filename, contributor, kernel_idx, "uncertainty"
         )
+=======
+        self.sgp_var.write_varmap_coefficients(filename, contributor, kernel_idx)
+>>>>>>> b587629562293665699a9d4914465cca8a557936
 
         return new_kernels
 
@@ -488,7 +493,8 @@ class SGP_Wrapper:
         return new_gp, kernels
 
 
-def compute_negative_likelihood(hyperparameters, sparse_gp):
+def compute_negative_likelihood(hyperparameters, sparse_gp,
+                                print_vals=False):
     """Compute the negative log likelihood and gradient with respect to the
     hyperparameters."""
 
@@ -498,23 +504,27 @@ def compute_negative_likelihood(hyperparameters, sparse_gp):
     sparse_gp.compute_likelihood()
     negative_likelihood = -sparse_gp.log_marginal_likelihood
 
-    print_hyps(hyperparameters, negative_likelihood)
+    if print_vals:
+        print_hyps(hyperparameters, negative_likelihood)
 
     return negative_likelihood
 
 
-def compute_negative_likelihood_grad(hyperparameters, sparse_gp):
+def compute_negative_likelihood_grad(hyperparameters, sparse_gp,
+                                     print_vals=False):
     """Compute the negative log likelihood and gradient with respect to the
     hyperparameters."""
 
     assert len(hyperparameters) == len(sparse_gp.hyperparameters)
 
-    negative_likelihood = -sparse_gp.compute_likelihood_gradient(hyperparameters)
+    negative_likelihood = \
+        -sparse_gp.compute_likelihood_gradient(hyperparameters)
     negative_likelihood_gradient = -sparse_gp.likelihood_gradient
 
-    print_hyps_and_grad(
-        hyperparameters, negative_likelihood_gradient, negative_likelihood
-    )
+    if print_vals:
+        print_hyps_and_grad(
+            hyperparameters, negative_likelihood_gradient, negative_likelihood
+            )
 
     return negative_likelihood, negative_likelihood_gradient
 
@@ -559,7 +569,7 @@ def print_hyps_and_grad(hyperparameters, neglike_grad, neglike):
 
 def optimize_hyperparameters(
     sparse_gp,
-    display_results=True,
+    display_results=False,
     gradient_tolerance=1e-4,
     max_iterations=10,
     bounds=None,
