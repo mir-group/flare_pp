@@ -9,6 +9,7 @@ from flare.utils.element_coder import NumpyEncoder
 from flare.utils.learner import is_std_in_bound
 
 from mpi4py import MPI
+from memory_profiler import profile
 
 from flare_pp._C_flare import ParallelSGP
 from flare_pp.sparse_gp import SGP_Wrapper
@@ -70,6 +71,7 @@ class ParSGP_Wrapper(SGP_Wrapper):
         # local training dataset on the current process
         return self.sparse_gp.training_structures
 
+    @profile
     def build(
         self,
         training_strucs: Union[List[struc.Structure], List[FLARE_Atoms]],
@@ -129,6 +131,7 @@ class ParSGP_Wrapper(SGP_Wrapper):
             n_types,
         )
 
+    @profile
     def update_db(
         self,
         structure,
