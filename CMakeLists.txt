@@ -126,6 +126,7 @@ set(FLARE_SOURCES
     src/flare_pp/descriptors/b2.cpp
     src/flare_pp/descriptors/b2_norm.cpp
     src/flare_pp/descriptors/b2_simple.cpp
+    src/flare_pp/descriptors/b2_spec.cpp
     src/flare_pp/descriptors/b3.cpp
     src/flare_pp/descriptors/bk.cpp
     src/flare_pp/descriptors/indices.cpp
