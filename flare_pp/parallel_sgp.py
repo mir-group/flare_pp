@@ -168,6 +168,9 @@ class ParSGP_Wrapper(SGP_Wrapper):
                     ).tolist()
                     for i in range(len(self.descriptor_calculators))
                 ]
+                comm = MPI.COMM_WORLD
+                rank = comm.Get_rank()
+                sparse_inds = comm.bcast(sparse_inds, root=0)
             else:
                 raise Exception(
                     "The custom_range should length equal to the number of descriptors/kernels if mode='random'"
