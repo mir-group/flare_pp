@@ -63,7 +63,7 @@ ParallelSGP ::ParallelSGP(std::vector<Kernel *> kernels, double energy_noise,
 
 // Destructor
 ParallelSGP ::~ParallelSGP() {
-  blacs::finalize();
+  if (finalize_MPI) blacs::finalize();
 }
 
 void ParallelSGP ::add_training_structure(const Structure &structure) {

@@ -225,6 +225,7 @@ PYBIND11_MODULE(_C_flare, m) {
   py::class_<ParallelSGP, SparseGP>(m, "ParallelSGP")
       .def(py::init<>())
       .def(py::init<std::vector<Kernel *>, double, double, double>())
+      .def_readwrite("finalize_MPI", &ParallelSGP::finalize_MPI)
       .def("build", &ParallelSGP::build)
       .def("set_hyperparameters", &ParallelSGP::set_hyperparameters)
       .def("compute_likelihood_stable", &ParallelSGP::compute_likelihood_stable)
