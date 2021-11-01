@@ -244,6 +244,8 @@ TEST_F(ParSGPTest, UpdateTrainSet){
   dc.push_back(&ps1);
 
   ParallelSGP parallel_sgp_1(kernels, sigma_e, sigma_f, sigma_s);
+  bool update = false;
+  parallel_sgp_1.build(training_strucs, cutoff, dc, sparse_indices, n_types, update);
 
   // Make positions.
   int n_atoms_3 = 11;
@@ -266,8 +268,8 @@ TEST_F(ParSGPTest, UpdateTrainSet){
   MPI_Bcast(species_3.data(), n_atoms_3, MPI_INT, 0, MPI_COMM_WORLD);
 
   // Build kernel matrices for paralle sgp
-  std::vector<std::vector<int>> comm_sparse_ind = {{0, 1, 5, 7}, {2, 3, 4}}; 
-  //std::vector<std::vector<int>> comm_sparse_ind = {{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}, {0, 1, 2, 4, 5, 6, 7, 8, 9}};
+  //std::vector<std::vector<int>> comm_sparse_ind = {{0, 1, 5, 7}, {2, 3, 4}}; 
+  std::vector<std::vector<int>> comm_sparse_ind = {{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}, {0, 1, 2, 4, 5, 6, 7, 8, 9}};
   //sparse_indices = {comm_sparse_ind, comm_sparse_ind};
 
   std::cout << "Start building" << std::endl;
@@ -281,7 +283,7 @@ TEST_F(ParSGPTest, UpdateTrainSet){
   for (int i = 0; i < dc.size(); i++)
     sparse_indices[i].push_back(comm_sparse_ind[i]);
 
-  bool update = true;
+  update = true;
   parallel_sgp_1.build(training_strucs, cutoff, dc, sparse_indices, n_types, update);
   parallel_sgp_1.finalize_MPI = false;
 

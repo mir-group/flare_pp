@@ -112,7 +112,6 @@ void ParallelSGP ::add_training_structure(const Structure &structure) {
   n_labels += n_struc_labels;
 
   // Store training structure.
-  training_structures.push_back(structure);
   n_strucs += 1;
 }
 
@@ -302,12 +301,9 @@ void ParallelSGP::load_local_training_data(const std::vector<Structure> &trainin
   local_sparse_descriptors = {};
   sparse_descriptors = {};
 
-  // TODO: one possible issue is that the peak memory will be ~ 2 x training_structures + other 
-  std::vector<Structure> old_training_structures = training_structures;
-  training_structures = {};
-
-  std::vector<int> old_local_training_structure_indices = local_training_structure_indices;
-  local_training_structure_indices = {};
+  // Not clean up training_structures
+  std::vector<Structure> new_training_structures;
+  std::vector<int> new_local_training_structure_indices;
 
   // Compute the total number of clusters of each type of each kernel
   n_struc_clusters_by_type = {};
@@ -346,13 +342,20 @@ void ParallelSGP::load_local_training_data(const std::vector<Structure> &trainin
       if (update) { // if just adding a few new strucs (appened in training_strucs)
         // check if the current struc is already in the list
         std::vector<int>::iterator local_struc_index = 
-            std::find(old_local_training_structure_indices.begin(), 
-                old_local_training_structure_indices.end(), t);
+            std::find(local_training_structure_indices.begin(), 
+                local_training_structure_indices.end(), t);
 
         // if it is, then use the existing one, otherwise build it up
-        if (local_struc_index != old_local_training_structure_indices.end()) {
-          struc = old_training_structures[*local_struc_index];
+         
+        if (local_struc_index != local_training_structure_indices.end()) {
+          int local_struc_ind = std::distance(local_training_structure_indices.begin(), local_struc_index);
+          struc = training_structures[local_struc_ind];
           build_struc = false;
+          //build_struc = true;
+
+          // clear the descriptors in the old list to save memory
+          training_structures[local_struc_ind].descriptors.clear();
+          training_structures[local_struc_ind].descriptors.shrink_to_fit();
         }
       }
 
@@ -368,8 +371,9 @@ void ParallelSGP::load_local_training_data(const std::vector<Structure> &trainin
    
       // add the current struc to the local list
       add_training_structure(struc);
-      local_training_structure_indices.push_back(t);
-  
+      new_training_structures.push_back(struc);
+      new_local_training_structure_indices.push_back(t);
+ 
       // save all the label indices that belongs to the current process
       std::vector<int> label_inds;
       for (int l = 0; l < label_size; l++) {
@@ -393,6 +397,8 @@ void ParallelSGP::load_local_training_data(const std::vector<Structure> &trainin
 
     cum_f += label_size;
   }
+  training_structures = new_training_structures;
+  local_training_structure_indices = new_local_training_structure_indices;
 
   for (int i = 0; i < n_kernels; i++) {
     for (int s = 0; s < n_types; s++) {
