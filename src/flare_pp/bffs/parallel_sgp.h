@@ -27,6 +27,8 @@ public:
   int global_n_energy_labels = 0;
   int global_n_force_labels = 0;
   int global_n_stress_labels = 0;
+  std::vector<int> local_training_structure_indices;
+  bool finalize_MPI = true;
 
   utils::Timer timer;
 
@@ -75,7 +77,7 @@ public:
   void build(const std::vector<Structure> &training_strucs,
         double cutoff, std::vector<Descriptor *> descriptor_calculators,
         const std::vector<std::vector<std::vector<int>>> &training_sparse_indices,
-        int n_types);
+        int n_types, bool update = false);
 
   /**
    Method for loading training data distributedly. Each process loads a portion of the whole training
@@ -91,7 +93,7 @@ public:
   void load_local_training_data(const std::vector<Structure> &training_strucs,
         double cutoff, std::vector<Descriptor *> descriptor_calculators,
         const std::vector<std::vector<std::vector<int>>> &training_sparse_indices,
-        int n_types);
+        int n_types, bool update = false);
 
   void gather_sparse_descriptors(std::vector<std::vector<int>> n_clusters_by_type,
         const std::vector<Structure> &training_strucs);

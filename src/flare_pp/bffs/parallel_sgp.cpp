@@ -67,7 +67,6 @@ ParallelSGP ::~ParallelSGP() {
 }
 
 void ParallelSGP ::add_training_structure(const Structure &structure) {
-
   int n_energy = structure.energy.size();
   int n_force = structure.forces.size();
   int n_stress = structure.stresses.size();
@@ -160,11 +159,6 @@ void ParallelSGP ::add_specific_environments(const Structure &structure,
     ClusterDescriptor cluster_descriptor =
         ClusterDescriptor(structure.descriptors[i], indices_1[i]);
     cluster_descriptors.push_back(cluster_descriptor);
-
-    int n_types = structure.descriptors[i].n_types;
-    for (int s = 0; s < n_types; s++){
-      int n_size = n_struc_clusters_by_type[i].size();
-    }
   }
   local_sparse_descriptors.push_back(cluster_descriptors);
 
@@ -193,37 +187,10 @@ void ParallelSGP ::add_global_noise(int n_energy, int n_force, int n_stress) {
 void ParallelSGP::build(const std::vector<Structure> &training_strucs,
         double cutoff, std::vector<Descriptor *> descriptor_calculators,
         const std::vector<std::vector<std::vector<int>>> &training_sparse_indices,
-        int n_types) {
+        int n_types, bool update) {
  
   // initialization
   u_size_single_kernel = {};
-  training_structures = {};
-  local_sparse_descriptors = {};
-  local_label_indices = {};
-  local_label_size = 0;
-
-  sparse_descriptors = {};
-
-  global_n_labels = 0;
-  global_n_energy_labels = 0;
-  global_n_force_labels = 0;
-  global_n_stress_labels = 0;
-  global_noise_vector = Eigen::VectorXd::Zero(0);
-
-  n_struc_clusters_by_type = {};
-
-  n_energy_labels = 0;
-  n_force_labels = 0;
-  n_stress_labels = 0;
-  n_labels = 0;
-  n_strucs = 0;
-
-  label_count = Eigen::VectorXd::Zero(1);
-  y = Eigen::VectorXd::Zero(0);
-  noise_vector = Eigen::VectorXd::Zero(0);
-  e_noise_one = Eigen::VectorXd::Zero(0);
-  f_noise_one = Eigen::VectorXd::Zero(0);
-  s_noise_one = Eigen::VectorXd::Zero(0);
 
   // Initialize kernel lists.
   Eigen::MatrixXd empty_matrix;
@@ -281,7 +248,7 @@ void ParallelSGP::build(const std::vector<Structure> &training_strucs,
   }
 
   // load and distribute training structures, compute descriptors
-  load_local_training_data(training_strucs, cutoff, descriptor_calculators, training_sparse_indices, n_types);
+  load_local_training_data(training_strucs, cutoff, descriptor_calculators, training_sparse_indices, n_types, update);
   timer.toc("load_local_training_data", blacs::mpirank);
 
   // compute kernel matrices from training data
@@ -305,14 +272,45 @@ void ParallelSGP::build(const std::vector<Structure> &training_strucs,
 void ParallelSGP::load_local_training_data(const std::vector<Structure> &training_strucs,
         double cutoff, std::vector<Descriptor *> descriptor_calculators,
         const std::vector<std::vector<std::vector<int>>> &training_sparse_indices,
-        int n_types) {
+        int n_types, bool update) {
 
   // Distribute the training structures and sparse envs
   Structure struc;
   int cum_f = 0;
+
   global_n_labels = 0;
+  global_n_energy_labels = 0;
+  global_n_force_labels = 0;
+  global_n_stress_labels = 0;
+  global_noise_vector = Eigen::VectorXd::Zero(0);
+
+  n_energy_labels = 0;
+  n_force_labels = 0;
+  n_stress_labels = 0;
+  n_labels = 0;
+  n_strucs = 0;
+
+  label_count = Eigen::VectorXd::Zero(1);
+  y = Eigen::VectorXd::Zero(0);
+  noise_vector = Eigen::VectorXd::Zero(0);
+  e_noise_one = Eigen::VectorXd::Zero(0);
+  f_noise_one = Eigen::VectorXd::Zero(0);
+  s_noise_one = Eigen::VectorXd::Zero(0);
+
+  local_label_indices = {};
+  local_label_size = 0;
+  local_sparse_descriptors = {};
+  sparse_descriptors = {};
+
+  // TODO: one possible issue is that the peak memory will be ~ 2 x training_structures + other 
+  std::vector<Structure> old_training_structures = training_structures;
+  training_structures = {};
+
+  std::vector<int> old_local_training_structure_indices = local_training_structure_indices;
+  local_training_structure_indices = {};
 
   // Compute the total number of clusters of each type of each kernel
+  n_struc_clusters_by_type = {};
   std::vector<std::vector<int>> n_clusters_by_type;
   for (int i = 0; i < n_kernels; i++) {
     std::vector<int> n_clusters_kern;
@@ -342,16 +340,37 @@ void ParallelSGP::load_local_training_data(const std::vector<Structure> &trainin
     }
 
     // Collect local training structures for A, Kuf
+    // Check if the current struc belongs to the current process
     if (nmin_struc < cum_f + label_size && cum_f < nmax_struc) {
-      struc = Structure(training_strucs[t].cell, training_strucs[t].species, 
-              training_strucs[t].positions, cutoff, descriptor_calculators);
+      bool build_struc = true;
+      if (update) { // if just adding a few new strucs (appened in training_strucs)
+        // check if the current struc is already in the list
+        std::vector<int>::iterator local_struc_index = 
+            std::find(old_local_training_structure_indices.begin(), 
+                old_local_training_structure_indices.end(), t);
 
-      struc.energy = training_strucs[t].energy;
-      struc.forces = training_strucs[t].forces;
-      struc.stresses = training_strucs[t].stresses;
- 
+        // if it is, then use the existing one, otherwise build it up
+        if (local_struc_index != old_local_training_structure_indices.end()) {
+          struc = old_training_structures[*local_struc_index];
+          build_struc = false;
+        }
+      }
+
+      if (build_struc) { 
+        // compute descriptors for the current struc
+        struc = Structure(training_strucs[t].cell, training_strucs[t].species, 
+                training_strucs[t].positions, cutoff, descriptor_calculators);
+  
+        struc.energy = training_strucs[t].energy;
+        struc.forces = training_strucs[t].forces;
+        struc.stresses = training_strucs[t].stresses;
+      }
+   
+      // add the current struc to the local list
       add_training_structure(struc);
-
+      local_training_structure_indices.push_back(t);
+  
+      // save all the label indices that belongs to the current process
       std::vector<int> label_inds;
       for (int l = 0; l < label_size; l++) {
         if (cum_f + l >= nmin_struc && cum_f + l < nmax_struc) {
@@ -361,8 +380,9 @@ void ParallelSGP::load_local_training_data(const std::vector<Structure> &trainin
       local_label_indices.push_back(label_inds);
       local_label_size += label_size;
 
+      // compute sparse descriptors if the first label of this struc belongs to
+      // the current process, to avoid multiple procs add the same sparse envs
       if (nmin_struc <= cum_f && cum_f < nmax_struc) {
-        // avoid multiple procs add the same sparse envs
         std::vector<std::vector<int>> sparse_atoms = {};
         for (int i = 0; i < n_kernels; i++) {
           sparse_atoms.push_back(training_sparse_indices[i][t]);
@@ -373,6 +393,7 @@ void ParallelSGP::load_local_training_data(const std::vector<Structure> &trainin
 
     cum_f += label_size;
   }
+
   for (int i = 0; i < n_kernels; i++) {
     for (int s = 0; s < n_types; s++) {
       assert(n_clusters_by_type[i][s] >= world_size);
@@ -381,6 +402,7 @@ void ParallelSGP::load_local_training_data(const std::vector<Structure> &trainin
 
   blacs::barrier();
   
+  // Gather all sparse descriptors to each process
   gather_sparse_descriptors(n_clusters_by_type, training_strucs); 
 }
 
