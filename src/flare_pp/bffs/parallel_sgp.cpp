@@ -595,6 +595,7 @@ void ParallelSGP::compute_kernel_matrices(const std::vector<Structure> &training
 }
 
 void ParallelSGP::update_matrices_QR() {
+  timer.tic();
   // Store square root of noise vector.
   Eigen::VectorXd noise_vector_sqrt = sqrt(local_noise_vector.array());
   Eigen::VectorXd global_noise_vector_sqrt = sqrt(global_noise_vector.array());
@@ -775,9 +776,7 @@ void ParallelSGP ::set_hyperparameters(Eigen::VectorXd hyps) {
   timer.toc("set_hyp: update noise");
 
   // Update remaining matrices.
-  timer.tic();
   update_matrices_QR();
-  timer.toc("set_hyp: update_matrices_QR");
 }
 
 /* -------------------------------------------------------------------------
@@ -811,6 +810,7 @@ void ParallelSGP ::predict_local_uncertainties(Structure &test_structure) {
  * ------------------------------------------------------------------------- */
 
 void ParallelSGP ::compute_likelihood_stable() {
+  timer.tic();
   // initialize BLACS
   blacs::initialize();
 
@@ -866,7 +866,8 @@ void ParallelSGP ::compute_likelihood_stable() {
     log_marginal_likelihood = complexity_penalty + data_fit + constant_term;
   }
   blacs::barrier();
-  MPI_Bcast(&log_marginal_likelihood, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD); 
+  MPI_Bcast(&log_marginal_likelihood, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+  timer.toc("Compute likelihood", blacs::mpirank);
 }
 
 /* -----------------------------------------------------------------------
@@ -889,15 +890,13 @@ double ParallelSGP ::compute_likelihood_gradient_stable(bool precomputed_KnK) {
 
   // Compute likelihood gradient of energy, force, stress noises
   likelihood_gradient.segment(n_hyps_total - 3, 3) += compute_like_grad_of_noise();
-
-  // finalize BLACS
-  std::cout << "finalize" << std::endl;
-  //blacs::finalize();
   
   return log_marginal_likelihood;
 }
 
 Eigen::VectorXd ParallelSGP ::compute_like_grad_of_kernel_hyps() {
+  timer.tic();
+
   DistMatrix<double> Kfu_dist(f_size, u_size);
   Eigen::MatrixXd Kfu_local = Kuf_local.transpose();
   blacs::barrier();
@@ -907,6 +906,8 @@ Eigen::VectorXd ParallelSGP ::compute_like_grad_of_kernel_hyps() {
   DistMatrix<double> alpha_dist(u_size, 1);
   alpha_dist.scatter(&alpha(0), 0, 0, u_size, 1);
   alpha_dist.fence();
+
+  timer.toc("collect Kfu and alpha", blacs::mpirank);
 
   // Compute Kuu and Kuf matrices and gradients.
   int n_hyps_total = hyperparameters.size();
@@ -919,6 +920,7 @@ Eigen::VectorXd ParallelSGP ::compute_like_grad_of_kernel_hyps() {
   Eigen::VectorXd datafit_grad = Eigen::VectorXd::Zero(n_hyps_total);
   Eigen::VectorXd likelihood_grad = Eigen::VectorXd::Zero(n_hyps_total);
   for (int i = 0; i < n_kernels; i++) {
+    timer.tic();
     n_hyps = kernels[i]->kernel_hyperparameters.size();
     hyps_curr = hyperparameters.segment(hyp_index, n_hyps);
     int size = Kuu_kernels[i].rows();
@@ -929,8 +931,10 @@ Eigen::VectorXd ParallelSGP ::compute_like_grad_of_kernel_hyps() {
               training_structures, i, Kuf_kernels[i], hyps_curr);
 
     Eigen::MatrixXd Kuu_i = Kuu_grad[0];
+    timer.toc("Kuu_grad & Kuf_grad", blacs::mpirank);
 
     for (int j = 0; j < n_hyps; j++) {
+      timer.tic();
       Eigen::MatrixXd dKuu = Eigen::MatrixXd::Zero(u_size, u_size);
       dKuu.block(count, count, size, size) = Kuu_grad[j + 1];
 
@@ -961,14 +965,18 @@ Eigen::VectorXd ParallelSGP ::compute_like_grad_of_kernel_hyps() {
       blacs::barrier();
       dKnK_dist.gather(&dK_noise_K(0, 0));
       dKnK_dist.fence();
+      timer.toc("compute dKnK", blacs::mpirank);
 
       // Derivative of complexity over sigma
+      timer.tic();
       if (blacs::mpirank == 0) {
         Eigen::MatrixXd Pi_mat = dK_noise_K + dK_noise_K.transpose() + dKuu;
         complexity_grad(hyp_index + j) += 1./2. * (Kuu_i.inverse() * Kuu_grad[j + 1]).trace() - 1./2. * (Pi_mat * Sigma).trace(); 
       }
+      timer.toc("Pi_mat and complexity_grad", blacs::mpirank);
 
       // Derivative of data_fit over sigma
+      timer.tic();
       DistMatrix<double> dKfu_dist(f_size, u_size);
       dKfu_dist.collect(&dKfu_local(0, 0), 0, 0, f_size, u_size, f_size_per_proc, u_size, nmax_struc - nmin_struc); 
       dKfu_dist.fence();
@@ -987,6 +995,7 @@ Eigen::VectorXd ParallelSGP ::compute_like_grad_of_kernel_hyps() {
             - 1./2. * alpha.transpose() * dKuu * alpha;
         likelihood_grad(hyp_index + j) += complexity_grad(hyp_index + j) + datafit_grad(hyp_index + j); 
       }
+      timer.toc("datafit_grad of kernel hyps", blacs::mpirank);
     }
     count += size;
     hyp_index += n_hyps;
@@ -1013,6 +1022,8 @@ Eigen::VectorXd ParallelSGP ::compute_like_grad_of_noise() {
   blacs::barrier(); 
 
   // Derivative of data_fit over noise  
+  timer.tic();
+
   DistMatrix<double> e_noise_one_dist(f_size, 1);
   e_noise_one_dist.collect(&local_e_noise_one(0), 0, 0, f_size, 1, f_size_per_proc, 1, nmax_struc - nmin_struc);
   e_noise_one_dist.fence();
@@ -1034,6 +1045,9 @@ Eigen::VectorXd ParallelSGP ::compute_like_grad_of_noise() {
   s_noise_one_dist.gather(&global_s_noise_one(0));
   s_noise_one_dist.fence();
 
+  timer.toc("collect and gather e/f/s_noise_one", blacs::mpirank);
+
+  timer.tic();
   if (blacs::mpirank == 0) {
     complexity_grad(0) = - global_n_energy_labels / energy_noise 
         + (KnK_e * Sigma).trace() / en3;
@@ -1054,12 +1068,15 @@ Eigen::VectorXd ParallelSGP ::compute_like_grad_of_noise() {
     likelihood_grad(2) += complexity_grad(2) + datafit_grad(2);
   }
   blacs::barrier();
-  MPI_Bcast(likelihood_grad.data(), likelihood_grad.size(), MPI_DOUBLE, 0, MPI_COMM_WORLD); 
+  MPI_Bcast(likelihood_grad.data(), likelihood_grad.size(), MPI_DOUBLE, 0, MPI_COMM_WORLD);
+  timer.toc("datafit/complexity grad over noise", blacs::mpirank);
 
   return likelihood_grad;
 }
 
 void ParallelSGP ::compute_KnK() {
+  timer.tic();
+
   // Compute and return Kuf * e/f/s_noise_one * Kuf.transpose()
   DistMatrix<double> Kfu_dist(f_size, u_size);
   Eigen::MatrixXd Kfu_local = Kuf_local.transpose();
@@ -1112,6 +1129,8 @@ void ParallelSGP ::compute_KnK() {
   blacs::barrier();
   KnK_s_dist.gather(&KnK_s(0,0));
   KnK_s_dist.fence();
+
+  timer.toc("compute_KnK", blacs::mpirank);
 }
 
 
