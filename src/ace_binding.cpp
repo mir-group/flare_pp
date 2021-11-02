@@ -229,5 +229,7 @@ PYBIND11_MODULE(_C_flare, m) {
       .def("build", &ParallelSGP::build)
       .def("set_hyperparameters", &ParallelSGP::set_hyperparameters)
       .def("compute_likelihood_stable", &ParallelSGP::compute_likelihood_stable)
-      .def("compute_likelihood_gradient_stable", &ParallelSGP::compute_likelihood_gradient_stable);
+      .def("compute_likelihood_gradient_stable", &ParallelSGP::compute_likelihood_gradient_stable)
+      .def("predict_local_uncertainties", &ParallelSGP::predict_local_uncertainties)
+      .def("predict_on_structures", &ParallelSGP::predict_on_structures);
 }
