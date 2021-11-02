@@ -137,49 +137,35 @@ TEST_F(ParSGPTest, BuildParSGP){
   dc.push_back(&ps1);
 
   ParallelSGP parallel_sgp(kernels, sigma_e, sigma_f, sigma_s);
-  std::cout << training_strucs.size() << " " << cutoff << " " << dc.size() << " " << sparse_indices.size() << " " << n_types << std::endl;
   parallel_sgp.build(training_strucs, cutoff, dc, sparse_indices, n_types);
 
   // Compute likelihood and gradient
   parallel_sgp.precompute_KnK();
   double likelihood_parallel = parallel_sgp.compute_likelihood_gradient_stable(true);
   Eigen::VectorXd like_grad_parallel = parallel_sgp.likelihood_gradient;
-  std::cout << "computed likelihood" << std::endl;
 
   // Build a serial SparsGP and compare with ParallelSGP
   if (blacs::mpirank == 0) {
-    std::cout << "Start mapping" << std::endl;
-    std::cout << "kernel size " << parallel_sgp.kernels.size() << std::endl;
     parallel_sgp.write_mapping_coefficients("par_beta.txt", "Me", {0}, "potential");
-    std::cout << "Start mapping variance" << std::endl;
     parallel_sgp.write_mapping_coefficients("par_beta_var.txt", "Me", {0}, "uncertainty");
   
     // Check the kernel matrices are consistent
-    std::cout << "begin comparing n_clusters" << std::endl;
     int n_clusters = 0;
     for (int i = 0; i < parallel_sgp.n_kernels; i++) {
       n_clusters += parallel_sgp.sparse_descriptors[i].n_clusters;
     }
     EXPECT_EQ(n_clusters, sparse_gp.Sigma.rows());
-    //EXPECT_EQ(sparse_gp.sparse_descriptors[0].n_clusters,
-    //          parallel_sgp.Kuu_inverse.rows());
     EXPECT_EQ(parallel_sgp.sparse_descriptors[0].n_clusters, sparse_gp.sparse_descriptors[0].n_clusters);
-    std::cout << "done comparing n_clusters" << std::endl;
     for (int t = 0; t < parallel_sgp.sparse_descriptors[0].n_types; t++) {
       for (int r = 0; r < parallel_sgp.sparse_descriptors[0].descriptors[t].rows(); r++) {
         for (int c = 0; c < parallel_sgp.sparse_descriptors[0].descriptors[t].cols(); c++) {
           double par_desc = parallel_sgp.sparse_descriptors[0].descriptors[t](r, c);
-          //double global_par_desc = parallel_sgp.global_sparse_descriptors[0].descriptors[t](r, c);
           double sgp_desc = sparse_gp.sparse_descriptors[0].descriptors[t](r, c);
-          //std::cout << "descriptor par ser r=" << r << " c=" << c << " " << par_desc << " " << sgp_desc << std::endl;
           EXPECT_NEAR(par_desc, sgp_desc, 1e-6);
-          //EXPECT_NEAR(global_par_desc, sgp_desc, 1e-6);
         }
       }
     }
-    std::cout << "Checked matrix shape" << std::endl;
-    std::cout << "parallel_sgp.Kuu(0, 0)=" << parallel_sgp.Kuu(0, 0) << std::endl;
-  
+ 
     for (int r = 0; r < parallel_sgp.Kuu.rows(); r++) {
       for (int c = 0; c < parallel_sgp.Kuu.cols(); c++) {
         // Sometimes the accuracy is between 1e-6 ~ 1e-5        
@@ -190,8 +176,6 @@ TEST_F(ParSGPTest, BuildParSGP){
  
     for (int r = 0; r < parallel_sgp.Kuu_inverse.rows(); r++) {
       for (int c = 0; c < parallel_sgp.Kuu_inverse.rows(); c++) {
-//        std::cout << "parallel_sgp.Kuu_inv(" << r << "," << c << ")=" << parallel_sgp.Kuu_inverse(r, c);
-//        std::cout << " " << sparse_gp.Kuu_inverse(r, c) << std::endl;
         // Sometimes the accuracy is between 1e-6 ~ 1e-5        
         EXPECT_NEAR(parallel_sgp.Kuu_inverse(r, c), sparse_gp.Kuu_inverse(r, c), 1e-5);
       }
@@ -294,7 +278,7 @@ TEST_F(ParSGPTest, UpdateTrainSet){
 
   ParallelSGP parallel_sgp_2(kernels, sigma_e, sigma_f, sigma_s);
   parallel_sgp_2.build(training_strucs, cutoff, dc, sparse_indices, n_types, false);
-  parallel_sgp_2.finalize_MPI = true;
+  parallel_sgp_2.finalize_MPI = false;
 
   parallel_sgp_2.precompute_KnK();
   double likelihood_2 = parallel_sgp_2.compute_likelihood_gradient_stable(true);
@@ -325,4 +309,64 @@ TEST_F(ParSGPTest, UpdateTrainSet){
     }
   }
 
+}
+
+TEST_F(ParSGPTest, ParPredict){
+  std::vector<Descriptor *> dc;
+  B2 ps(radial_string, cutoff_string, radial_hyps, cutoff_hyps,
+        descriptor_settings);
+  dc.push_back(&ps);
+  B2 ps1(radial_string, cutoff_string, radial_hyps, cutoff_hyps,
+        descriptor_settings);
+  dc.push_back(&ps1);
+
+  ParallelSGP parallel_sgp(kernels, sigma_e, sigma_f, sigma_s);
+  parallel_sgp.build(training_strucs, cutoff, dc, sparse_indices, n_types);
+
+  std::cout << "create testing structures" << std::endl;
+  std::vector<Structure> test_strucs_par;
+  std::vector<Structure> test_strucs_ser;
+  for (int t = 0; t < 10; t++) {
+    Eigen::MatrixXd cell_1, positions_1;
+    std::vector<int> species_1;
+    Eigen::VectorXd labels_1;
+
+    cell_1 = Eigen::MatrixXd::Identity(3, 3) * cell_size;
+
+    positions_1 = Eigen::MatrixXd::Random(n_atoms_1, 3) * cell_size / 2;
+    MPI_Bcast(positions_1.data(), n_atoms_1 * 3, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
+    labels_1 = Eigen::VectorXd::Random(1 + n_atoms_1 * 3 + 6);
+    MPI_Bcast(labels_1.data(), 1 + n_atoms_1 * 3 + 6, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
+    // Make random species.
+    for (int i = 0; i < n_atoms_1; i++) {
+      species_1.push_back(rand() % n_species);
+    }
+    MPI_Bcast(species_1.data(), n_atoms_1, MPI_INT, 0, MPI_COMM_WORLD);
+
+    blacs::barrier();
+
+    Structure test_struc_1(cell_1, species_1, positions_1, cutoff, dc);
+    test_strucs_par.push_back(test_struc_1);
+
+    // Predict with serial SGP
+    Structure test_struc_2(cell_1, species_1, positions_1, cutoff, dc);
+    test_strucs_ser.push_back(test_struc_2);
+
+    blacs::barrier();
+  }
+
+  parallel_sgp.predict_on_structures(test_strucs_par);
+  if (blacs::mpirank == 0) {
+    for (int t = 0; t < test_strucs_par.size(); t++) {
+      sparse_gp.predict_local_uncertainties(test_strucs_ser[t]);
+      for (int r = 0; r < test_strucs_par[t].mean_efs.size(); r++) {
+        EXPECT_NEAR(test_strucs_par[t].mean_efs(r), test_strucs_ser[t].mean_efs(r), 1e-6);
+        for (int i = 0; i < dc.size(); i++) {
+          EXPECT_NEAR(test_strucs_par[t].local_uncertainties[i](r), test_strucs_ser[t].local_uncertainties[i](r), 1e-6);
+        }
+      }
+    }
+  }
 }

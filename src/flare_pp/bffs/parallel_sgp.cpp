@@ -247,7 +247,6 @@ void ParallelSGP::build(const std::vector<Structure> &training_strucs,
   }
 
   // load and distribute training structures, compute descriptors
-  std::cout << "load_local_training_data" << std::endl;
   load_local_training_data(training_strucs, cutoff, descriptor_calculators, training_sparse_indices, n_types, update);
   timer.toc("load_local_training_data", blacs::mpirank);
 
@@ -839,6 +838,7 @@ void ParallelSGP ::predict_on_structures(std::vector<Structure> struc_list) {
     nmax_test = (world_rank + 1) * n_test_per_proc;
   }
 
+  // Compute the total number of labels
   int n_test_labels = 0;
   int n_test_atoms = 0;
   for (int t = 0; t < n_test; t++) {
@@ -846,12 +846,15 @@ void ParallelSGP ::predict_on_structures(std::vector<Structure> struc_list) {
     n_test_atoms += struc_list[t].noa;
   }
 
+  // Create a long array to store predictions of all structures
   Eigen::VectorXd mean_efs = Eigen::VectorXd::Zero(n_test_labels);
   std::vector<Eigen::VectorXd> local_uncertainties;
   for (int i = 0; i < n_kernels; i++) {
     local_uncertainties.push_back(Eigen::VectorXd::Zero(n_test_atoms));
   }
+  blacs::barrier();
 
+  // Compute e/f/s and uncertainties for the local structures
   int count_efs = 0;
   int count_unc = 0;
   for (int t = 0; t < n_test; t++) {
@@ -876,8 +879,22 @@ void ParallelSGP ::predict_on_structures(std::vector<Structure> struc_list) {
   std::vector<Eigen::VectorXd> all_local_uncertainties;
   for (int i = 0; i < n_kernels; i++) {
     Eigen::VectorXd curr_unc = Eigen::VectorXd::Zero(n_test_atoms);
-    MPI_Reduce(local_uncertainties[i].data(), curr_unc.data(), n_test_atoms, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);    
+    MPI_Reduce(local_uncertainties[i].data(), curr_unc.data(), n_test_atoms, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD); 
     all_local_uncertainties.push_back(curr_unc);
+  }
+
+  // Assign the results to each struc
+  count_efs = 0;
+  count_unc = 0;
+  for (int t = 0; t < n_test; t++) {
+    int n_curr_labels = 1 + struc_list[t].noa * 3 + 6;
+    struc_list[t].mean_efs = all_mean_efs.segment(count_efs, n_curr_labels);
+    struc_list[t].local_uncertainties = {};
+    for (int i = 0; i < n_kernels; i++) {
+      struc_list[t].local_uncertainties.push_back(all_local_uncertainties[i].segment(count_unc, struc_list[t].noa));
+    }
+    count_efs += n_curr_labels;
+    count_unc += struc_list[t].noa;
   }
 } 
 
@@ -1095,22 +1112,17 @@ Eigen::VectorXd ParallelSGP ::compute_like_grad_of_noise(bool precomputed_KnK) {
   Eigen::VectorXd likelihood_grad = Eigen::VectorXd::Zero(3);
 
   compute_KnK(precomputed_KnK);
-  std::cout << "done compute_KnK" << std::endl;
   blacs::barrier(); 
 
   // Derivative of data_fit over noise  
   timer.tic();
 
-  std::cout << "computing e_noise_one" << std::endl;
   DistMatrix<double> e_noise_one_dist(f_size, 1);
-  std::cout << "created distmatrix" << std::endl;
   e_noise_one_dist.collect(&local_e_noise_one(0), 0, 0, f_size, 1, f_size_per_proc, 1, nmax_struc - nmin_struc);
-  std::cout << "done collect" << std::endl;
   e_noise_one_dist.fence();
   Eigen::VectorXd global_e_noise_one = Eigen::VectorXd::Zero(f_size);
   e_noise_one_dist.gather(&global_e_noise_one(0));
   e_noise_one_dist.fence();
-  std::cout << "done computing e_noise_one" << std::endl;
 
   DistMatrix<double> f_noise_one_dist(f_size, 1);
   f_noise_one_dist.collect(&local_f_noise_one(0), 0, 0, f_size, 1, f_size_per_proc, 1, nmax_struc - nmin_struc);
@@ -1233,9 +1245,7 @@ void ParallelSGP ::precompute_KnK() {
 
       KnK_e_dist.gather(&KnK_e_kern(0,0));
       KnK_e_dist.fence();
-      std::cout << "before /= sig4 " << KnK_e_kern(0,0) << std::endl;
       KnK_e_kern /= sig4;
-      std::cout << "after /= sig4 " << KnK_e_kern(0,0) << std::endl;
 
       KnK_f_dist.gather(&KnK_f_kern(0,0));
       KnK_f_dist.fence();
@@ -1255,12 +1265,13 @@ void ParallelSGP ::precompute_KnK() {
 
 
 void ParallelSGP ::compute_KnK(bool precomputed) {
+  timer.tic();
+
   KnK_e = Eigen::MatrixXd::Zero(u_size, u_size); 
   KnK_f = Eigen::MatrixXd::Zero(u_size, u_size); 
   KnK_s = Eigen::MatrixXd::Zero(u_size, u_size); 
 
   if (precomputed) {
-    std::cout << "computing KnK" << std::endl;
     int count_i = 0, count_ij = 0;
     for (int i = 0; i < n_kernels; i++) {
       Eigen::VectorXd hyps_i = kernels[i]->kernel_hyperparameters;
@@ -1274,12 +1285,9 @@ void ParallelSGP ::compute_KnK(bool precomputed) {
    
         double sig4 = hyps_i(0) * hyps_i(0) * hyps_j(0) * hyps_j(0);
     
-        std::cout << "computing KnK_e/f/s" << std::endl;
-        std::cout << "Kuf_e_noise_Kfu.size=" << Kuf_e_noise_Kfu.size() << " count_ij=" << count_ij << std::endl;
         KnK_e.block(count_i, count_j, size_i, size_j) += Kuf_e_noise_Kfu[count_ij] * sig4;
         KnK_f.block(count_i, count_j, size_i, size_j) += Kuf_f_noise_Kfu[count_ij] * sig4;
         KnK_s.block(count_i, count_j, size_i, size_j) += Kuf_s_noise_Kfu[count_ij] * sig4;
-        std::cout << "done KnK_e/f/s" << std::endl;
 
         count_ij += 1;
         count_j += size_j;
@@ -1335,4 +1343,5 @@ void ParallelSGP ::compute_KnK(bool precomputed) {
     KnK_s_dist.gather(&KnK_s(0,0));
     KnK_s_dist.fence();
   }
+  timer.toc("compute_KnK", blacs::mpirank);
 }
