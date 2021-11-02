@@ -76,6 +76,7 @@ class ParSGP_Wrapper(SGP_Wrapper):
         self,
         training_strucs: Union[List[struc.Structure], List[FLARE_Atoms]],
         training_sparse_indices: List[List[List[int]]],
+        update,
     ):
         # Check the shape of sparse_indices
         assert (
@@ -129,6 +130,7 @@ class ParSGP_Wrapper(SGP_Wrapper):
             self.descriptor_calculators,
             training_sparse_indices,
             n_types,
+            update,
         )
 
     @profile
@@ -183,10 +185,5 @@ class ParSGP_Wrapper(SGP_Wrapper):
             self.training_sparse_indices[k].append(sparse_inds[k])
 
         # build a new SGP
-        #kernels = self.sparse_gp.kernels
-        #sigma_e = self.sparse_gp.energy_noise
-        #sigma_f = self.sparse_gp.force_noise
-        #sigma_s = self.sparse_gp.stress_noise
-        #self.sparse_gp = ParallelSGP(kernels, sigma_e, sigma_f, sigma_s)
         print(self.training_sparse_indices)
-        self.build(self.training_structures, self.training_sparse_indices)
+        self.build(self.training_structures, self.training_sparse_indices, update=True)
