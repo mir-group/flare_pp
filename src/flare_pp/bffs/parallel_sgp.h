@@ -63,6 +63,7 @@ public:
   void add_local_specific_environments(const Structure &structure, const std::vector<int> atoms);
   void add_global_specific_environments(const Structure &structure, const std::vector<int> atoms);
   void predict_local_uncertainties(Structure &structure);
+  void predict_on_structures(std::vector<Structure> struc_list);
 
   /**
    Method for constructing SGP model from training dataset.  
@@ -114,10 +115,10 @@ public:
   double compute_likelihood_gradient_stable(bool precomputed_KnK);
   Eigen::VectorXd y_K_alpha;
   void compute_likelihood_stable();
-  void compute_KnK();
+  void compute_KnK(bool precomputed_KnK);
   void precompute_KnK();
   Eigen::VectorXd compute_like_grad_of_kernel_hyps();
-  Eigen::VectorXd compute_like_grad_of_noise();
+  Eigen::VectorXd compute_like_grad_of_noise(bool precomputed_KnK);
 
 };
 #endif

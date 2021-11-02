@@ -141,7 +141,8 @@ TEST_F(ParSGPTest, BuildParSGP){
   parallel_sgp.build(training_strucs, cutoff, dc, sparse_indices, n_types);
 
   // Compute likelihood and gradient
-  double likelihood_parallel = parallel_sgp.compute_likelihood_gradient_stable(false);
+  parallel_sgp.precompute_KnK();
+  double likelihood_parallel = parallel_sgp.compute_likelihood_gradient_stable(true);
   Eigen::VectorXd like_grad_parallel = parallel_sgp.likelihood_gradient;
   std::cout << "computed likelihood" << std::endl;
 
@@ -287,14 +288,16 @@ TEST_F(ParSGPTest, UpdateTrainSet){
   parallel_sgp_1.build(training_strucs, cutoff, dc, sparse_indices, n_types, update);
   parallel_sgp_1.finalize_MPI = false;
 
-  double likelihood_1 = parallel_sgp_1.compute_likelihood_gradient_stable(false);
+  parallel_sgp_1.precompute_KnK();
+  double likelihood_1 = parallel_sgp_1.compute_likelihood_gradient_stable(true);
   Eigen::VectorXd like_grad_1 = parallel_sgp_1.likelihood_gradient;
 
   ParallelSGP parallel_sgp_2(kernels, sigma_e, sigma_f, sigma_s);
   parallel_sgp_2.build(training_strucs, cutoff, dc, sparse_indices, n_types, false);
   parallel_sgp_2.finalize_MPI = true;
 
-  double likelihood_2 = parallel_sgp_2.compute_likelihood_gradient_stable(false);
+  parallel_sgp_2.precompute_KnK();
+  double likelihood_2 = parallel_sgp_2.compute_likelihood_gradient_stable(true);
   Eigen::VectorXd like_grad_2 = parallel_sgp_2.likelihood_gradient;
 
   if (blacs::mpirank == 0) {
