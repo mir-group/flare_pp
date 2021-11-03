@@ -5,6 +5,7 @@ from flare_pp.sparse_gp_calculator import SGP_Calculator
 from flare.ase.atoms import FLARE_Atoms
 from ase import Atoms
 from ase.calculators.lj import LennardJones
+from ase.calculators.singlepoint import SinglePointCalculator
 from ase.build import make_supercell
 
 
@@ -65,8 +66,17 @@ def get_random_atoms(a=2.0, sc_size=2, numbers=[6, 8],
     multiplier = np.identity(3) * sc_size
     atoms = make_supercell(unit_cell, multiplier)
     atoms.positions += (2 * np.random.rand(len(atoms), 3) - 1) * 0.1
+    # modify the symbols
+    random_numbers = np.array(numbers)[np.random.choice(2, len(atoms), replace=True)].tolist()
+    atoms.numbers = random_numbers
     flare_atoms = FLARE_Atoms.from_ase_atoms(atoms)
 
+    calc = SinglePointCalculator(flare_atoms)
+    calc.results["energy"] = np.random.rand()
+    calc.results["forces"] = np.random.rand(len(atoms), 3)
+    calc.results["stress"] = np.random.rand(6)
+    flare_atoms.calc = calc
+ 
     return flare_atoms
 
 
