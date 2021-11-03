@@ -63,7 +63,9 @@ public:
   void add_local_specific_environments(const Structure &structure, const std::vector<int> atoms);
   void add_global_specific_environments(const Structure &structure, const std::vector<int> atoms);
   void predict_local_uncertainties(Structure &structure);
-  void predict_on_structures(std::vector<Structure> struc_list,
+
+  std::vector<std::tuple<Eigen::VectorXd, std::vector<Eigen::VectorXd>>> 
+  predict_on_structures(std::vector<Structure> struc_list,
         double cutoff, std::vector<Descriptor *> descriptor_calculators);
 
   /**

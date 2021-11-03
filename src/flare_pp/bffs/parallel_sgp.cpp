@@ -811,7 +811,8 @@ void ParallelSGP ::predict_local_uncertainties(Structure &test_structure) {
 
 }
 
-void ParallelSGP ::predict_on_structures(std::vector<Structure> struc_list, 
+std::vector<std::tuple<Eigen::VectorXd, std::vector<Eigen::VectorXd>>> 
+ParallelSGP ::predict_on_structures(std::vector<Structure> struc_list, 
         double cutoff, std::vector<Descriptor *> descriptor_calculators) {
 
   int n_test = struc_list.size();
@@ -889,18 +890,28 @@ void ParallelSGP ::predict_on_structures(std::vector<Structure> struc_list,
   }
 
   // Assign the results to each struc
+  std::vector<std::tuple<Eigen::VectorXd, std::vector<Eigen::VectorXd>>> results;
   count_efs = 0;
   count_unc = 0;
   for (int t = 0; t < n_test; t++) {
     int n_curr_labels = 1 + struc_list[t].noa * 3 + 6;
-    struc_list[t].mean_efs = all_mean_efs.segment(count_efs, n_curr_labels);
-    struc_list[t].local_uncertainties = {};
+    std::vector<Eigen::VectorXd> curr_unc;
+    std::vector<Eigen::VectorXd> atom_indices;
     for (int i = 0; i < n_kernels; i++) {
-      struc_list[t].local_uncertainties.push_back(all_local_uncertainties[i].segment(count_unc, struc_list[t].noa));
+      curr_unc.push_back(all_local_uncertainties[i].segment(count_unc, struc_list[t].noa));
     }
-    count_efs += n_curr_labels;
-    count_unc += struc_list[t].noa;
+    std::tuple<Eigen::VectorXd, std::vector<Eigen::VectorXd>> curr_res;
+    curr_res = {all_mean_efs.segment(count_efs, n_curr_labels), curr_unc};
+    results.push_back(curr_res);
+    //struc_list[t].mean_efs = all_mean_efs.segment(count_efs, n_curr_labels);
+    //struc_list[t].local_uncertainties = {};
+    //for (int i = 0; i < n_kernels; i++) {
+    //  struc_list[t].local_uncertainties.push_back(all_local_uncertainties[i].segment(count_unc, struc_list[t].noa));
+    //}
+    //count_efs += n_curr_labels;
+    //count_unc += struc_list[t].noa;
   }
+  return results;
 } 
 
 /* -------------------------------------------------------------------------

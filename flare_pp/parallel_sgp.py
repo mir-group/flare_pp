@@ -1,8 +1,10 @@
 import json
 import numpy as np
+from copy import deepcopy
 from scipy.optimize import minimize
 from typing import List, Union, Tuple
 import warnings
+from ase.calculators.singlepoint import SinglePointCalculator
 from flare import struc
 from flare.ase.atoms import FLARE_Atoms
 from flare.utils.element_coder import NumpyEncoder
@@ -13,7 +15,7 @@ from memory_profiler import profile
 
 from flare_pp._C_flare import ParallelSGP
 from flare_pp.sparse_gp import SGP_Wrapper
-from flare_pp.sparse_gp_calculator import SGP_Calculator
+from flare_pp.sparse_gp_calculator import SGP_Calculator, sort_variances
 from flare_pp.utils import convert_to_flarepp_structure
 
 
@@ -133,6 +135,10 @@ class ParSGP_Wrapper(SGP_Wrapper):
             update,
         )
 
+        self.training_structures = training_strucs
+        self.training_sparse_indices = training_sparse_indices 
+
+
     @profile
     def update_db(
         self,
@@ -186,4 +192,60 @@ class ParSGP_Wrapper(SGP_Wrapper):
 
         # build a new SGP
         print(self.training_sparse_indices)
-        self.build(self.training_structures, self.training_sparse_indices, update=True)
+        if len(self.training_structures) == 1:
+            update = False
+        else:
+            update = True
+        self.build(self.training_structures, self.training_sparse_indices, update=update)
+
+    def predict_on_structures(self, struc_list):
+        # convert ASE Atoms to c++ Structure with descriptors not computed
+        struc_desc_list = []
+        for structure in struc_list:
+            structure_descriptor = convert_to_flarepp_structure(structure, self.species_map)
+            struc_desc_list.append(structure_descriptor)
+
+        all_results = self.sparse_gp.predict_on_structures(
+            struc_desc_list, self.cutoff, self.descriptor_calculators
+        )
+
+        for s in range(len(struc_list)):
+            results = {}
+            mean_efs = all_results[s][0]
+            results["energy"] = mean_efs[0]
+            results["forces"] = mean_efs[1:-6].reshape(-1, 3)
+
+            # Convert stress to ASE format.
+            flare_stress = mean_efs[-6:]
+            ase_stress = - flare_stress[[0, 3, 5, 4, 2, 1]]
+            results["stress"] = ase_stress
+
+            ## save uncertainties
+            ## TODO: solve the sort_variances() issue
+
+            #n_kern = len(self.descriptor_calculators)
+            #stds_full = np.zeros((len(struc_list), 3))
+            #assert n_kern <= 3, NotImplementedError  # now only print out 3 components
+
+            #for k in range(n_kern):
+            #    variances = all_results[s][1][k]
+            #    sorted_variances = sort_variances(struc_desc_list[s], variances)
+            #    stds = np.zeros(len(sorted_variances))
+            #    for n in range(len(sorted_variances)):
+            #        var = sorted_variances[n]
+            #        if var > 0:
+            #            stds[n] = np.sqrt(var)
+            #        else:
+            #            stds[n] = -np.sqrt(np.abs(var))
+
+            #    # Divide by the signal std to get a unitless value.
+            #    stds_full[:, k] = stds / self.gp_model.hyps[k]
+
+            #results["stds"] = stds_full
+
+            if struc_list[s].calc is not None:
+                struc_list[s].calc.results = results
+            else:
+                calc = SinglePointCalculator(struc_list[s])
+                calc.results = results
+                struc_list[s].calc = calc

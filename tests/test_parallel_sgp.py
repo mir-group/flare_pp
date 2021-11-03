@@ -12,44 +12,17 @@ from flare_pp.sparse_gp import SGP_Wrapper
 from flare_pp.sparse_gp_calculator import SGP_Calculator
 from flare_pp.parallel_sgp import ParSGP_Wrapper
 from flare_pp._C_flare import NormalizedDotProduct, Bk, SparseGP, Structure
-import flare_pp._C_flare as _C_flare
-print(_C_flare.__file__)
 
-import flare_pp
+from .get_sgp import get_random_atoms
 
-#from ctypes import CDLL, RTLD_GLOBAL
-#CDLL("/n/sw/intel-cluster-studio-2019/mkl/lib/intel64/libmkl_rt.so", RTLD_GLOBAL)
 
 np.random.seed(10)
 
 # Make random structure.
-n_atoms = 4
-cell = np.eye(3)
-train_positions = np.random.rand(n_atoms, 3)
-# test_positions = np.random.rand(n_atoms, 3)
-test_positions = train_positions
 atom_types = [1, 2]
-atom_masses = [2, 4]
-species = np.random.randint(0, 2, 10) + 1
-train_structure = struc.Structure(cell, species, train_positions)
-test_structure = struc.Structure(cell, species, test_positions)
-
-# Test update db
-custom_range = [1, 2, 3]
-energy = np.random.rand()
-forces = np.random.rand(n_atoms, 3) * 10
-stress = np.random.rand(6)
-np.savez(
-    "random_data",
-    train_pos=train_positions,
-    test_pos=test_positions,
-    energy=energy,
-    forces=forces,
-    stress=stress,
-)
 
 # Create sparse GP model.
-sigma = 1.0
+sigma = 10.0
 power = 2
 kernel1 = NormalizedDotProduct(sigma, power)
 
@@ -57,14 +30,14 @@ sigma = 2.0
 power = 2
 kernel2 = NormalizedDotProduct(sigma, power)
 
-sigma = 3.0
+sigma = 1.0
 power = 2
 kernel3 = NormalizedDotProduct(sigma, power)
 
 kernel_list = [kernel1, kernel2] #, kernel3]
 
 cutoff_function = "quadratic"
-cutoff = 1.5
+cutoff = 5.0
 many_body_cutoffs = [cutoff]
 radial_basis = "chebyshev"
 radial_hyps = [0.0, cutoff]
@@ -82,10 +55,9 @@ calc3 = Bk(radial_basis, cutoff_function, radial_hyps, cutoff_hyps, settings)
 calc_list = [calc1, calc2] #, calc3]
 
 sigma_e = 0.1
-sigma_f = 0.1
-sigma_s = 0.1
+sigma_f = 0.5
+sigma_s = 0.06
 species_map = {1: 0, 2: 1}
-max_iterations = 20
 
 sgp_py = ParSGP_Wrapper(
     kernel_list,
@@ -95,81 +67,74 @@ sgp_py = ParSGP_Wrapper(
     sigma_f,
     sigma_s,
     species_map,
-    max_iterations=max_iterations,
+    max_iterations=20,
     variance_type="local",
 )
 sgp_calc = SGP_Calculator(sgp_py)
 
 # Make random structure.
-n_atoms = 10
-cell = np.eye(3)
-
+n_frames = 5
 training_strucs = []
 training_sparse_indices = [[] for i in range(len(kernel_list))]
-for n in range(5): 
-    train_positions = np.random.rand(n_atoms, 3)
-    test_positions = train_positions
-    species = np.random.randint(0, 2, n_atoms) + 1
-    train_structure = struc.Structure(cell, species, train_positions)
-    
-    # Test update db
-    energy = np.random.rand()
-    forces = np.random.rand(n_atoms, 3) * 10
-    stress = np.random.rand(6)
-    train_structure.energy = energy
-    train_structure.forces = forces
-    train_structure.stress = stress
-    
+for n in range(n_frames): 
+    # we set the same seed for different ranks, so no need to broadcast the structures
+    train_structure = get_random_atoms(a=2.0, sc_size=2, numbers=atom_types)
+    n_atoms = len(train_structure)
     training_strucs.append(train_structure)
     for k in range(len(kernel_list)):
         training_sparse_indices[k].append(np.random.randint(0, n_atoms, n_atoms // 2).tolist())
 
-
-# TODO: calling `build` twice gets issue
-sgp_py.build(training_strucs, training_sparse_indices)
-#sgp_py.train()
-from flare_pp.sparse_gp import compute_negative_likelihood_grad_stable
-new_hyps = np.array(sgp_py.hyps) + 1
-
-tic = time.time()
-compute_negative_likelihood_grad_stable(new_hyps, sgp_py.sparse_gp, precomputed=False)
-toc = time.time()
-print("compute_negative_likelihood_grad_stable TIME:", toc - tic)
+sgp_py.build(training_strucs, training_sparse_indices, update=False)
 
 def test_update_db():
     """Check that the covariance matrices have the correct size after the
     sparse GP is updated."""
 
-    training_strucs = [train_structure]
-    training_sparse_indices = [[[0, 1, 2]]]
+    train_structure = get_random_atoms(a=2.0, sc_size=2, numbers=atom_types)
+    sgp_py.update_db(train_structure, custom_range=[1, 2], mode="uncertain")
 
-    sgp_py.build(training_strucs, training_sparse_indices)
-#    sgp_py.update_db(
-#        train_structure,
-#        forces,
-#        custom_range=[3, 3, 3],
-#        energy=energy,
-#        stress=stress,
-#        mode="uncertain",
-#    )
+    u_size = 0
+    for k in range(len(kernel_list)):
+        u_size_kern = 0
+        for inds in sgp_py.training_sparse_indices[k]:
+            u_size_kern += len(inds)
+        u_size += u_size_kern
 
-#    n_envs = len(custom_range)
-#    assert sgp_py.sparse_gp.Kuu.shape[0] == sgp_py.sparse_gp.Kuf.shape[0]
-    assert sgp_py.sparse_gp.Kuf.shape[1] == 1 + n_atoms * 3 + 6
+    assert sgp_py.sparse_gp.Kuu.shape[0] == u_size
+    assert sgp_py.sparse_gp.alpha.shape[0] == u_size
 
+def test_train():
+    """Check that the hyperparameters and likelihood are updated when the
+    train method is called."""
 
-#def test_train():
-#    """Check that the hyperparameters and likelihood are updated when the
-#    train method is called."""
-#
-#    hyps_init = tuple(sgp_py.hyps)
-#    sgp_py.train()
-#    hyps_post = tuple(sgp_py.hyps)
-#
-#    assert hyps_init != hyps_post
-#    assert sgp_py.likelihood != 0.0
-#
-#
+    # TODO: add sparse_gp and compare the results
+
+    #from flare_pp.sparse_gp import compute_negative_likelihood_grad_stable
+    #new_hyps = np.array(sgp_py.hyps) + 1
+    ##
+    ##tic = time.time()
+    #compute_negative_likelihood_grad_stable(new_hyps, sgp_py.sparse_gp, precomputed=False)
+    ##toc = time.time()
+    #print("compute_negative_likelihood_grad_stable TIME:", toc - tic)
+
+    hyps_init = tuple(sgp_py.hyps)
+    sgp_py.train()
+    hyps_post = tuple(sgp_py.hyps)
+
+    #assert hyps_init != hyps_post
+    assert sgp_py.likelihood != 0.0
+
+def test_predict():
+    n_frames = 5
+    test_strucs = []
+    for n in range(n_frames): 
+        atoms = get_random_atoms(a=2.0, sc_size=2, numbers=atom_types)
+        test_strucs.append(atoms)
+
+    sgp_py.predict_on_structures(test_strucs)
+    for n in range(n_frames):
+        energy = test_strucs[n].get_potential_energy()
+
 #def test_dict():
 #    """
 #    Check the method from_dict and as_dict
