@@ -347,7 +347,7 @@ TEST_F(ParSGPTest, ParPredict){
 
     blacs::barrier();
 
-    Structure test_struc_1(cell_1, species_1, positions_1, cutoff, dc);
+    Structure test_struc_1(cell_1, species_1, positions_1);
     test_strucs_par.push_back(test_struc_1);
 
     // Predict with serial SGP
@@ -357,7 +357,7 @@ TEST_F(ParSGPTest, ParPredict){
     blacs::barrier();
   }
 
-  parallel_sgp.predict_on_structures(test_strucs_par);
+  parallel_sgp.predict_on_structures(test_strucs_par, cutoff, dc);
   if (blacs::mpirank == 0) {
     for (int t = 0; t < test_strucs_par.size(); t++) {
       sparse_gp.predict_local_uncertainties(test_strucs_ser[t]);
