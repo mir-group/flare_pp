@@ -134,14 +134,14 @@ SparseGP ::compute_cluster_uncertainties(const Structure &structure) {
 }
 
 void SparseGP ::add_specific_environments(const Structure &structure,
-                                          const std::vector<int> atoms) {
+         const std::vector<std::vector<int>> atoms) {
 
   initialize_sparse_descriptors(structure);
 
   // Gather clusters with central atom in the given list.
   std::vector<std::vector<std::vector<int>>> indices_1;
   for (int i = 0; i < n_kernels; i++){
-    sparse_indices[i].push_back(atoms); // for each kernel the added atoms are the same
+    sparse_indices[i].push_back(atoms[i]);
 
     int n_types = structure.descriptors[i].n_types;
     std::vector<std::vector<int>> indices_2;
@@ -150,8 +150,8 @@ void SparseGP ::add_specific_environments(const Structure &structure,
       std::vector<int> indices_3;
       for (int k = 0; k < n_clusters; k++){
         int atom_index_1 = structure.descriptors[i].atom_indices[j](k);
-        for (int l = 0; l < atoms.size(); l++){
-          int atom_index_2 = atoms[l];
+        for (int l = 0; l < atoms[i].size(); l++){
+          int atom_index_2 = atoms[i][l];
           if (atom_index_1 == atom_index_2){
             indices_3.push_back(k);
           }

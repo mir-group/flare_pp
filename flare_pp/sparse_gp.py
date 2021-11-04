@@ -338,8 +338,12 @@ class SGP_Wrapper:
                 warnings.warn(
                     "The mode='specific' but no custom_range is given, will not add sparse envs"
                 )
-            else:
+            elif len(custom_range) == len(sgp.kernels):
                 sgp.add_specific_environments(structure_descriptor, custom_range)
+            else:
+                raise Exception(
+                    "The custom_range should length equal to the number of descriptors/kernels if mode='specific'"
+                )
         elif mode == "random":
             if len(custom_range) == len(sgp.kernels):  # custom_range gives n_added
                 n_added = custom_range

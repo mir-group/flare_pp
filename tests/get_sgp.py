@@ -2,6 +2,7 @@ import numpy as np
 from flare_pp._C_flare import SparseGP, NormalizedDotProduct, Bk, Structure
 from flare_pp.sparse_gp import SGP_Wrapper
 from flare_pp.sparse_gp_calculator import SGP_Calculator
+from flare_pp.parallel_sgp import ParSGP_Wrapper
 from flare.ase.atoms import FLARE_Atoms
 from ase import Atoms
 from ase.calculators.lj import LennardJones
@@ -47,7 +48,8 @@ sigma_s = 0.006
 single_atom_energies = {0: -5, 1: -6}
 variance_type = "local"
 max_iterations = 20
-opt_method = "L-BFGS-B"
+#opt_method = "L-BFGS-B"
+opt_method = "BFGS"
 bounds = [(None, None), (None, None), (None, None), (sigma_e, None), (None, None), (None, None)]
 
 
@@ -98,7 +100,6 @@ def get_empty_sgp():
 
     return empty_sgp
 
-
 def get_updated_sgp():
     training_structure = get_random_atoms()
     training_structure.calc = LennardJones()
@@ -111,7 +112,7 @@ def get_updated_sgp():
     sgp.update_db(
         training_structure, 
         forces, 
-        custom_range=(1, 2, 3, 4, 5),
+        custom_range=[(1, 2, 3, 4, 5) for k in range(len(sgp.descriptor_calculators))],
         energy=energy, 
         stress=stress, 
         mode="specific",
@@ -125,3 +126,4 @@ def get_sgp_calc():
     sgp_calc = SGP_Calculator(sgp)
 
     return sgp_calc
+

@@ -65,7 +65,7 @@ public:
   void add_all_environments(const Structure &structure);
 
   virtual void add_specific_environments(const Structure &structure,
-                                 const std::vector<int> atoms);
+               const std::vector<std::vector<int>> atoms);
   void add_random_environments(const Structure &structure,
                                const std::vector<int> &n_added);
   void add_uncertain_environments(const Structure &structure,
