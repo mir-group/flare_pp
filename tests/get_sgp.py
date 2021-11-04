@@ -127,3 +127,35 @@ def get_sgp_calc():
 
     return sgp_calc
 
+
+def get_empty_parsgp():
+    empty_sgp = ParSGP_Wrapper(
+        [kernel1, kernel2, kernel3], 
+        [calc1, calc2, calc3], 
+        cutoff, 
+        sigma_e, 
+        sigma_f, 
+        sigma_s, 
+        species_map,
+        single_atom_energies=single_atom_energies, 
+        variance_type=variance_type,
+        opt_method=opt_method, 
+        bounds=bounds, 
+        max_iterations=max_iterations,
+    )
+
+    return empty_sgp
+
+def get_training_data():
+    # Make random structure.
+    sgp = get_empty_sgp()
+    n_frames = 5
+    training_strucs = []
+    training_sparse_indices = [[] for i in range(len(sgp.descriptor_calculators))]
+    for n in range(n_frames): 
+        train_structure = get_random_atoms(a=2.0, sc_size=2, numbers=list(species_map.keys()))
+        n_atoms = len(train_structure)
+        training_strucs.append(train_structure)
+        for k in range(len(sgp.descriptor_calculators)):
+            training_sparse_indices[k].append(np.random.randint(0, n_atoms, n_atoms // 2).tolist())
+    return training_strucs, training_sparse_indices

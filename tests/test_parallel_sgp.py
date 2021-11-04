@@ -13,95 +13,37 @@ from flare_pp.sparse_gp_calculator import SGP_Calculator
 from flare_pp.parallel_sgp import ParSGP_Wrapper
 from flare_pp._C_flare import NormalizedDotProduct, Bk, SparseGP, Structure
 
-from .get_sgp import get_random_atoms
+from .get_sgp import get_random_atoms, species_map, get_empty_parsgp, get_empty_sgp, get_training_data
 
+# we set the same seed for different ranks, 
+# so no need to broadcast the structures
 
 np.random.seed(10)
-
-# Make random structure.
-atom_types = [1, 2]
-
-# Create sparse GP model.
-sigma = 10.0
-power = 2
-kernel1 = NormalizedDotProduct(sigma, power)
-
-sigma = 2.0
-power = 2
-kernel2 = NormalizedDotProduct(sigma, power)
-
-sigma = 1.0
-power = 2
-kernel3 = NormalizedDotProduct(sigma, power)
-
-kernel_list = [kernel1, kernel2] #, kernel3]
-
-cutoff_function = "quadratic"
-cutoff = 5.0
-many_body_cutoffs = [cutoff]
-radial_basis = "chebyshev"
-radial_hyps = [0.0, cutoff]
-cutoff_hyps = []
-
-settings = [len(atom_types), 1, 4, 0]
-calc1 = Bk(radial_basis, cutoff_function, radial_hyps, cutoff_hyps, settings)
-
-settings = [len(atom_types), 2, 4, 3]
-calc2 = Bk(radial_basis, cutoff_function, radial_hyps, cutoff_hyps, settings)
-
-settings = [len(atom_types), 3, 2, 2]
-calc3 = Bk(radial_basis, cutoff_function, radial_hyps, cutoff_hyps, settings)
-
-calc_list = [calc1, calc2] #, calc3]
-
-sigma_e = 0.1
-sigma_f = 0.5
-sigma_s = 0.06
-species_map = {1: 0, 2: 1}
-
-sgp_py = ParSGP_Wrapper(
-    kernel_list,
-    calc_list,
-    cutoff,
-    sigma_e,
-    sigma_f,
-    sigma_s,
-    species_map,
-    max_iterations=20,
-    variance_type="local",
-)
-sgp_calc = SGP_Calculator(sgp_py)
-
-# Make random structure.
-n_frames = 5
-training_strucs = []
-training_sparse_indices = [[] for i in range(len(kernel_list))]
-for n in range(n_frames): 
-    # we set the same seed for different ranks, so no need to broadcast the structures
-    train_structure = get_random_atoms(a=2.0, sc_size=2, numbers=atom_types)
-    n_atoms = len(train_structure)
-    training_strucs.append(train_structure)
-    for k in range(len(kernel_list)):
-        training_sparse_indices[k].append(np.random.randint(0, n_atoms, n_atoms // 2).tolist())
-
-sgp_py.build(training_strucs, training_sparse_indices, update=False)
 
 def test_update_db():
     """Check that the covariance matrices have the correct size after the
     sparse GP is updated."""
 
-    train_structure = get_random_atoms(a=2.0, sc_size=2, numbers=atom_types)
-    sgp_py.update_db(train_structure, custom_range=[1, 2], mode="uncertain")
+    # build a non-empty parallel sgp
+    sgp = get_empty_parsgp()
+    training_strucs, training_sparse_indices = get_training_data()
+    sgp.build(training_strucs, training_sparse_indices, update=False)
+
+    # add a new structure
+    train_structure = get_random_atoms(a=2.0, sc_size=2, numbers=list(species_map.keys()))
+    sgp.update_db(train_structure, custom_range=[1, 2, 3], mode="uncertain")
 
     u_size = 0
-    for k in range(len(kernel_list)):
+    for k in range(len(sgp.descriptor_calculators)):
         u_size_kern = 0
-        for inds in sgp_py.training_sparse_indices[k]:
+        for inds in sgp.training_sparse_indices[k]:
             u_size_kern += len(inds)
         u_size += u_size_kern
 
-    assert sgp_py.sparse_gp.Kuu.shape[0] == u_size
-    assert sgp_py.sparse_gp.alpha.shape[0] == u_size
+    assert sgp.sparse_gp.Kuu.shape[0] == u_size
+    assert sgp.sparse_gp.alpha.shape[0] == u_size
+
+    sgp.sparse_gp.finalize_MPI = False
 
 def test_train():
     """Check that the hyperparameters and likelihood are updated when the
@@ -110,201 +52,68 @@ def test_train():
     # TODO: add sparse_gp and compare the results
 
     #from flare_pp.sparse_gp import compute_negative_likelihood_grad_stable
-    #new_hyps = np.array(sgp_py.hyps) + 1
+    #new_hyps = np.array(sgp.hyps) + 1
     ##
     ##tic = time.time()
-    #compute_negative_likelihood_grad_stable(new_hyps, sgp_py.sparse_gp, precomputed=False)
+    #compute_negative_likelihood_grad_stable(new_hyps, sgp.sparse_gp, precomputed=False)
     ##toc = time.time()
     #print("compute_negative_likelihood_grad_stable TIME:", toc - tic)
 
-    hyps_init = tuple(sgp_py.hyps)
-    sgp_py.train()
-    hyps_post = tuple(sgp_py.hyps)
+    # build a non-empty parallel sgp
+    sgp = get_empty_parsgp()
+    training_strucs, training_sparse_indices = get_training_data()
+    sgp.build(training_strucs, training_sparse_indices, update=False)
+
+    hyps_init = tuple(sgp.hyps)
+    sgp.train()
+    hyps_post = tuple(sgp.hyps)
 
     #assert hyps_init != hyps_post
-    assert sgp_py.likelihood != 0.0
+    assert sgp.likelihood != 0.0
+
+    sgp.sparse_gp.finalize_MPI = False
 
 def test_predict():
+    # build a non-empty parallel sgp
+    training_strucs, training_sparse_indices = get_training_data()
+    sgp = get_empty_parsgp()
+    sgp.build(training_strucs, training_sparse_indices, update=False)
+
+    # build serial sgp with the same training data set
+    sgp_serial = get_empty_sgp()
+    for t in range(len(training_strucs)):
+        sgp_serial.update_db(
+            training_strucs[t],
+            training_strucs[t].forces,
+            custom_range=[training_sparse_indices[k][t] for k in range(len(sgp_serial.descriptor_calculators))],
+            energy=training_strucs[t].potential_energy,
+            stress=training_strucs[t].stress,
+            mode="specific",
+        )
+    sgp_serial.sparse_gp.update_matrices_QR()
+
+    # generate testing data
     n_frames = 5
     test_strucs = []
     for n in range(n_frames): 
-        atoms = get_random_atoms(a=2.0, sc_size=2, numbers=atom_types)
+        atoms = get_random_atoms(a=2.0, sc_size=2, numbers=list(species_map.keys()))
         test_strucs.append(atoms)
 
-    sgp_py.predict_on_structures(test_strucs)
+    # predict on testing data
+    sgp.predict_on_structures(test_strucs)
     for n in range(n_frames):
-        energy = test_strucs[n].get_potential_energy()
+        par_energy = test_strucs[n].get_potential_energy()
+        par_forces = test_strucs[n].get_forces()
+        par_stress = test_strucs[n].get_stress()
 
-#def test_dict():
-#    """
-#    Check the method from_dict and as_dict
-#    """
-#
-#    out_dict = sgp_py.as_dict()
-#    assert len(sgp_py) == len(out_dict["training_structures"])
-#    new_sgp, _ = SGP_Wrapper.from_dict(out_dict)
-#    assert len(sgp_py) == len(new_sgp)
-#    assert len(sgp_py.sparse_gp.kernels) == len(new_sgp.sparse_gp.kernels)
-#    assert np.allclose(sgp_py.hyps, new_sgp.hyps)
-#
-#
-#def test_coeff():
-#    # Dump potential coefficient file
-#    sgp_py.write_mapping_coefficients("lmp.flare", "A", [0, 1, 2])
-#
-#    # Dump uncertainty coefficient file
-#    # here the new kernel needs to be returned, otherwise the kernel won't be found in the current module
-#    new_kern = sgp_py.write_varmap_coefficients("beta_var.txt", "B", [0, 1, 2])
-#
-#    assert (
-#        sgp_py.sparse_gp.sparse_indices[0] == sgp_py.sgp_var.sparse_indices[0]
-#    ), "the sparse_gp and sgp_var don't have the same training data"
-#
-#    for s in range(len(atom_types)):
-#        org_desc = sgp_py.sparse_gp.sparse_descriptors[0].descriptors[s]
-#        new_desc = sgp_py.sgp_var.sparse_descriptors[0].descriptors[s]
-#        if not np.allclose(org_desc, new_desc):  # the atomic order might change
-#            assert np.allclose(org_desc.shape, new_desc.shape)
-#            for i in range(org_desc.shape[0]):
-#                flag = False
-#                for j in range(
-#                    new_desc.shape[0]
-#                ):  # seek in new_desc for matching of org_desc
-#                    if np.allclose(org_desc[i], new_desc[j]):
-#                        flag = True
-#                        break
-#                assert flag, "the sparse_gp and sgp_var don't have the same descriptors"
-#
-#
-#@pytest.mark.skipif(
-#    not os.environ.get("lmp", False),
-#    reason=(
-#        "lmp not found "
-#        "in environment: Please install LAMMPS "
-#        "and set the $lmp env. "
-#        "variable to point to the executatble."
-#    ),
-#)
-#def test_lammps():
-#    # create ASE calc
-#    lmp_command = os.environ.get("lmp")
-#    specorder = ["H", "He"]
-#    pot_file = "lmp.flare"
-#    params = {
-#        "command": lmp_command,
-#        "pair_style": "flare",
-#        "pair_coeff": [f"* * {pot_file}"],
-#    }
-#    files = [pot_file]
-#    lmp_calc = lammpsrun.LAMMPS(
-#        label=f"tmp",
-#        keep_tmp_files=True,
-#        tmp_dir="./tmp/",
-#        parameters=params,
-#        files=files,
-#        specorder=specorder,
-#    )
-#
-#    test_atoms = test_structure.to_ase_atoms()
-#    test_atoms.calc = lmp_calc
-#    lmp_f = test_atoms.get_forces()
-#    lmp_e = test_atoms.get_potential_energy()
-#    lmp_s = test_atoms.get_stress()
-#
-#    print("GP predicting")
-#    test_atoms.calc = None
-#    test_atoms = FLARE_Atoms.from_ase_atoms(test_atoms)
-#    test_atoms.calc = sgp_calc
-#    sgp_f = test_atoms.get_forces()
-#    sgp_e = test_atoms.get_potential_energy()
-#    sgp_s = test_atoms.get_stress()
-#
-#    print("Energy")
-#    print(lmp_e, sgp_e)
-#    assert np.allclose(lmp_e, sgp_e)
-#
-#    print("Forces")
-#    print(np.concatenate([lmp_f, sgp_f], axis=1))
-#    assert np.allclose(lmp_f, sgp_f)
-#
-#    print("Stress")
-#    print(lmp_s)
-#    print(sgp_s)
-#    assert np.allclose(lmp_s, sgp_s)
-#
-#
-#@pytest.mark.skipif(
-#    not os.environ.get("lmp", False),
-#    reason=(
-#        "lmp not found "
-#        "in environment: Please install LAMMPS "
-#        "and set the $lmp env. "
-#        "variable to point to the executatble."
-#    ),
-#)
-#def test_lammps_uncertainty():
-#    # create ASE calc
-#    lmp_command = os.environ.get("lmp")
-#    specorder = ["H", "He"]
-#    pot_file = "lmp.flare"
-#    params = {
-#        "command": lmp_command,
-#        "pair_style": "flare",
-#        "pair_coeff": [f"* * {pot_file}"],
-#    }
-#    files = [pot_file]
-#    lmp_calc = lammpsrun.LAMMPS(
-#        label=f"tmp",
-#        keep_tmp_files=True,
-#        tmp_dir="./tmp/",
-#        parameters=params,
-#        files=files,
-#        specorder=specorder,
-#    )
-#
-#    test_atoms = test_structure.to_ase_atoms()
-#
-#    # compute uncertainty 
-#    in_lmp = """
-#atom_style atomic 
-#units metal
-#boundary p p p 
-#atom_modify sort 0 0.0 
-#
-#read_data data.lammps 
-#
-#### interactions
-#pair_style flare 
-#pair_coeff * * lmp.flare 
-#mass 1 1.008000 
-#mass 2 4.002602 
-#
-#### run
-#fix fix_nve all nve
-#compute unc all flare/std/atom beta_var.txt
-#dump dump_all all custom 1 traj.lammps id type x y z vx vy vz fx fy fz c_unc[1] c_unc[2] c_unc[3] 
-#thermo_style custom step temp press cpu pxx pyy pzz pxy pxz pyz ke pe etotal vol lx ly lz atoms
-#thermo_modify flush yes format float %23.16g
-#thermo 1
-#run 0
-#"""
-#    os.chdir("tmp")
-#    write("data.lammps", test_atoms, format="lammps-data")
-#    with open("in.lammps", "w") as f:
-#        f.write(in_lmp)
-#    shutil.copyfile("../beta_var.txt", "./beta_var.txt")
-#    os.system(f"{lmp_command} < in.lammps > log.lammps")
-#    unc_atoms = read("traj.lammps", format="lammps-dump-text")
-#    lmp_stds = [unc_atoms.get_array(f"c_unc[{i+1}]") / sgp_py.hyps[i] for i in range(len(calc_list))]
-#    lmp_stds = np.squeeze(lmp_stds).T
-#
-#    # Test mapped variance (need to use sgp_var)
-#    test_atoms.calc = None
-#    test_atoms = FLARE_Atoms.from_ase_atoms(test_atoms)
-#    test_atoms.calc = sgp_calc
-#    test_atoms.calc.gp_model.sparse_gp = sgp_py.sgp_var
-#    test_atoms.calc.reset()
-#    sgp_stds = test_atoms.calc.get_uncertainties(test_atoms)
-#    print(sgp_stds)
-#    print(lmp_stds)
-#    assert np.allclose(sgp_stds, lmp_stds)
+        test_strucs[n].calc = SGP_Calculator(sgp_serial)
+
+        ser_energy = test_strucs[n].get_potential_energy()
+        ser_forces = test_strucs[n].get_forces()
+        ser_stress = test_strucs[n].get_stress()
+
+        np.allclose(par_energy, ser_energy)
+        np.allclose(par_forces, ser_forces)
+        np.allclose(par_stress, ser_stress)
+
+    sgp.sparse_gp.finalize_MPI = True
