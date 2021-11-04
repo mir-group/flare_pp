@@ -1,14 +1,17 @@
 import json
 from time import time
 import numpy as np
-from flare_pp import _C_flare
-from flare_pp._C_flare import SparseGP, Structure, NormalizedDotProduct
 from scipy.optimize import minimize
 from typing import List
 import warnings
 from flare import struc
 from flare.ase.atoms import FLARE_Atoms
 from flare.utils.element_coder import NumpyEncoder
+
+from flare_pp._C_flare import SparseGP, Structure, NormalizedDotProduct, Bk
+from flare_pp.utils import convert_to_flarepp_structure
+
+from memory_profiler import profile
 
 
 class SGP_Wrapper:
@@ -130,18 +133,19 @@ class SGP_Wrapper:
                 out_dict[key] = getattr(self, key, None)
 
         # save descriptor_settings
+        out_dict["descriptor_calculators"] = []
         desc_calc = self.descriptor_calculators
-        assert (len(desc_calc) == 1) and (isinstance(desc_calc[0], _C_flare.B2))
-        b2_calc = desc_calc[0]
-        b2_dict = {
-            "type": "B2",
-            "radial_basis": b2_calc.radial_basis,
-            "cutoff_function": b2_calc.cutoff_function,
-            "radial_hyps": b2_calc.radial_hyps,
-            "cutoff_hyps": b2_calc.cutoff_hyps,
-            "descriptor_settings": b2_calc.descriptor_settings,
-        }
-        out_dict["descriptor_calculators"] = [b2_dict]
+        for dc in self.descriptor_calculators:
+            assert isinstance(dc, Bk)
+            dc_dict = {
+                "type": "Bk",
+                "radial_basis": dc.radial_basis,
+                "cutoff_function": dc.cutoff_function,
+                "radial_hyps": dc.radial_hyps,
+                "cutoff_hyps": dc.cutoff_hyps,
+                "descriptor_settings": dc.descriptor_settings,
+            }
+            out_dict["descriptor_calculators"].append(dc_dict)
 
         # save hyps
         out_dict["hyps"], out_dict["hyp_labels"] = self.hyps_and_labels
@@ -200,39 +204,42 @@ class SGP_Wrapper:
         """
         Need an initialized GP
         """
-        # Recover kernel from checkpoint.
+        # recover kernels from checkpoint
         kernel_list = in_dict["kernels"]
-        assert len(kernel_list) == 1
-        kernel_hyps = kernel_list[0]
-        assert kernel_hyps[0] == "NormalizedDotProduct"
-        sigma = float(kernel_hyps[1])
-        power = int(kernel_hyps[2])
-        kernel = NormalizedDotProduct(sigma, power)
-        kernels = [kernel]
+        kernels = []
+        for k, kern in enumerate(kernel_list):
+            if kern[0] != "NormalizedDotProduct":
+                raise NotImplementedError
+            assert kern[1] == in_dict["hyps"][k]
+            kernels.append(NormalizedDotProduct(kern[1], kern[2]))
 
-        # Recover descriptor from checkpoint.
+        # recover descriptors from checkpoint
         desc_calc = in_dict["descriptor_calculators"]
-        assert len(desc_calc) == 1
-        b2_dict = desc_calc[0]
-        assert b2_dict["type"] == "B2"
-        calc = _C_flare.B2(
-            b2_dict["radial_basis"],
-            b2_dict["cutoff_function"],
-            b2_dict["radial_hyps"],
-            b2_dict["cutoff_hyps"],
-            b2_dict["descriptor_settings"],
-        )
+        desc_calc_list = []
+
+        for dc_dict in desc_calc:
+            if dc_dict["type"] == "Bk":
+                calc = Bk(
+                    dc_dict["radial_basis"],
+                    dc_dict["cutoff_function"],
+                    dc_dict["radial_hyps"],
+                    dc_dict["cutoff_hyps"],
+                    dc_dict["descriptor_settings"],
+                )
+            else:
+                raise NotImplementedError
+            desc_calc_list.append(calc)
 
         # change the keys of single_atom_energies and species_map to int
         if in_dict["single_atom_energies"] is not None:
-             sae_dict = {int(k): v for k, v in in_dict["single_atom_energies"].items()}
+            sae_dict = {int(k): v for k, v in in_dict["single_atom_energies"].items()}
         else:
-             sae_dict = None
+            sae_dict = None
         species_map = {int(k): v for k, v in in_dict["species_map"].items()}
 
         gp = SGP_Wrapper(
-            kernels=[kernel],
-            descriptor_calculators=[calc],
+            kernels=kernels,
+            descriptor_calculators=desc_calc_list,
             cutoff=in_dict["cutoff"],
             sigma_e=in_dict["hyps"][-3],
             sigma_f=in_dict["hyps"][-2],
@@ -289,77 +296,61 @@ class SGP_Wrapper:
         mode: str = "specific",
         sgp: SparseGP = None,  # for creating sgp_var
         update_qr=True,
+        atom_indices=[-1],
     ):
+        # TODO: simplify the interface, remove forces, energy, and stress
 
-        # Convert coded species to 0, 1, 2, etc.
-        if isinstance(structure, (struc.Structure, FLARE_Atoms)):
-            coded_species = []
-            for spec in structure.coded_species:
-                coded_species.append(self.species_map[spec])
-        elif isinstance(structure, Structure):
-            coded_species = structure.species
-        else:
-            raise Exception
-
-        # Convert flare structure to structure descriptor.
-        structure_descriptor = Structure(
-            structure.cell,
-            coded_species,
-            structure.positions,
+        # Convert flare Structure or FLARE_Atoms to flare_pp Structure
+        structure_descriptor = convert_to_flarepp_structure(
+            structure,
+            self.species_map,
+            energy,
+            forces,
+            stress,
+            self.energy_training,
+            self.force_training,
+            self.stress_training,
+            self.single_atom_energies,
             self.cutoff,
             self.descriptor_calculators,
         )
-
-        # Add labels to structure descriptor.
-        if (energy is not None) and (self.energy_training):
-            # Sum up single atom energies.
-            single_atom_sum = 0
-            if self.single_atom_energies is not None:
-                for spec in coded_species:
-                    single_atom_sum += self.single_atom_energies[spec]
-
-            # Correct the energy label and assign to structure.
-            corrected_energy = energy - single_atom_sum
-            structure_descriptor.energy = np.array([[corrected_energy]])
-
-        if (forces is not None) and (self.force_training):
-            structure_descriptor.forces = forces.reshape(-1)
-
-        if (stress is not None) and (self.stress_training):
-            structure_descriptor.stresses = stress
 
         # Update the sparse GP.
         if sgp is None:
             sgp = self.sparse_gp
 
-        sgp.add_training_structure(structure_descriptor)
+        sgp.add_training_structure(structure_descriptor, atom_indices)
         if mode == "all":
             if not custom_range:
                 sgp.add_all_environments(structure_descriptor)
             else:
                 raise Exception("Set mode='specific' for a user-defined custom_range")
         elif mode == "uncertain":
-            if len(custom_range) == 1:  # custom_range gives n_added
+            if len(custom_range) == len(sgp.kernels):  # custom_range gives n_added
                 n_added = custom_range
                 sgp.add_uncertain_environments(structure_descriptor, n_added)
             else:
                 raise Exception(
-                    "The custom_range should be set as [n_added] if mode='uncertain'"
+                    "The custom_range should length equal to the number of descriptors/kernels if mode='uncertain'"
                 )
         elif mode == "specific":
             if not custom_range:
                 warnings.warn(
                     "The mode='specific' but no custom_range is given, will not add sparse envs"
                 )
-            else:
+            elif len(custom_range) == len(sgp.kernels):
                 sgp.add_specific_environments(structure_descriptor, custom_range)
+            else:
+                raise Exception(
+                    "The custom_range should length equal to the number of descriptors/kernels if mode='specific'"
+                )
         elif mode == "random":
-            if len(custom_range) == 1:  # custom_range gives n_added
+            if len(custom_range) == len(sgp.kernels):  # custom_range gives n_added
                 n_added = custom_range
                 sgp.add_random_environments(structure_descriptor, n_added)
             else:
                 raise Exception(
-                    "The custom_range should be set as [n_added] if mode='random'"
+                    "The custom_range should length equal to the number of descriptors/kernels if mode='random'"
                 )
         else:
             raise NotImplementedError
@@ -380,17 +371,17 @@ class SGP_Wrapper:
         )
 
     def write_mapping_coefficients(self, filename, contributor, kernel_idx):
-        self.sparse_gp.write_mapping_coefficients(filename, contributor, kernel_idx)
+        self.sparse_gp.write_mapping_coefficients(
+            filename, contributor, kernel_idx, "potential"
+        )
 
     def write_varmap_coefficients(self, filename, contributor, kernel_idx):
         old_kernels = self.sparse_gp.kernels
-        assert (len(old_kernels) == 1) and (
-            kernel_idx == 0
-        ), "Not support multiple kernels"
-        assert isinstance(old_kernels[0], NormalizedDotProduct)
-
         power = 1
-        new_kernels = [NormalizedDotProduct(old_kernels[0].sigma, power)]
+        new_kernels = []
+        for kern in old_kernels:
+            assert isinstance(kern, NormalizedDotProduct)
+            new_kernels.append(NormalizedDotProduct(kern.sigma, power))
 
         # Build a power=1 SGP from scratch
         if self.sgp_var is None:
@@ -399,14 +390,14 @@ class SGP_Wrapper:
             self.sgp_var_kernels = new_kernels
 
         # Check hyperparameters and training data, if not match, construct a new SGP
-        assert len(self.sgp_var.kernels) == 1
-        assert np.allclose(self.sgp_var.kernels[0].power, 1.0)
+        for kern in self.sgp_var.kernels:
+            assert np.allclose(kern.power, 1.0)
         is_same_hyps = np.allclose(
             self.sgp_var.hyperparameters, self.sparse_gp.hyperparameters
         )
         n_sgp = len(self.training_data)
         n_sgp_var = len(self.sgp_var.training_structures)
-        is_same_data = n_sgp == n_sgp_var 
+        is_same_data = n_sgp == n_sgp_var
 
         # Add new data if sparse_gp has more data than sgp_var
         if not is_same_data:
@@ -443,7 +434,9 @@ class SGP_Wrapper:
         new_kernels = self.sgp_var.kernels
         print("Map with current sgp_var")
 
-        self.sgp_var.write_varmap_coefficients(filename, contributor, kernel_idx)
+        self.sgp_var.write_mapping_coefficients(
+            filename, contributor, kernel_idx, "uncertainty"
+        )
 
         return new_kernels
 
@@ -501,8 +494,7 @@ class SGP_Wrapper:
         return new_gp, kernels
 
 
-def compute_negative_likelihood(hyperparameters, sparse_gp,
-                                print_vals=False):
+def compute_negative_likelihood(hyperparameters, sparse_gp):
     """Compute the negative log likelihood and gradient with respect to the
     hyperparameters."""
 
@@ -512,27 +504,44 @@ def compute_negative_likelihood(hyperparameters, sparse_gp,
     sparse_gp.compute_likelihood()
     negative_likelihood = -sparse_gp.log_marginal_likelihood
 
-    if print_vals:
-        print_hyps(hyperparameters, negative_likelihood)
+    print_hyps(hyperparameters, negative_likelihood)
 
     return negative_likelihood
 
 
-def compute_negative_likelihood_grad(hyperparameters, sparse_gp,
-                                     print_vals=False):
+def compute_negative_likelihood_grad(hyperparameters, sparse_gp):
     """Compute the negative log likelihood and gradient with respect to the
     hyperparameters."""
 
     assert len(hyperparameters) == len(sparse_gp.hyperparameters)
 
-    negative_likelihood = \
-        -sparse_gp.compute_likelihood_gradient(hyperparameters)
+    negative_likelihood = -sparse_gp.compute_likelihood_gradient(hyperparameters)
     negative_likelihood_gradient = -sparse_gp.likelihood_gradient
 
-    if print_vals:
-        print_hyps_and_grad(
-            hyperparameters, negative_likelihood_gradient, negative_likelihood
-            )
+    print_hyps_and_grad(
+        hyperparameters, negative_likelihood_gradient, negative_likelihood
+    )
+
+    return negative_likelihood, negative_likelihood_gradient
+
+
+def compute_negative_likelihood_grad_stable(
+    hyperparameters, sparse_gp, precomputed=False
+):
+    """Compute the negative log likelihood and gradient with respect to the
+    hyperparameters."""
+
+    assert len(hyperparameters) == len(sparse_gp.hyperparameters)
+
+    print("python set_hyperparameters")
+    sparse_gp.set_hyperparameters(hyperparameters)
+
+    negative_likelihood = -sparse_gp.compute_likelihood_gradient_stable(precomputed)
+    negative_likelihood_gradient = -sparse_gp.likelihood_gradient
+
+    print_hyps_and_grad(
+        hyperparameters, negative_likelihood_gradient, negative_likelihood
+    )
 
     return negative_likelihood, negative_likelihood_gradient
 
@@ -554,10 +563,10 @@ def print_hyps_and_grad(hyperparameters, neglike_grad, neglike):
     print(-neglike)
     print("\n")
 
-
+@profile
 def optimize_hyperparameters(
     sparse_gp,
-    display_results=False,
+    display_results=True,
     gradient_tolerance=1e-4,
     max_iterations=10,
     bounds=None,
@@ -566,11 +575,26 @@ def optimize_hyperparameters(
     """Optimize the hyperparameters of a sparse GP model."""
 
     initial_guess = sparse_gp.hyperparameters
-    arguments = sparse_gp
+
+    # If all kernels are NormalizedDotProduct, then some matrices can be
+    # pre-computed and stored
+    precompute = True
+    for kern in sparse_gp.kernels:
+        if not isinstance(kern, NormalizedDotProduct):
+            precompute = False
+            break
+    if precompute:
+        tic = time()
+        print("Precomputing KnK for hyps optimization")
+        sparse_gp.precompute_KnK()
+        print("Done precomputing. Time:", time() - tic)
+        arguments = (sparse_gp, precompute)
+    else:
+        arguments = (sparse_gp, precompute)
 
     if method == "BFGS":
         optimization_result = minimize(
-            compute_negative_likelihood_grad,
+            compute_negative_likelihood_grad_stable,
             initial_guess,
             arguments,
             method="BFGS",
@@ -587,7 +611,7 @@ def optimize_hyperparameters(
 
     elif method == "L-BFGS-B":
         optimization_result = minimize(
-            compute_negative_likelihood_grad,
+            compute_negative_likelihood_grad_stable,
             initial_guess,
             arguments,
             method="L-BFGS-B",

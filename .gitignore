@@ -10,3 +10,4 @@ _C_flare*
 **/xml
 **/dist
 **egg-info
+*.DS_Store

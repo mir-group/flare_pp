@@ -89,19 +89,24 @@ class SGP_Calculator(Calculator):
         # single atom-centered descriptor.
         # TODO: Generalize this variance type to multiple descriptors.
         elif self.gp_model.variance_type == "local":
-            variances = structure_descriptor.local_uncertainties[0]
-            sorted_variances = sort_variances(structure_descriptor, variances)
-            stds = np.zeros(len(sorted_variances))
-            for n in range(len(sorted_variances)):
-                var = sorted_variances[n]
-                if var > 0:
-                    stds[n] = np.sqrt(var)
-                else:
-                    stds[n] = -np.sqrt(np.abs(var))
-            stds_full = np.zeros((len(sorted_variances), 3))
+            n_kern = len(structure_descriptor.local_uncertainties)
+            stds_full = np.zeros((len(atoms), 3))
+            assert n_kern <= 3, NotImplementedError  # now only print out 3 components
 
-            # Divide by the signal std to get a unitless value.
-            stds_full[:, 0] = stds / self.gp_model.hyps[0]
+            for k in range(n_kern):
+                variances = structure_descriptor.local_uncertainties[k]
+                sorted_variances = sort_variances(structure_descriptor, variances)
+                stds = np.zeros(len(sorted_variances))
+                for n in range(len(sorted_variances)):
+                    var = sorted_variances[n]
+                    if var > 0:
+                        stds[n] = np.sqrt(var)
+                    else:
+                        stds[n] = -np.sqrt(np.abs(var))
+
+                # Divide by the signal std to get a unitless value.
+                stds_full[:, k] = stds / self.gp_model.hyps[k]
+
             self.results["stds"] = stds_full
 
     def get_uncertainties(self, atoms):

@@ -14,6 +14,7 @@ public:
   Descriptor();
 
   std::string descriptor_name;
+  std::vector<int> descriptor_settings;
 
   virtual DescriptorValues compute_struc(Structure &structure) = 0;
 
