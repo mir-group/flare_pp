@@ -205,13 +205,13 @@ class ParSGP_Wrapper(SGP_Wrapper):
             structure_descriptor = convert_to_flarepp_structure(structure, self.species_map)
             struc_desc_list.append(structure_descriptor)
 
-        all_results = self.sparse_gp.predict_on_structures(
+        struc_desc_list = self.sparse_gp.predict_on_structures(
             struc_desc_list, self.cutoff, self.descriptor_calculators
         )
 
         for s in range(len(struc_list)):
             results = {}
-            mean_efs = all_results[s][0]
+            mean_efs = deepcopy(struc_desc_list[s].mean_efs)
             results["energy"] = mean_efs[0]
             results["forces"] = mean_efs[1:-6].reshape(-1, 3)
 
@@ -221,7 +221,7 @@ class ParSGP_Wrapper(SGP_Wrapper):
             results["stress"] = ase_stress
 
             ## save uncertainties
-            ## TODO: solve the sort_variances() issue
+            ## TODO: add "atom_indices" attribute to struc_desc_list for sort_variances()
 
             #n_kern = len(self.descriptor_calculators)
             #stds_full = np.zeros((len(struc_list), 3))

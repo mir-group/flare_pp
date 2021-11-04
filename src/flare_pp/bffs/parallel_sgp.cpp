@@ -128,7 +128,7 @@ Eigen::VectorXi ParallelSGP ::sparse_indices_by_type(int n_types,
 }
 
 void ParallelSGP ::add_specific_environments(const Structure &structure,
-                                      const std::vector<std::vector<int>> atoms) {
+         const std::vector<std::vector<int>> atoms) {
 
   // Gather clusters with central atom in the given list.
   std::vector<std::vector<std::vector<int>>> indices_1;
@@ -246,18 +246,15 @@ void ParallelSGP::build(const std::vector<Structure> &training_strucs,
     nmax_envs = (world_rank + 1) * u_size_per_proc;
   }
 
+  timer.toc("initialize build");
+
   // load and distribute training structures, compute descriptors
   load_local_training_data(training_strucs, cutoff, descriptor_calculators, training_sparse_indices, n_types, update);
-  timer.toc("load_local_training_data", blacs::mpirank);
 
   // compute kernel matrices from training data
-  timer.tic();
   compute_kernel_matrices(training_strucs);
-  timer.toc("compute_kernel_matrice", blacs::mpirank);
 
-  timer.tic();
   update_matrices_QR(); 
-  timer.toc("update_matrices_QR", blacs::mpirank);
 
   // TODO: finalize BLACS
   //blacs::finalize();
@@ -272,6 +269,8 @@ void ParallelSGP::load_local_training_data(const std::vector<Structure> &trainin
         double cutoff, std::vector<Descriptor *> descriptor_calculators,
         const std::vector<std::vector<std::vector<int>>> &training_sparse_indices,
         int n_types, bool update) {
+
+  timer.tic();
 
   // Distribute the training structures and sparse envs
   Structure struc;
@@ -304,6 +303,7 @@ void ParallelSGP::load_local_training_data(const std::vector<Structure> &trainin
   // Not clean up training_structures
   std::vector<Structure> new_training_structures;
   std::vector<int> new_local_training_structure_indices;
+  timer.toc("initialize loading");
 
   // Compute the total number of clusters of each type of each kernel
   n_struc_clusters_by_type = {};
@@ -317,6 +317,7 @@ void ParallelSGP::load_local_training_data(const std::vector<Structure> &trainin
     n_struc_clusters_by_type.push_back({});
   }
 
+  int num_build_strucs = 0;
   for (int t = 0; t < training_strucs.size(); t++) {
     int label_size = training_strucs[t].n_labels();
     int noa = training_strucs[t].noa;
@@ -367,6 +368,8 @@ void ParallelSGP::load_local_training_data(const std::vector<Structure> &trainin
         struc.energy = training_strucs[t].energy;
         struc.forces = training_strucs[t].forces;
         struc.stresses = training_strucs[t].stresses;
+        
+        num_build_strucs += 1;
       }
    
       // add the current struc to the local list
@@ -399,6 +402,7 @@ void ParallelSGP::load_local_training_data(const std::vector<Structure> &trainin
   }
   training_structures = new_training_structures;
   local_training_structure_indices = new_local_training_structure_indices;
+  std::cout << "Rank " << blacs::mpirank << " build " << num_build_strucs << " new strucs out of " << training_structures.size() << " strucs." << std::endl;
 
   for (int i = 0; i < n_kernels; i++) {
     for (int s = 0; s < n_types; s++) {
@@ -407,6 +411,7 @@ void ParallelSGP::load_local_training_data(const std::vector<Structure> &trainin
   }
 
   blacs::barrier();
+  timer.toc("compute structure descriptors", blacs::mpirank);
   
   // Gather all sparse descriptors to each process
   gather_sparse_descriptors(n_clusters_by_type, training_strucs); 
@@ -419,6 +424,7 @@ void ParallelSGP::load_local_training_data(const std::vector<Structure> &trainin
 void ParallelSGP::gather_sparse_descriptors(std::vector<std::vector<int>> n_clusters_by_type,
         const std::vector<Structure> &training_strucs) {
 
+  timer.tic();
   for (int i = 0; i < n_kernels; i++) {
     // Assign global sparse descritors
     int n_descriptors = training_structures[0].descriptors[i].n_descriptors;
@@ -514,6 +520,7 @@ void ParallelSGP::gather_sparse_descriptors(std::vector<std::vector<int>> n_clus
     sparse_descriptors.push_back(cluster_desc);
   }
 
+  timer.toc("gather_sparse_descriptors", blacs::mpirank);
 }
 
 /* -------------------------------------------------------------------------
@@ -598,6 +605,7 @@ void ParallelSGP::compute_kernel_matrices(const std::vector<Structure> &training
     cum_f += f_size_i;
     cum_f_struc += training_strucs[t].n_labels();
   }
+  timer.toc("compute_kernel_matrice", blacs::mpirank);
 }
 
 void ParallelSGP::update_matrices_QR() {
@@ -811,7 +819,7 @@ void ParallelSGP ::predict_local_uncertainties(Structure &test_structure) {
 
 }
 
-std::vector<std::tuple<Eigen::VectorXd, std::vector<Eigen::VectorXd>>> 
+std::vector<Structure>
 ParallelSGP ::predict_on_structures(std::vector<Structure> struc_list, 
         double cutoff, std::vector<Descriptor *> descriptor_calculators) {
 
@@ -890,28 +898,19 @@ ParallelSGP ::predict_on_structures(std::vector<Structure> struc_list,
   }
 
   // Assign the results to each struc
-  std::vector<std::tuple<Eigen::VectorXd, std::vector<Eigen::VectorXd>>> results;
   count_efs = 0;
   count_unc = 0;
   for (int t = 0; t < n_test; t++) {
     int n_curr_labels = 1 + struc_list[t].noa * 3 + 6;
-    std::vector<Eigen::VectorXd> curr_unc;
-    std::vector<Eigen::VectorXd> atom_indices;
+    struc_list[t].mean_efs = all_mean_efs.segment(count_efs, n_curr_labels);
+    struc_list[t].local_uncertainties = {};
     for (int i = 0; i < n_kernels; i++) {
-      curr_unc.push_back(all_local_uncertainties[i].segment(count_unc, struc_list[t].noa));
+      struc_list[t].local_uncertainties.push_back(all_local_uncertainties[i].segment(count_unc, struc_list[t].noa));
     }
-    std::tuple<Eigen::VectorXd, std::vector<Eigen::VectorXd>> curr_res;
-    curr_res = {all_mean_efs.segment(count_efs, n_curr_labels), curr_unc};
-    results.push_back(curr_res);
-    //struc_list[t].mean_efs = all_mean_efs.segment(count_efs, n_curr_labels);
-    //struc_list[t].local_uncertainties = {};
-    //for (int i = 0; i < n_kernels; i++) {
-    //  struc_list[t].local_uncertainties.push_back(all_local_uncertainties[i].segment(count_unc, struc_list[t].noa));
-    //}
-    //count_efs += n_curr_labels;
-    //count_unc += struc_list[t].noa;
+    count_efs += n_curr_labels;
+    count_unc += struc_list[t].noa;
   }
-  return results;
+  return struc_list;
 } 
 
 /* -------------------------------------------------------------------------

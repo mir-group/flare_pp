@@ -115,9 +115,9 @@ public:
       train_struc_2.stresses = labels_2.segment(1 + n_atoms_2 * 3, 6);
     
       sparse_gp.add_training_structure(train_struc_1);
-      sparse_gp.add_specific_environments(train_struc_1, sparse_indices[0][0]);
+      sparse_gp.add_specific_environments(train_struc_1, {sparse_indices[0][0], sparse_indices[1][0]});
       sparse_gp.add_training_structure(train_struc_2);
-      sparse_gp.add_specific_environments(train_struc_2, sparse_indices[0][1]);
+      sparse_gp.add_specific_environments(train_struc_2, {sparse_indices[0][1], sparse_indices[1][1]});
       sparse_gp.update_matrices_QR();
       std::cout << "Done QR for sparse_gp" << std::endl;
     
@@ -324,6 +324,7 @@ TEST_F(ParSGPTest, ParPredict){
   parallel_sgp.build(training_strucs, cutoff, dc, sparse_indices, n_types);
 
   std::cout << "create testing structures" << std::endl;
+  //std::vector<std::shared_ptr<Structure>> test_strucs_par;
   std::vector<Structure> test_strucs_par;
   std::vector<Structure> test_strucs_ser;
   for (int t = 0; t < 10; t++) {
@@ -347,8 +348,9 @@ TEST_F(ParSGPTest, ParPredict){
 
     blacs::barrier();
 
+    //auto test_struc_1 = std::make_shared<Structure>(cell_1, species_1, positions_1);
     Structure test_struc_1(cell_1, species_1, positions_1);
-    test_strucs_par.push_back(test_struc_1);
+    test_strucs_par.push_back(test_struc_1);    
 
     // Predict with serial SGP
     Structure test_struc_2(cell_1, species_1, positions_1, cutoff, dc);
@@ -357,14 +359,17 @@ TEST_F(ParSGPTest, ParPredict){
     blacs::barrier();
   }
 
-  parallel_sgp.predict_on_structures(test_strucs_par, cutoff, dc);
+  test_strucs_par = parallel_sgp.predict_on_structures(test_strucs_par, cutoff, dc);
   if (blacs::mpirank == 0) {
     for (int t = 0; t < test_strucs_par.size(); t++) {
       sparse_gp.predict_local_uncertainties(test_strucs_ser[t]);
-      for (int r = 0; r < test_strucs_par[t].mean_efs.size(); r++) {
+      for (int r = 0; r < test_strucs_ser[t].mean_efs.size(); r++) {
         EXPECT_NEAR(test_strucs_par[t].mean_efs(r), test_strucs_ser[t].mean_efs(r), 1e-6);
+        std::cout << test_strucs_par[t].mean_efs(r) << " " << test_strucs_ser[t].mean_efs(r) << std::endl;
+      }
+      for (int a = 0; a < test_strucs_ser[t].noa; a++) {
         for (int i = 0; i < dc.size(); i++) {
-          EXPECT_NEAR(test_strucs_par[t].local_uncertainties[i](r), test_strucs_ser[t].local_uncertainties[i](r), 1e-6);
+          EXPECT_NEAR(test_strucs_par[t].local_uncertainties[i](a), test_strucs_ser[t].local_uncertainties[i](a), 1e-6);
         }
       }
     }
