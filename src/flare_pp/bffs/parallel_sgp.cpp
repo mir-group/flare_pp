@@ -128,7 +128,7 @@ Eigen::VectorXi ParallelSGP ::sparse_indices_by_type(int n_types,
 }
 
 void ParallelSGP ::add_specific_environments(const Structure &structure,
-         const std::vector<std::vector<int>> atoms) {
+         const std::vector<std::vector<int>> atoms, bool update) {
 
   // Gather clusters with central atom in the given list.
   std::vector<std::vector<std::vector<int>>> indices_1;
@@ -159,8 +159,16 @@ void ParallelSGP ::add_specific_environments(const Structure &structure,
         ClusterDescriptor(structure.descriptors[i], indices_1[i]);
     cluster_descriptors.push_back(cluster_descriptor);
   }
-  local_sparse_descriptors.push_back(cluster_descriptors);
-
+//  local_sparse_descriptors.push_back(cluster_descriptors);
+  if (update) {
+    // Store sparse environments.
+    for (int i = 0; i < n_kernels; i++) {
+      sparse_descriptors[i].add_clusters_by_type(structure.descriptors[i],
+                                                 indices_1[i]);
+    }
+  } else {
+    local_sparse_descriptors.push_back(cluster_descriptors);
+  }
 }
 
 void ParallelSGP ::add_global_noise(int n_energy, int n_force, int n_stress) {
@@ -298,7 +306,9 @@ void ParallelSGP::load_local_training_data(const std::vector<Structure> &trainin
   local_label_indices = {};
   local_label_size = 0;
   local_sparse_descriptors = {};
-  sparse_descriptors = {};
+  if (!update) {
+    sparse_descriptors = {};
+  }
 
   // Not clean up training_structures
   std::vector<Structure> new_training_structures;
@@ -319,9 +329,9 @@ void ParallelSGP::load_local_training_data(const std::vector<Structure> &trainin
 
   int num_build_strucs = 0;
   for (int t = 0; t < training_strucs.size(); t++) {
+    timer.tic();
     int label_size = training_strucs[t].n_labels();
     int noa = training_strucs[t].noa;
-    assert (label_size == 1 + 3 * noa + 6); 
    
     int n_energy = 1;
     int n_forces = 3 * noa;
@@ -335,10 +345,12 @@ void ParallelSGP::load_local_training_data(const std::vector<Structure> &trainin
       n_struc_clusters_by_type[i].push_back(n_envs_by_type);
       for (int s = 0; s < n_types; s++) n_clusters_by_type[i][s] += n_envs_by_type(s);
     }
+    timer.toc("add_global_noise & sparse_indices_by_type", blacs::mpirank);
 
     // Collect local training structures for A, Kuf
     // Check if the current struc belongs to the current process
     if (nmin_struc < cum_f + label_size && cum_f < nmax_struc) {
+      timer.tic();
       bool build_struc = true;
       if (update) { // if just adding a few new strucs (appened in training_strucs)
         // check if the current struc is already in the list
@@ -352,7 +364,6 @@ void ParallelSGP::load_local_training_data(const std::vector<Structure> &trainin
           int local_struc_ind = std::distance(local_training_structure_indices.begin(), local_struc_index);
           struc = training_structures[local_struc_ind];
           build_struc = false;
-          //build_struc = true;
 
           // clear the descriptors in the old list to save memory
           training_structures[local_struc_ind].descriptors.clear();
@@ -389,12 +400,45 @@ void ParallelSGP::load_local_training_data(const std::vector<Structure> &trainin
 
       // compute sparse descriptors if the first label of this struc belongs to
       // the current process, to avoid multiple procs add the same sparse envs
-      if (nmin_struc <= cum_f && cum_f < nmax_struc) {
+      if (!update) {
+        if (nmin_struc <= cum_f && cum_f < nmax_struc) {
+          std::vector<std::vector<int>> sparse_atoms = {};
+          for (int i = 0; i < n_kernels; i++) {
+            sparse_atoms.push_back(training_sparse_indices[i][t]);
+          }
+          add_specific_environments(struc, sparse_atoms, update);
+        }
+      }
+    }
+
+    if (update) { // add the sparse envs to the global "sparse_descriptors"
+      printf("compute update t\n");
+      if (t == (training_strucs.size() - 1)) {
+        // check if the current struc is already in the list
+        std::vector<int>::iterator local_struc_index = 
+            std::find(new_local_training_structure_indices.begin(), 
+                new_local_training_structure_indices.end(), t);
+
+        // if it is, then use the existing one, otherwise build it up
+        if (local_struc_index != new_local_training_structure_indices.end()) {
+          struc = new_training_structures[new_training_structures.size() - 1];          
+        } else {
+          // compute descriptors for the current struc
+          struc = Structure(training_strucs[t].cell, training_strucs[t].species, 
+                  training_strucs[t].positions, cutoff, descriptor_calculators);
+  
+          struc.energy = training_strucs[t].energy;
+          struc.forces = training_strucs[t].forces;
+          struc.stresses = training_strucs[t].stresses;
+        }
+        
         std::vector<std::vector<int>> sparse_atoms = {};
         for (int i = 0; i < n_kernels; i++) {
           sparse_atoms.push_back(training_sparse_indices[i][t]);
         }
-        add_specific_environments(struc, sparse_atoms);
+
+        add_specific_environments(struc, sparse_atoms, update);
+        num_build_strucs += 1;
       }
     }
 
@@ -402,19 +446,15 @@ void ParallelSGP::load_local_training_data(const std::vector<Structure> &trainin
   }
   training_structures = new_training_structures;
   local_training_structure_indices = new_local_training_structure_indices;
-  std::cout << "Rank " << blacs::mpirank << " build " << num_build_strucs << " new strucs out of " << training_structures.size() << " strucs." << std::endl;
-
-  for (int i = 0; i < n_kernels; i++) {
-    for (int s = 0; s < n_types; s++) {
-      assert(n_clusters_by_type[i][s] >= world_size);
-    }
-  }
+  std::cout << "Rank " << blacs::mpirank << " build " << num_build_strucs << " new strucs" << std::endl;
 
   blacs::barrier();
   timer.toc("compute structure descriptors", blacs::mpirank);
   
   // Gather all sparse descriptors to each process
-  gather_sparse_descriptors(n_clusters_by_type, training_strucs); 
+  if (!update) {
+    gather_sparse_descriptors(n_clusters_by_type, training_strucs);
+  }
 }
 
 /* -------------------------------------------------------------------------
