@@ -311,7 +311,6 @@ void ParallelSGP::load_local_training_data(const std::vector<Structure> &trainin
   }
 
   // Not clean up training_structures
-  std::vector<Structure> new_training_structures;
   std::vector<int> new_local_training_structure_indices;
   timer.toc("initialize loading");
 
@@ -364,10 +363,6 @@ void ParallelSGP::load_local_training_data(const std::vector<Structure> &trainin
           int local_struc_ind = std::distance(local_training_structure_indices.begin(), local_struc_index);
           struc = training_structures[local_struc_ind];
           build_struc = false;
-
-          // clear the descriptors in the old list to save memory
-          training_structures[local_struc_ind].descriptors.clear();
-          training_structures[local_struc_ind].descriptors.shrink_to_fit();
         }
       }
 
@@ -380,12 +375,12 @@ void ParallelSGP::load_local_training_data(const std::vector<Structure> &trainin
         struc.forces = training_strucs[t].forces;
         struc.stresses = training_strucs[t].stresses;
         
+        training_structures.push_back(struc);
         num_build_strucs += 1;
       }
    
       // add the current struc to the local list
       add_training_structure(struc);
-      new_training_structures.push_back(struc);
       new_local_training_structure_indices.push_back(t);
  
       // save all the label indices that belongs to the current process
@@ -421,7 +416,7 @@ void ParallelSGP::load_local_training_data(const std::vector<Structure> &trainin
 
         // if it is, then use the existing one, otherwise build it up
         if (local_struc_index != new_local_training_structure_indices.end()) {
-          struc = new_training_structures[new_training_structures.size() - 1];          
+          struc = training_structures[training_structures.size() - 1];          
         } else {
           // compute descriptors for the current struc
           struc = Structure(training_strucs[t].cell, training_strucs[t].species, 
@@ -444,7 +439,18 @@ void ParallelSGP::load_local_training_data(const std::vector<Structure> &trainin
 
     cum_f += label_size;
   }
-  training_structures = new_training_structures;
+
+  // remove structures in the old list that are not in the new list 
+  for (int t = local_training_structure_indices.size() - 1; t >= 0; t--) {
+    int t0 = local_training_structure_indices[t];
+    if (std::find(new_local_training_structure_indices.begin(), 
+                new_local_training_structure_indices.end(), t0)
+            == new_local_training_structure_indices.end()) {
+
+      training_structures.erase(training_structures.begin() + t);
+    }
+  }
+
   local_training_structure_indices = new_local_training_structure_indices;
   std::cout << "Rank " << blacs::mpirank << " build " << num_build_strucs << " new strucs" << std::endl;
 
@@ -452,9 +458,8 @@ void ParallelSGP::load_local_training_data(const std::vector<Structure> &trainin
   timer.toc("compute structure descriptors", blacs::mpirank);
   
   // Gather all sparse descriptors to each process
-  if (!update) {
+  if (!update)
     gather_sparse_descriptors(n_clusters_by_type, training_strucs);
-  }
 }
 
 /* -------------------------------------------------------------------------
