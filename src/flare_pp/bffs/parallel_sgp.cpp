@@ -525,21 +525,10 @@ void ParallelSGP::gather_sparse_descriptors(std::vector<std::vector<int>> n_clus
       Eigen::VectorXd type_descriptor_norms = Eigen::VectorXd::Zero(nrows);
       Eigen::VectorXd type_cutoff_values = Eigen::VectorXd::Zero(nrows);
 
-      Matrix<double> descriptors_array(nrows, ncols);
-      Matrix<double> descriptor_norms_array(nrows, 1);
-      Matrix<double> cutoff_values_array(nrows, 1);
+      dist_descriptors.allgather(&type_descriptors(0, 0), 0, 0, nrows, ncols);
+      dist_descriptor_norms.allgather(&type_descriptor_norms(0, 0), 0, 0, nrows, 1);
+      dist_cutoff_values.allgather(&type_cutoff_values(0, 0), 0, 0, nrows, 1);
 
-      // TODO: change to &type_descriptors(0, 0) 
-      dist_descriptors.allgather(descriptors_array.array.get(), 0, 0, nrows, ncols);
-      dist_descriptor_norms.allgather(descriptor_norms_array.array.get(), 0, 0, nrows, 1);
-      dist_cutoff_values.allgather(cutoff_values_array.array.get(), 0, 0, nrows, 1);
-      for (int r = 0; r < n_clusters_by_type[i][s]; r++) {
-        for (int c = 0; c < n_descriptors; c++) {
-          type_descriptors(r, c) = descriptors_array(r, c);
-        }
-        type_descriptor_norms(r) = descriptor_norms_array(r, 0); 
-        type_cutoff_values(r) = cutoff_values_array(r, 0);
-      }
       descriptors.push_back(type_descriptors);
       descriptor_norms.push_back(type_descriptor_norms);
       cutoff_values.push_back(type_cutoff_values);
@@ -692,10 +681,8 @@ void ParallelSGP::update_matrices_QR() {
   }
   Kuu_dist.fence();
 
-  // TODO: Kuu is only needed for debug and unit test 
-  Matrix<double> Kuu_array(u_size, u_size);
-  Kuu_dist.allgather(Kuu_array.array.get(), 0, 0, u_size, u_size);
-  Kuu = Eigen::Map<Eigen::MatrixXd>(Kuu_array.array.get(), u_size, u_size);
+  Kuu = Eigen::MatrixXd::Zero(u_size, u_size); 
+  Kuu_dist.allgather(&Kuu(0, 0), 0, 0, u_size, u_size);
 
   timer.toc("build Kuu_dist", blacs::mpirank);
 
