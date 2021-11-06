@@ -766,14 +766,8 @@ void ParallelSGP::update_matrices_QR() {
   timer.toc("Qb", blacs::mpirank);
 
   timer.tic();
-  DistMatrix<double> R_dist(u_size, u_size);                                 // Upper triangular R from QR
-  R_dist = [&QR](int i, int j) {return i > j ? 0 : QR(i, j, true);};
-  R_dist.fence();
-
-  Eigen::MatrixXd R = Eigen::MatrixXd::Zero(u_size, u_size);
-//  QR.allgather(&R(0, 0)); // Here the lower triangular part of R is not zero
-  R_dist.allgather(&R(0, 0), 0, 0, u_size, u_size);
-  R_dist.fence();
+  Eigen::MatrixXd R = Eigen::MatrixXd::Zero(u_size, u_size);        // Upper triangular R from QR
+  QR.allgather(&R(0, 0), 0, 0, u_size, u_size); // Here the lower triangular part of R is not zero
 
   // Using Lapack triangular solver to temporarily avoid the numerical issue 
   // with Scalapack block algorithm with ill-conditioned matrix
