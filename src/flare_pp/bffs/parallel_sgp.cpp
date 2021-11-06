@@ -407,7 +407,6 @@ void ParallelSGP::load_local_training_data(const std::vector<Structure> &trainin
     }
 
     if (update) { // add the sparse envs to the global "sparse_descriptors"
-      printf("compute update t\n");
       if (t == (training_strucs.size() - 1)) {
         // check if the current struc is already in the list
         std::vector<int>::iterator local_struc_index = 
@@ -651,6 +650,8 @@ void ParallelSGP::compute_kernel_matrices(const std::vector<Structure> &training
     cum_f_struc += training_strucs[t].n_labels();
   }
   timer.toc("compute_kernel_matrice", blacs::mpirank);
+
+  blacs::barrier();
 }
 
 void ParallelSGP::update_matrices_QR() {
@@ -710,7 +711,7 @@ void ParallelSGP::update_matrices_QR() {
   Kuu_inverse = L_inv.transpose() * L_inv;
   L_diag = L_inv.diagonal();
 
-  timer.toc("cholestky, tri_inv, matmul", blacs::mpirank);
+  timer.toc("cholesky, tri_inv, matmul", blacs::mpirank);
 
   // Assign Lambda * Kfu to A
   timer.tic();
@@ -753,25 +754,26 @@ void ParallelSGP::update_matrices_QR() {
 
   timer.toc("QR", blacs::mpirank);
 
+  // Directly use triangular_solve to get alpha: R * alpha = Q_b
   timer.tic();
 
+  DistMatrix<double> Qb_dist = QR.Q_matmul(b, tau, 'L', 'T');                // Q_b = Q^T * b
+  Qb_dist.fence();
+  Eigen::MatrixXd Q_b_mat = Eigen::MatrixXd::Zero(f_size + u_size, 1);
+  Qb_dist.allgather(&Q_b_mat(0, 0));
+  Eigen::VectorXd Q_b = Q_b_mat.col(0);
+
+  timer.toc("Qb", blacs::mpirank);
+
+  timer.tic();
   DistMatrix<double> R_dist(u_size, u_size);                                 // Upper triangular R from QR
   R_dist = [&QR](int i, int j) {return i > j ? 0 : QR(i, j, true);};
-  blacs::barrier();
-
-  // Directly use triangular_solve to get alpha: R * alpha = Q_b
-  Matrix<double> Qb_array(f_size + u_size, 1);
-  Matrix<double> R_array(u_size, u_size);
-  blacs::barrier();
-
-  DistMatrix<double> Qb_dist = QR.Q_matmul(b, tau, 'L', 'T');                // Q_b = Q^T * b
-  Qb_dist.allgather(Qb_array.array.get());
-  Qb_dist.fence();
-  Eigen::VectorXd Q_b = Eigen::Map<Eigen::VectorXd>(Qb_array.array.get(), f_size + u_size).segment(0, u_size);
-
-  R_dist.allgather(R_array.array.get());
   R_dist.fence();
-  Eigen::MatrixXd R = Eigen::Map<Eigen::MatrixXd>(R_array.array.get(), u_size, u_size);
+
+  Eigen::MatrixXd R = Eigen::MatrixXd::Zero(u_size, u_size);
+//  QR.allgather(&R(0, 0)); // Here the lower triangular part of R is not zero
+  R_dist.allgather(&R(0, 0));
+  R_dist.fence();
 
   // Using Lapack triangular solver to temporarily avoid the numerical issue 
   // with Scalapack block algorithm with ill-conditioned matrix
@@ -1096,28 +1098,8 @@ Eigen::VectorXd ParallelSGP ::compute_like_grad_of_kernel_hyps() {
       int local_f_size = nmax_struc - nmin_struc; 
       Eigen::MatrixXd dKfu_local = Eigen::MatrixXd::Zero(local_f_size, u_size);
       dKfu_local.block(0, count, local_f_size, size) = Kuf_grad[j + 1].transpose();
-      Eigen::VectorXd noise_one_local = 
-          local_e_noise_one / (energy_noise * energy_noise) + 
-          local_f_noise_one / (force_noise * force_noise) + 
-          local_s_noise_one / (stress_noise * stress_noise);
-      Eigen::MatrixXd dnK_local = noise_one_local.asDiagonal() * dKfu_local;
-      blacs::barrier();
-    
-      // Compute distributedly Kuf_grad * noise_one * Kuf.transpose()
-      DistMatrix<double> dnK_dist(f_size, u_size);
-      dnK_dist = [](int i, int j){return 0.0;};
-      dnK_dist.collect(&dnK_local(0, 0), 0, 0, f_size, u_size, f_size_per_proc, u_size, nmax_struc - nmin_struc);
-      dnK_dist.fence();
-
-      DistMatrix<double> dKnK_dist(u_size, u_size);
-      dKnK_dist = dnK_dist.matmul(Kfu_dist, 1.0, 'T', 'N');
-      dKnK_dist.fence();
-    
-      // Gather dK_noise_K to a single process because it's small (u_size x u_size)
-      Eigen::MatrixXd dK_noise_K = Eigen::MatrixXd::Zero(u_size, u_size); 
-      blacs::barrier();
-      dKnK_dist.gather(&dK_noise_K(0, 0));
-      dKnK_dist.fence();
+      n_sparse = u_size;
+      Eigen::MatrixXd dK_noise_K = SparseGP::compute_dKnK(i);
       timer.toc("compute dKnK", blacs::mpirank);
 
       // Derivative of complexity over sigma
