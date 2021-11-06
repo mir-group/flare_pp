@@ -530,9 +530,9 @@ void ParallelSGP::gather_sparse_descriptors(std::vector<std::vector<int>> n_clus
       Matrix<double> cutoff_values_array(nrows, 1);
 
       // TODO: change to &type_descriptors(0, 0) 
-      dist_descriptors.allgather(descriptors_array.array.get());
-      dist_descriptor_norms.allgather(descriptor_norms_array.array.get());
-      dist_cutoff_values.allgather(cutoff_values_array.array.get());
+      dist_descriptors.allgather(descriptors_array.array.get(), 0, 0, nrows, ncols);
+      dist_descriptor_norms.allgather(descriptor_norms_array.array.get(), 0, 0, nrows, 1);
+      dist_cutoff_values.allgather(cutoff_values_array.array.get(), 0, 0, nrows, 1);
       for (int r = 0; r < n_clusters_by_type[i][s]; r++) {
         for (int c = 0; c < n_descriptors; c++) {
           type_descriptors(r, c) = descriptors_array(r, c);
@@ -694,7 +694,7 @@ void ParallelSGP::update_matrices_QR() {
 
   // TODO: Kuu is only needed for debug and unit test 
   Matrix<double> Kuu_array(u_size, u_size);
-  Kuu_dist.allgather(Kuu_array.array.get());
+  Kuu_dist.allgather(Kuu_array.array.get(), 0, 0, u_size, u_size);
   Kuu = Eigen::Map<Eigen::MatrixXd>(Kuu_array.array.get(), u_size, u_size);
 
   timer.toc("build Kuu_dist", blacs::mpirank);
@@ -759,8 +759,8 @@ void ParallelSGP::update_matrices_QR() {
 
   DistMatrix<double> Qb_dist = QR.Q_matmul(b, tau, 'L', 'T');                // Q_b = Q^T * b
   Qb_dist.fence();
-  Eigen::MatrixXd Q_b_mat = Eigen::MatrixXd::Zero(f_size + u_size, 1);
-  Qb_dist.allgather(&Q_b_mat(0, 0));
+  Eigen::MatrixXd Q_b_mat = Eigen::MatrixXd::Zero(u_size, 1);
+  Qb_dist.allgather(&Q_b_mat(0, 0), 0, 0, u_size, 1);
   Eigen::VectorXd Q_b = Q_b_mat.col(0);
 
   timer.toc("Qb", blacs::mpirank);
@@ -772,7 +772,7 @@ void ParallelSGP::update_matrices_QR() {
 
   Eigen::MatrixXd R = Eigen::MatrixXd::Zero(u_size, u_size);
 //  QR.allgather(&R(0, 0)); // Here the lower triangular part of R is not zero
-  R_dist.allgather(&R(0, 0));
+  R_dist.allgather(&R(0, 0), 0, 0, u_size, u_size);
   R_dist.fence();
 
   // Using Lapack triangular solver to temporarily avoid the numerical issue 
@@ -831,7 +831,7 @@ void ParallelSGP ::set_hyperparameters(Eigen::VectorXd hyps) {
   DistMatrix<double> noise_vector_dist(f_size, 1);
   noise_vector_dist.collect(&local_noise_vector(0), 0, 0, f_size, 1, f_size_per_proc, 1, nmax_struc - nmin_struc);
   noise_vector_dist.fence();
-  noise_vector_dist.gather(&global_noise_vector(0));
+  noise_vector_dist.gather(&global_noise_vector(0), 0, 0, f_size, 1);
   blacs::barrier();
 
   timer.toc("set_hyp: update noise");
@@ -984,14 +984,14 @@ void ParallelSGP ::compute_likelihood_stable() {
   K_alpha_dist.fence();
   Eigen::VectorXd K_alpha = Eigen::VectorXd::Zero(f_size);
   blacs::barrier();
-  K_alpha_dist.gather(&K_alpha(0));
+  K_alpha_dist.gather(&K_alpha(0), 0, 0, f_size, 1);
   K_alpha_dist.fence();
 
   DistMatrix<double> y_dist(f_size, 1);
   y_dist.collect(&local_labels(0), 0, 0, f_size, 1, f_size_per_proc, 1, nmax_struc - nmin_struc);
   y_dist.fence();
   Eigen::VectorXd y_global = Eigen::VectorXd::Zero(f_size);
-  y_dist.gather(&y_global(0));
+  y_dist.gather(&y_global(0), 0, 0, f_size, 1);
   y_dist.fence();
 
   y_K_alpha = Eigen::VectorXd::Zero(f_size);
@@ -1123,7 +1123,7 @@ Eigen::VectorXd ParallelSGP ::compute_like_grad_of_kernel_hyps() {
       dK_alpha_dist = dKfu_dist.matmul(alpha_dist, 1.0, 'N', 'N');
       dK_alpha_dist.fence();
       Eigen::VectorXd dK_alpha = Eigen::VectorXd::Zero(f_size);
-      dK_alpha_dist.gather(&dK_alpha(0));
+      dK_alpha_dist.gather(&dK_alpha(0), 0, 0, f_size, 1);
       dK_alpha_dist.fence();
 
       if (blacs::mpirank == 0) {
@@ -1168,21 +1168,21 @@ Eigen::VectorXd ParallelSGP ::compute_like_grad_of_noise(bool precomputed_KnK) {
   e_noise_one_dist.collect(&local_e_noise_one(0), 0, 0, f_size, 1, f_size_per_proc, 1, nmax_struc - nmin_struc);
   e_noise_one_dist.fence();
   Eigen::VectorXd global_e_noise_one = Eigen::VectorXd::Zero(f_size);
-  e_noise_one_dist.gather(&global_e_noise_one(0));
+  e_noise_one_dist.gather(&global_e_noise_one(0), 0, 0, f_size, 1);
   e_noise_one_dist.fence();
 
   DistMatrix<double> f_noise_one_dist(f_size, 1);
   f_noise_one_dist.collect(&local_f_noise_one(0), 0, 0, f_size, 1, f_size_per_proc, 1, nmax_struc - nmin_struc);
   f_noise_one_dist.fence();
   Eigen::VectorXd global_f_noise_one = Eigen::VectorXd::Zero(f_size);
-  f_noise_one_dist.gather(&global_f_noise_one(0));
+  f_noise_one_dist.gather(&global_f_noise_one(0), 0, 0, f_size, 1);
   f_noise_one_dist.fence();
 
   DistMatrix<double> s_noise_one_dist(f_size, 1);
   s_noise_one_dist.collect(&local_s_noise_one(0), 0, 0, f_size, 1, f_size_per_proc, 1, nmax_struc - nmin_struc);
   s_noise_one_dist.fence();
   Eigen::VectorXd global_s_noise_one = Eigen::VectorXd::Zero(f_size);
-  s_noise_one_dist.gather(&global_s_noise_one(0));
+  s_noise_one_dist.gather(&global_s_noise_one(0), 0, 0, f_size, 1);
   s_noise_one_dist.fence();
 
   timer.toc("collect and gather e/f/s_noise_one", blacs::mpirank);
@@ -1290,15 +1290,15 @@ void ParallelSGP ::precompute_KnK() {
       Eigen::MatrixXd KnK_s_kern = Eigen::MatrixXd::Zero(u_size_kern_j, u_size_kern);
       blacs::barrier();
 
-      KnK_e_dist.gather(&KnK_e_kern(0,0));
+      KnK_e_dist.gather(&KnK_e_kern(0,0), 0, 0, u_size_kern_j, u_size_kern);
       KnK_e_dist.fence();
       KnK_e_kern /= sig4;
 
-      KnK_f_dist.gather(&KnK_f_kern(0,0));
+      KnK_f_dist.gather(&KnK_f_kern(0,0), 0, 0, u_size_kern_j, u_size_kern);
       KnK_f_dist.fence();
       KnK_f_kern /= sig4;
 
-      KnK_s_dist.gather(&KnK_s_kern(0,0));
+      KnK_s_dist.gather(&KnK_s_kern(0,0), 0, 0, u_size_kern_j, u_size_kern);
       KnK_s_dist.fence();
       KnK_s_kern /= sig4;
 
@@ -1381,13 +1381,13 @@ void ParallelSGP ::compute_KnK(bool precomputed) {
     KnK_s_dist.fence();
   
     // Gather to get the serial matrix
-    KnK_e_dist.gather(&KnK_e(0,0));
+    KnK_e_dist.gather(&KnK_e(0,0), 0, 0, u_size, u_size);
     KnK_e_dist.fence();
   
-    KnK_f_dist.gather(&KnK_f(0,0));
+    KnK_f_dist.gather(&KnK_f(0,0), 0, 0, u_size, u_size);
     KnK_f_dist.fence();
   
-    KnK_s_dist.gather(&KnK_s(0,0));
+    KnK_s_dist.gather(&KnK_s(0,0), 0, 0, u_size, u_size);
     KnK_s_dist.fence();
   }
   timer.toc("compute_KnK", blacs::mpirank);
