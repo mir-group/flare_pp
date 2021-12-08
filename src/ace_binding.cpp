@@ -4,6 +4,7 @@
 #include "sparse_gp.h"
 #include "b2.h"
 #include "b2_simple.h"
+#include "b2_spec.h"
 #include "b2_norm.h"
 #include "bk.h"
 #include "two_body.h"
@@ -126,6 +127,22 @@ PYBIND11_MODULE(_C_flare, m) {
       .def_readonly("cutoff_hyps", &Bk::cutoff_hyps)
       .def_readonly("cutoffs", &Bk::cutoffs)
       .def_readonly("descriptor_settings", &Bk::descriptor_settings);
+
+  py::class_<B2_Spec, Descriptor>(m, "B2_Spec")
+      .def(py::init<const std::string &, const std::string &,
+                    const std::vector<double> &, const std::vector<double> &,
+                    const std::vector<int> &>())
+      .def(py::init<const std::string &, const std::string &,
+                    const std::vector<double> &, const std::vector<double> &,
+                    const std::vector<int> &,
+                    const Eigen::MatrixXd &>())
+      .def_readonly("radial_basis", &B2_Spec::radial_basis)
+      .def_readonly("cutoff_function", &B2_Spec::cutoff_function)
+      .def_readonly("radial_hyps", &B2_Spec::radial_hyps)
+      .def_readonly("cutoff_hyps", &B2_Spec::cutoff_hyps)
+      .def_readonly("cutoffs", &B2_Spec::cutoffs)
+      .def_readonly("descriptor_settings", &B2_Spec::descriptor_settings);
+
 
   // Kernel functions
   py::class_<Kernel>(m, "Kernel");

@@ -98,7 +98,7 @@ DescriptorValues B2_Spec ::compute_struc(Structure &structure) {
   Eigen::MatrixXd B2_vals, B2_force_dervs;
   Eigen::VectorXd B2_norms, B2_force_dots;
 
-  compute_b2(B2_vals, B2_force_dervs, B2_norms, B2_force_dots, single_bond_vals,
+  compute_b2_spec(B2_vals, B2_force_dervs, B2_norms, B2_force_dots, single_bond_vals,
              force_dervs, unique_neighbor_count, cumulative_neighbor_count,
              descriptor_indices, nos, N, lmax);
 
@@ -245,4 +245,9 @@ void compute_b2_spec(Eigen::MatrixXd &B2_vals, Eigen::MatrixXd &B2_force_dervs,
         B2_force_dervs.block(force_start, 0, n_atom_neighbors * 3, n_d) *
         B2_vals.row(atom).transpose();
   }
+}
+
+nlohmann::json B2_Spec ::return_json(){
+  nlohmann::json j;
+  return j;
 }

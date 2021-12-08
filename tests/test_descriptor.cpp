@@ -1,6 +1,7 @@
 #include "bk.h"
 #include "b1.h"
 #include "b2.h"
+#include "b2_spec.h"
 #include "b3.h"
 #include "descriptor.h"
 #include "test_structure.h"
@@ -126,6 +127,30 @@ TEST_P(DescRotTest, RotationTest) {
 }
 
 INSTANTIATE_TEST_SUITE_P(DescBodies, DescRotTest, testing::Values(1, 2, 3));
+
+TEST_F(DescRotTest, RotationTestB2Spec) {
+  std::vector<int> descriptor_settings{n_species, N, L};
+  B2_Spec desc(radial_string, cutoff_string, radial_hyps, cutoff_hyps,
+          descriptor_settings);
+
+  std::vector<Descriptor *> descriptors;
+  descriptors.push_back(&desc);
+
+  Structure struc1 = Structure(cell, species, positions, cutoff, descriptors);
+  Structure struc2 =
+      Structure(this->rotated_cell, species, this->rotated_pos, cutoff, descriptors);
+
+  // Check that B1 is rotationally invariant.
+  double d1, d2;
+
+  std::cout << "n_descriptors=" << struc1.descriptors[0].n_descriptors << std::endl;
+  for (int n = 0; n < struc1.descriptors[0].n_descriptors; n++) {
+    d1 = struc1.descriptors[0].descriptors[0](0, n);
+    d2 = struc2.descriptors[0].descriptors[0](0, n);
+    EXPECT_NEAR(d1, d2, 1e-10);
+  }
+}
+
 
   // TEST_F(DescriptorTest, SingleBond) {
   //   // Check that B1 descriptors match the corresponding elements of the
