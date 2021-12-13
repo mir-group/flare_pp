@@ -17,4 +17,4 @@ Contents
 
 LAMMPS Plugin
 ^^^^^^^^^^^^^
-See `lammps_plugins/README.md <https://github.com/mir-group/flare_pp/blob/master/lammps_plugins/README.md>`.
+See `lammps_plugins/README.md <https://github.com/mir-group/flare_pp/blob/master/lammps_plugins/README.md>`_.
