@@ -26,24 +26,27 @@ class LMPOTF:
     Module for performing On-The-Fly (OTF) training, also known as active learning,
     entirely within LAMMPS.
     """
+
     def __init__(
         self,
-            sparse_gp: SparseGP,
-            descriptors: List,
-            rcut: float,
-            type2number: Union[int, List[int]],
-            dftcalc: object,
-            energy_correction: Optional[float] = None,
-            dft_call_threshold: float = 0.005,
-            dft_add_threshold: float = 0.0025,
-            std_xyz_fname: Optional[Callable[[int], str]] = None,
-            model_fname: str = "otf.flare",
-            hyperparameter_optimization: Callable[["LMPOTF", object, int], bool] = lambda lmpotf, lmp, step: False,
-            opt_bounds: Optional[List[int]] = None,
-            opt_method: Optional[str] = "L-BFGS-B",
-            opt_iterations: Optional[int] = 50,
-            post_dft_callback: Callable[["LMPOTF", int], None] = lambda lmpotf, step: 0,
-            wandb: object = None,
+        sparse_gp: SparseGP,
+        descriptors: List,
+        rcut: float,
+        type2number: Union[int, List[int]],
+        dftcalc: object,
+        energy_correction: Optional[float] = None,
+        dft_call_threshold: float = 0.005,
+        dft_add_threshold: float = 0.0025,
+        std_xyz_fname: Optional[Callable[[int], str]] = None,
+        model_fname: str = "otf.flare",
+        hyperparameter_optimization: Callable[
+            ["LMPOTF", object, int], bool
+        ] = lambda lmpotf, lmp, step: False,
+        opt_bounds: Optional[List[int]] = None,
+        opt_method: Optional[str] = "L-BFGS-B",
+        opt_iterations: Optional[int] = 50,
+        post_dft_callback: Callable[["LMPOTF", int], None] = lambda lmpotf, step: 0,
+        wandb: object = None,
     ) -> object:
         """
 
@@ -87,7 +90,7 @@ class LMPOTF:
             The wandb object, which should already be initialized.
         """
         self.sparse_gp = sparse_gp
-        self.descriptors = descriptors
+        self.descriptors = np.atleast_1d(descriptors)
         self.rcut = rcut
 
         self.type2number = np.atleast_1d(type2number)
@@ -142,7 +145,7 @@ class LMPOTF:
         types = lmp.gather_atoms("type", 0, 1)
         types = np.ctypeslib.as_array(types, shape=(natoms))
 
-        structure = Structure(cell, types-1, x, self.rcut, self.descriptors)
+        structure = Structure(cell, types - 1, x, self.rcut, self.descriptors)
 
         if self.dft_calls == 0:
             # Call DFT on the initial structure and add it to the training set
@@ -161,7 +164,12 @@ class LMPOTF:
             stds = np.sqrt(np.abs(variances)) / sigma
 
             if self.std_xyz_fname is not None:
-                frame = ase.Atoms(positions=x, numbers=self.type2number[species], cell=cell, pbc=True)
+                frame = ase.Atoms(
+                    positions=x,
+                    numbers=self.type2number[types - 1],
+                    cell=cell,
+                    pbc=True,
+                )
                 frame.set_array("charges", stds)
                 ase.io.write(self.std_xyz_fname(step), frame, format="extxyz")
 
@@ -212,7 +220,7 @@ class LMPOTF:
                 self.wandb.log(wandb_log, step=step)
 
     def run_dft(self, cell, x, types, step, structure):
-        atomic_numbers = self.type2number[types-1]
+        atomic_numbers = self.type2number[types - 1]
         frame = ase.Atoms(
             positions=x,
             numbers=atomic_numbers,
