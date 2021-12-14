@@ -35,7 +35,6 @@
   <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="LAMMPS On-The-Fly Training" href="lmpotf.html" />
     <link rel="prev" title="Descriptors" href="descriptors.html" /> 
 </head>
 
@@ -86,7 +85,6 @@
 <li class="toctree-l2"><a class="reference internal" href="bffs.html">Bayesian force fields</a></li>
 <li class="toctree-l2"><a class="reference internal" href="descriptors.html">Descriptors</a></li>
 <li class="toctree-l2 current"><a class="current reference internal" href="#">Kernels</a></li>
-<li class="toctree-l2"><a class="reference internal" href="lmpotf.html">LAMMPS On-The-Fly Training</a></li>
 </ul>
 </li>
 </ul>
@@ -214,6 +212,11 @@
 <dd></dd></dl>
 
 <dl class="function">
+<dt id="_CPPv4N6Kernel10write_infoERNSt8ofstreamE">
+<span id="_CPPv3N6Kernel10write_infoERNSt8ofstreamE"></span><span id="_CPPv2N6Kernel10write_infoERNSt8ofstreamE"></span><span id="Kernel::write_info__std::ofstreamR"></span><span class="target" id="classKernel_1abf8ddc5d4d5b44a542ec70617d092649"></span><em class="property">virtual</em> void <code class="descname">write_info</code><span class="sig-paren">(</span>std::ofstream &amp;<em>coeff_file</em><span class="sig-paren">)</span> = 0<a class="headerlink" href="#_CPPv4N6Kernel10write_infoERNSt8ofstreamE" title="Permalink to this definition">¶</a><br /></dt>
+<dd></dd></dl>
+
+<dl class="function">
 <dt id="_CPPv4N6Kernel8Kuu_gradERK17ClusterDescriptorRKN5Eigen8MatrixXdERKN5Eigen8VectorXdE">
 <span id="_CPPv3N6Kernel8Kuu_gradERK17ClusterDescriptorRKN5Eigen8MatrixXdERKN5Eigen8VectorXdE"></span><span id="_CPPv2N6Kernel8Kuu_gradERK17ClusterDescriptorRKN5Eigen8MatrixXdERKN5Eigen8VectorXdE"></span><span id="Kernel::Kuu_grad__ClusterDescriptorCR.Eigen::MatrixXdCR.Eigen::VectorXdCR"></span><span class="target" id="classKernel_1aca3f43819319ff153ca0e59ffa36ae35"></span>std::vector&lt;Eigen::MatrixXd&gt; <code class="descname">Kuu_grad</code><span class="sig-paren">(</span><em class="property">const</em> <a class="reference internal" href="descriptors.html#_CPPv417ClusterDescriptor" title="ClusterDescriptor">ClusterDescriptor</a> &amp;<em>envs</em>, <em class="property">const</em> Eigen::MatrixXd &amp;<em>Kuu</em>, <em class="property">const</em> Eigen::VectorXd &amp;<em>hyps</em><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N6Kernel8Kuu_gradERK17ClusterDescriptorRKN5Eigen8MatrixXdERKN5Eigen8VectorXdE" title="Permalink to this definition">¶</a><br /></dt>
 <dd></dd></dl>
@@ -315,6 +318,16 @@
 <dd></dd></dl>
 
 <dl class="function">
+<dt id="_CPPv4N20NormalizedDotProduct22compute_map_coeff_pow1ERK8SparseGPi">
+<span id="_CPPv3N20NormalizedDotProduct22compute_map_coeff_pow1ERK8SparseGPi"></span><span id="_CPPv2N20NormalizedDotProduct22compute_map_coeff_pow1ERK8SparseGPi"></span><span id="NormalizedDotProduct::compute_map_coeff_pow1__SparseGPCR.i"></span><span class="target" id="classNormalizedDotProduct_1a71200e92ac1655d2c7d238eacddfeedb"></span>Eigen::MatrixXd <code class="descname">compute_map_coeff_pow1</code><span class="sig-paren">(</span><em class="property">const</em> <a class="reference internal" href="bffs.html#_CPPv48SparseGP" title="SparseGP">SparseGP</a> &amp;<em>gp_model</em>, int <em>kernel_index</em><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N20NormalizedDotProduct22compute_map_coeff_pow1ERK8SparseGPi" title="Permalink to this definition">¶</a><br /></dt>
+<dd></dd></dl>
+
+<dl class="function">
+<dt id="_CPPv4N20NormalizedDotProduct22compute_map_coeff_pow2ERK8SparseGPi">
+<span id="_CPPv3N20NormalizedDotProduct22compute_map_coeff_pow2ERK8SparseGPi"></span><span id="_CPPv2N20NormalizedDotProduct22compute_map_coeff_pow2ERK8SparseGPi"></span><span id="NormalizedDotProduct::compute_map_coeff_pow2__SparseGPCR.i"></span><span class="target" id="classNormalizedDotProduct_1acc3e4756718e090b6dde819d00db75e5"></span>Eigen::MatrixXd <code class="descname">compute_map_coeff_pow2</code><span class="sig-paren">(</span><em class="property">const</em> <a class="reference internal" href="bffs.html#_CPPv48SparseGP" title="SparseGP">SparseGP</a> &amp;<em>gp_model</em>, int <em>kernel_index</em><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N20NormalizedDotProduct22compute_map_coeff_pow2ERK8SparseGPi" title="Permalink to this definition">¶</a><br /></dt>
+<dd></dd></dl>
+
+<dl class="function">
 <dt id="_CPPv4N20NormalizedDotProduct28compute_mapping_coefficientsERK8SparseGPi">
 <span id="_CPPv3N20NormalizedDotProduct28compute_mapping_coefficientsERK8SparseGPi"></span><span id="_CPPv2N20NormalizedDotProduct28compute_mapping_coefficientsERK8SparseGPi"></span><span id="NormalizedDotProduct::compute_mapping_coefficients__SparseGPCR.i"></span><span class="target" id="classNormalizedDotProduct_1aef6c98e26f11f91a56f6ece6a7becace"></span>Eigen::MatrixXd <code class="descname">compute_mapping_coefficients</code><span class="sig-paren">(</span><em class="property">const</em> <a class="reference internal" href="bffs.html#_CPPv48SparseGP" title="SparseGP">SparseGP</a> &amp;<em>gp_model</em>, int <em>kernel_index</em><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N20NormalizedDotProduct28compute_mapping_coefficientsERK8SparseGPi" title="Permalink to this definition">¶</a><br /></dt>
 <dd></dd></dl>
@@ -322,6 +335,11 @@
 <dl class="function">
 <dt id="_CPPv4N20NormalizedDotProduct27compute_varmap_coefficientsERK8SparseGPi">
 <span id="_CPPv3N20NormalizedDotProduct27compute_varmap_coefficientsERK8SparseGPi"></span><span id="_CPPv2N20NormalizedDotProduct27compute_varmap_coefficientsERK8SparseGPi"></span><span id="NormalizedDotProduct::compute_varmap_coefficients__SparseGPCR.i"></span><span class="target" id="classNormalizedDotProduct_1aa061754e12ae7ec036087a6dfa712a46"></span>Eigen::MatrixXd <code class="descname">compute_varmap_coefficients</code><span class="sig-paren">(</span><em class="property">const</em> <a class="reference internal" href="bffs.html#_CPPv48SparseGP" title="SparseGP">SparseGP</a> &amp;<em>gp_model</em>, int <em>kernel_index</em><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N20NormalizedDotProduct27compute_varmap_coefficientsERK8SparseGPi" title="Permalink to this definition">¶</a><br /></dt>
+<dd></dd></dl>
+
+<dl class="function">
+<dt id="_CPPv4N20NormalizedDotProduct10write_infoERNSt8ofstreamE">
+<span id="_CPPv3N20NormalizedDotProduct10write_infoERNSt8ofstreamE"></span><span id="_CPPv2N20NormalizedDotProduct10write_infoERNSt8ofstreamE"></span><span id="NormalizedDotProduct::write_info__std::ofstreamR"></span><span class="target" id="classNormalizedDotProduct_1ab0428739e1d82fc61fbcb741604053cc"></span>void <code class="descname">write_info</code><span class="sig-paren">(</span>std::ofstream &amp;<em>coeff_file</em><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N20NormalizedDotProduct10write_infoERNSt8ofstreamE" title="Permalink to this definition">¶</a><br /></dt>
 <dd></dd></dl>
 
 </div>
@@ -359,8 +377,6 @@
           <footer>
   
     <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
-      
-        <a href="lmpotf.html" class="btn btn-neutral float-right" title="LAMMPS On-The-Fly Training" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right"></span></a>
       
       
         <a href="descriptors.html" class="btn btn-neutral float-left" title="Descriptors" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left"></span> Previous</a>
