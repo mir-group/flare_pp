@@ -325,7 +325,7 @@ class SGP_Wrapper:
     @staticmethod
     def from_file(filename: str):
         """
-        Read from file, and construct dictionary
+        Read from file and construct dictionary
         Args:
             filename (str): filename to read and return `from_dict` object
         """
@@ -335,7 +335,7 @@ class SGP_Wrapper:
 
     def update_db(
         self,
-        structure,
+        structure: Structure,
         forces,
         custom_range=(),
         energy: float = None,
@@ -346,16 +346,16 @@ class SGP_Wrapper:
         atom_indices=[-1],
     ):
         """
-        
+        Update database, define number of sparse environments to add per frame, and determine further processing (e.g., kernel matrices)
         Args:
-            structure (?): flare structure object
-            forces (list): forces from structure object 
-            custom_range (int): number of sparse environments to be included from each frame
-            energy (float): energy from structure object
-            stress (str): stress from structure object
+            structure (Structure): flare structure class
+            forces (class): forces 
+            custom_range (tuple): number of sparse environments to be included from each frame
+            energy (float): energy from structure object, default = `None`
+            stress (str): stress from structure object, default = `None`
             mode (str): mode for defining atomic environments
-            sgp (bool): set to `True` to produce Sparse GP (with number of atomic envs from custom_range to be added), or `False` to add all atomic envs from each frame
-            update_qr (bool): set to `True` to build kernel matrices from updated training set, compute and store the matrices needed for future prediction 
+            sgp (bool): set to `True` to produce Sparse GP (with number of atomic envs from custom_range to be added), or `False` to add all atomic envs from each frame, default = `None`
+            update_qr (bool): set to `True` to build kernel matrices from updated training set, compute and store the matrices needed for future prediction, default = `None`
             atom_indices (list): keep track of atom indices for atoms added to sparse, or full, set (depending on custom_range)
         """
 
@@ -443,7 +443,7 @@ class SGP_Wrapper:
         """
         optimize hyperparameters given current database of atomic environments
         Args:
-            logger_name: default = None
+            logger_name: default = `None` (not accessed??)
         """
         optimize_hyperparameters(
             self.sparse_gp,
@@ -537,9 +537,6 @@ class SGP_Wrapper:
     def duplicate(self, new_hyps=None, new_kernels=None, new_powers=None):
         # TODO: change to __copy__ method
         # TODO: add compatibility with other kernels
-        """ 
-        
-        """
         if new_hyps is None:
             hyps = self.sparse_gp.hyperparameters
         else:
@@ -597,7 +594,7 @@ def compute_negative_likelihood(hyperparameters, sparse_gp,
     hyperparameters.
     Args:
         hyperparameters (list): hyperparameters
-        sparse_gp (dict): sparse GP
+        sparse_gp (class): sparse GP class object
         print_vals (bool): print values of hyperparameters and negative likelihood
     """
     assert len(hyperparameters) == len(sparse_gp.hyperparameters)
@@ -619,7 +616,7 @@ def compute_negative_likelihood_grad(hyperparameters, sparse_gp,
     hyperparameters.
     Args:
         hyperparameters (list): hyperparameters
-        sparse_gp (dict): sparse GP
+        sparse_gp (class): sparse GP class object
         print_vals (bool): print values of hyperparameters and negative likelihood
     """
     assert len(hyperparameters) == len(sparse_gp.hyperparameters)
@@ -641,7 +638,7 @@ def compute_negative_likelihood_grad_stable(hyperparameters, sparse_gp, precompu
     hyperparameters.
     Args:
         hyperparameters (list): hyperparameters
-        sparse_gp (dict): sparse GP
+        sparse_gp (SparseGP): Flare sparse GP object
         precomputed (bool): do not compute likelihood gradient
     """
     assert len(hyperparameters) == len(sparse_gp.hyperparameters)
@@ -698,9 +695,9 @@ def optimize_hyperparameters(
     method="BFGS",
 ):
     """
-    Optimize the hyperparameters of a sparse GP model. Methods provided below.
+    Optimize the hyperparameters of the sparse GP model. Methods provided below.
     Args:
-        sparse_gp (): 
+        sparse_gp (SparseGP): Flare sparse GP object
         display_results (bool): set to `True` to display hyperparameter optimization steps
         gradient_tolerance (float): convergence threshold for hyperparameter gradient
         max_iterations (int): maximum number of hyperparameter optimization steps to attempt if convergence tolerance is not met
