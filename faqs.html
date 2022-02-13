@@ -150,10 +150,8 @@
   <div class="section" id="trouble-shooting">
 <h1>Trouble Shooting<a class="headerlink" href="#trouble-shooting" title="Permalink to this headline">¶</a></h1>
 <ul class="simple">
-<li>If you have successfully installed the code, and can <code class="docutils literal notranslate"><span class="pre">import</span> <span class="pre">flare_pp</span></code>, but cannot <code class="docutils literal notranslate"><span class="pre">import</span> <span class="pre">flare_pp._C_flare</span></code>, we suggest you to check your python version.
-We use <code class="docutils literal notranslate"><span class="pre">pybind11</span></code> to compile the c++ code into a python importable library, however, <code class="docutils literal notranslate"><span class="pre">pybind11</span></code> seems to have problem with python3.9. We have tried python3.6 and it works.</li>
-<li>For developers, if your github action build fails from an issue related to <code class="docutils literal notranslate"><span class="pre">gh-pages</span></code> in the step of “Publish the docs”, this may be because you did not pull the latest code before push.
-Please try pull and push again. If it still does not work, check <a class="reference external" href="https://gist.github.com/mandiwise/44d1edce18f2ffb14f63">this</a>.</li>
+<li>If you have successfully installed the code, and can <code class="docutils literal notranslate"><span class="pre">import</span> <span class="pre">flare_pp</span></code> but cannot <code class="docutils literal notranslate"><span class="pre">import</span> <span class="pre">flare_pp._C_flare</span></code>, we suggest that you check your Python version and try using Python 3.6. We use <code class="docutils literal notranslate"><span class="pre">pybind11</span></code> to compile the C++ code into a Python importable library but have run into issues using <code class="docutils literal notranslate"><span class="pre">pybind11</span></code> with Python 3.9.</li>
+<li>For developers, if your Github Action build fails from an issue related to <code class="docutils literal notranslate"><span class="pre">gh-pages</span></code> in the step of “Publish the docs”, this may be because you did not pull the latest code before push. Please try pull and push again. If it still does not work, check <a class="reference external" href="https://gist.github.com/mandiwise/44d1edce18f2ffb14f63">this</a>.</li>
 </ul>
 </div>
 
