@@ -45,7 +45,8 @@ protected:
   std::vector<Eigen::MatrixXd> beta_matrices;
 
   // Variables for profiling.
-  double init_time, descriptor_time, eu_time, force_time, total_time;
+  double init_time = 0, desc_time = 0, eu_time = 0, force_time = 0, total_time = 0, en_time = 0;
+  int compute_count = 0;
 
   virtual void allocate();
   virtual void read_file(char *);

@@ -174,6 +174,7 @@ void ComputeFlareStdAtom::compute_peratom() {
                   single_bond_vals, n_species, n_max, l_max);
 
     double variance = 0.0;
+    double en_time = 0.0;
     double sig = hyperparameters(0);
     double sig2 = sig * sig;
 
@@ -184,7 +185,8 @@ void ComputeFlareStdAtom::compute_peratom() {
     if (use_map) {
       int power = 2;
       compute_energy_and_u(B2_vals, B2_norm_squared, single_bond_vals, power,
-              n_species, n_max, l_max, beta_matrices[itype - 1], u, &variance);
+              n_species, n_max, l_max, beta_matrices[itype - 1], u, &variance,
+              &en_time);
       variance /= sig2;
     } else {
       double B2_norm = pow(B2_norm_squared, 0.5);

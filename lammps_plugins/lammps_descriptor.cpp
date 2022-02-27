@@ -3,6 +3,7 @@
 #include "y_grad.h"
 #include <cmath>
 #include <iostream>
+#include <chrono>
 
 void single_bond_multiple_cutoffs(
     double **x, int *type, int jnum, int n_inner, int i, double xtmp,
@@ -252,13 +253,15 @@ void compute_energy_and_u(Eigen::VectorXd &B2_vals,
                    const Eigen::VectorXd &single_bond_vals,
                    int power, int n_species,
                    int N, int lmax, const Eigen::MatrixXd &beta_matrix, 
-                   Eigen::VectorXd &u, double *evdwl) {
+                   Eigen::VectorXd &u, double *evdwl,
+                   double *en_time) {
 
   int n1_l, n2_l, counter, n1_count, n2_count;
   int n_radial = n_species * N;
   int n_harmonics = (lmax + 1) * (lmax + 1);
-
   Eigen::VectorXd w;
+
+  std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
   if (power == 1) {
     double B2_norm = pow(norm_squared, 0.5);
     *evdwl = B2_vals.dot(beta_matrix.col(0)) / B2_norm;
@@ -268,6 +271,9 @@ void compute_energy_and_u(Eigen::VectorXd &B2_vals,
     *evdwl = B2_vals.dot(beta_p) / norm_squared;
     w = 2 * (beta_p - *evdwl * B2_vals) / norm_squared;
   }
+  std::chrono::steady_clock::time_point t2 = std::chrono::steady_clock::now();
+  std::chrono::duration<double, std::milli> en_dur = t2 - t1;
+  *en_time += en_dur.count();
 
   // Compute u(n1, l, m), where f_ik = u * dA/dr_ik
   u = Eigen::VectorXd::Zero(single_bond_vals.size());

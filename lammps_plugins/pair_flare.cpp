@@ -67,7 +67,6 @@ PairFLARE::~PairFLARE() {
 /* ---------------------------------------------------------------------- */
 
 void PairFLARE::compute(int eflag, int vflag) {
-  init_time = 0;
   std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
 
   int i, j, ii, jj, inum, jnum, itype, jtype, n_inner, n_count;
@@ -97,7 +96,10 @@ void PairFLARE::compute(int eflag, int vflag) {
   double empty_thresh = 1e-8;
 
   std::chrono::steady_clock::time_point t2 = std::chrono::steady_clock::now();
-  std::chrono::duration<double, std::milli> init_time = t2 - t1;
+  std::chrono::duration<double, std::milli> init_time_dur = t2 - t1;
+  init_time += init_time_dur.count();
+
+  std::chrono::duration<double, std::milli> desc_time_dur, eu_time_dur, force_dur, total_dur;
 
   for (ii = 0; ii < inum; ii++) {
     std::chrono::steady_clock::time_point t3 = std::chrono::steady_clock::now();
@@ -135,24 +137,30 @@ void PairFLARE::compute(int eflag, int vflag) {
                                  cutoff_hyps, single_bond_vals,
                                  single_bond_env_dervs, cutoff_matrix);
 
-    std::chrono::steady_clock::time_point t5 = std::chrono::steady_clock::now();
-
     // Compute invariant descriptors.
+    std::chrono::steady_clock::time_point t5 = std::chrono::steady_clock::now();
     B2_descriptor(B2_vals, B2_norm_squared,
                   single_bond_vals, n_species, n_max, l_max);
-
     std::chrono::steady_clock::time_point t6 = std::chrono::steady_clock::now();
 
-    compute_energy_and_u(B2_vals, B2_norm_squared, single_bond_vals, power, 
-           n_species, n_max, l_max, beta_matrices[itype - 1], u, &evdwl);
+    desc_time_dur = t6 - t4;
+    desc_time += desc_time_dur.count();
 
     std::chrono::steady_clock::time_point t7 = std::chrono::steady_clock::now();
+    compute_energy_and_u(B2_vals, B2_norm_squared, single_bond_vals, power, 
+           n_species, n_max, l_max, beta_matrices[itype - 1], u, &evdwl,
+           &en_time);
+    std::chrono::steady_clock::time_point t8 = std::chrono::steady_clock::now();
+
+    eu_time_dur = t8 - t7;
+    eu_time += eu_time_dur.count();
 
     // Continue if the environment is empty.
     if (B2_norm_squared < empty_thresh)
       continue;
 
     // Update energy, force and stress arrays.
+    std::chrono::steady_clock::time_point t9 = std::chrono::steady_clock::now();
     n_count = 0;
     double fxsum = 0, fysum = 0, fzsum = 0;
     for (int jj = 0; jj < jnum; jj++) {
@@ -191,22 +199,31 @@ void PairFLARE::compute(int eflag, int vflag) {
     }
       //printf("i = %d, Fsum = %g %g %g\n", i, fxsum, fysum, fzsum);
 
-    std::chrono::steady_clock::time_point t8 = std::chrono::steady_clock::now();
-
     // Compute local energy.
     if (eflag)
       ev_tally_full(i, 2.0 * evdwl, 0.0, 0.0, 0.0, 0.0, 0.0);
 
-    std::chrono::steady_clock::time_point t9 = std::chrono::steady_clock::now();
+    std::chrono::steady_clock::time_point t10 = std::chrono::steady_clock::now();
+    force_dur = t10 - t9;
+    force_time += force_dur.count();
   }
 
-  std::chrono::steady_clock::time_point t10 = std::chrono::steady_clock::now();
   if (vflag_fdotr)
     virial_fdotr_compute();
+
   std::chrono::steady_clock::time_point t11 = std::chrono::steady_clock::now();
+  total_dur = t11 - t1;
+  total_time += total_dur.count();
 
   // Report timing data.
-  
+  compute_count += 1;
+  std::cout << std::scientific;
+  std::cout << "Mean init time: " << (init_time / compute_count) << " ms" << std::endl;
+  std::cout << "Mean desc time: " << (desc_time / compute_count) << " ms" << std::endl;
+  std::cout << "Mean eu time: " << (eu_time / compute_count) << " ms" << std::endl;
+  std::cout << "Mean e time: " << (en_time / compute_count) << " ms" << std::endl;
+  std::cout << "Mean force time: " << (force_time / compute_count) << " ms" << std::endl;
+  std::cout << "Mean total time: " << (total_time / compute_count) << " ms" << std::endl;
 }
 
 /* ----------------------------------------------------------------------
