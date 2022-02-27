@@ -15,6 +15,7 @@
 #include <iostream>
 #include <vector>
 #include <sys/time.h>
+#include <chrono>
 
 // flare++ modules
 #include "cutoffs.h"
@@ -66,6 +67,9 @@ PairFLARE::~PairFLARE() {
 /* ---------------------------------------------------------------------- */
 
 void PairFLARE::compute(int eflag, int vflag) {
+  init_time = 0;
+  std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
+
   int i, j, ii, jj, inum, jnum, itype, jtype, n_inner, n_count;
   double evdwl, delx, dely, delz, xtmp, ytmp, ztmp, rsq;
   double *coeff;
@@ -92,7 +96,12 @@ void PairFLARE::compute(int eflag, int vflag) {
   Eigen::MatrixXd single_bond_env_dervs, B2_env_dervs;
   double empty_thresh = 1e-8;
 
+  std::chrono::steady_clock::time_point t2 = std::chrono::steady_clock::now();
+  std::chrono::duration<double, std::milli> init_time = t2 - t1;
+
   for (ii = 0; ii < inum; ii++) {
+    std::chrono::steady_clock::time_point t3 = std::chrono::steady_clock::now();
+
     i = list->ilist[ii];
     itype = type[i];
     jnum = numneigh[i];
@@ -116,6 +125,8 @@ void PairFLARE::compute(int eflag, int vflag) {
         n_inner++;
     }
 
+    std::chrono::steady_clock::time_point t4 = std::chrono::steady_clock::now();
+
     // Compute covariant descriptors.
     double secs;
     single_bond_multiple_cutoffs(x, type, jnum, n_inner, i, xtmp, ytmp, ztmp,
@@ -124,12 +135,18 @@ void PairFLARE::compute(int eflag, int vflag) {
                                  cutoff_hyps, single_bond_vals,
                                  single_bond_env_dervs, cutoff_matrix);
 
+    std::chrono::steady_clock::time_point t5 = std::chrono::steady_clock::now();
+
     // Compute invariant descriptors.
     B2_descriptor(B2_vals, B2_norm_squared,
                   single_bond_vals, n_species, n_max, l_max);
 
+    std::chrono::steady_clock::time_point t6 = std::chrono::steady_clock::now();
+
     compute_energy_and_u(B2_vals, B2_norm_squared, single_bond_vals, power, 
            n_species, n_max, l_max, beta_matrices[itype - 1], u, &evdwl);
+
+    std::chrono::steady_clock::time_point t7 = std::chrono::steady_clock::now();
 
     // Continue if the environment is empty.
     if (B2_norm_squared < empty_thresh)
@@ -174,13 +191,22 @@ void PairFLARE::compute(int eflag, int vflag) {
     }
       //printf("i = %d, Fsum = %g %g %g\n", i, fxsum, fysum, fzsum);
 
+    std::chrono::steady_clock::time_point t8 = std::chrono::steady_clock::now();
+
     // Compute local energy.
     if (eflag)
       ev_tally_full(i, 2.0 * evdwl, 0.0, 0.0, 0.0, 0.0, 0.0);
+
+    std::chrono::steady_clock::time_point t9 = std::chrono::steady_clock::now();
   }
 
+  std::chrono::steady_clock::time_point t10 = std::chrono::steady_clock::now();
   if (vflag_fdotr)
     virial_fdotr_compute();
+  std::chrono::steady_clock::time_point t11 = std::chrono::steady_clock::now();
+
+  // Report timing data.
+  
 }
 
 /* ----------------------------------------------------------------------
